@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Orbitron:wght@400;500;600;700;800;900&family=IBM+Plex+Serif:wght@600&family=Gelasio:wght@400;500;600;700&family=Roboto:ital,wght@0,400;1,700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Roboto", ui-sans-serif, system-ui, sans-serif;
+  --font-logo: "Gelasio", serif;
+  --font-modern: "Roboto", sans-serif;
+  --font-tech: "Orbitron", sans-serif;
+  
+  --color-neon-green: #39FF14;
+  --color-glass-bg: rgba(255, 255, 255, 0.05);
+  --color-glass-border: rgba(255, 255, 255, 0.1);
+}
+
+@layer base {
+  body {
+    @apply bg-[#050505] text-white font-sans antialiased selection:bg-neon-green/30;
+    background-image: 
+      radial-gradient(circle at 20% 20%, rgba(57, 255, 20, 0.05) 0%, transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(57, 255, 20, 0.03) 0%, transparent 40%);
+    background-attachment: fixed;
+  }
+}
+
+.glass-card {
+  @apply backdrop-blur-xl bg-white/5 border border-white/10 rounded-2xl transition-all duration-300;
+}
+
+.glass-card:hover {
+  @apply bg-white/10 border-white/20 shadow-[0_0_20px_rgba(57,255,20,0.1)];
+}
+
+.neon-glow {
+  text-shadow: 0 0 10px rgba(57, 255, 20, 0.5);
+}
+
+.neon-border {
+  box-shadow: 0 0 15px rgba(57, 255, 20, 0.2);
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-white/10 rounded-full hover:bg-neon-green/50 transition-colors;
+}
+
+.neon-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.neon-scrollbar:hover {
+  scrollbar-color: rgba(57, 255, 20, 0.4) transparent;
+}
+
+.neon-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+
+.neon-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.neon-scrollbar::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 10px;
+  transition: background 0.3s;
+}
+
+.neon-scrollbar:hover::-webkit-scrollbar-thumb {
+  background: rgba(57, 255, 20, 0.4);
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Badge Clip Paths */
+.clip-path-pentagon {
+  clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
+}
+
+.clip-path-hexagon {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+.clip-path-ribbon {
+  clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 50% 80%, 0% 100%);
+}
+
+.clip-path-wing-left {
+  clip-path: polygon(100% 0%, 0% 50%, 100% 100%, 80% 50%);
+}
+
+.clip-path-wing-right {
+  clip-path: polygon(0% 0%, 100% 50%, 0% 100%, 20% 50%);
+}
+
