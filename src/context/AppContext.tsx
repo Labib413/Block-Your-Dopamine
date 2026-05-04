@@ -309,52 +309,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // One-time manual data adjustment: Subtract 2 hours (7200 seconds)
-        const manualAdjustmentFlag = 'manual_adjustment_v2_sub_2h';
-        if (!localStorage.getItem(manualAdjustmentFlag)) {
-          console.log("Applying one-time manual data adjustment: -2 hours focus time");
-          const twoHoursInSeconds = 7200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime = Math.max(0, parsed.totalNetFocusTime - twoHoursInSeconds);
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime = Math.max(0, parsed.dailyTotalFocusTime - twoHoursInSeconds);
-          }
-          localStorage.setItem(manualAdjustmentFlag, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data adjustment: Add 6h to Net, 6h 10m to Total
-        const manualAdjustmentFlagV3 = 'manual_adjustment_v3_add_6h_6h10m';
-        if (!localStorage.getItem(manualAdjustmentFlagV3)) {
-          console.log("Applying one-time manual data adjustment: +6h Net, +6h 10m Total");
-          const sixHoursInSeconds = 21600;
-          const sixHoursTenMinsInSeconds = 22200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime += sixHoursInSeconds;
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime += sixHoursTenMinsInSeconds;
-          }
-          localStorage.setItem(manualAdjustmentFlagV3, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data restoration: Set both to 6h 10m (22200 seconds)
-        const manualRestorationFlagV4 = 'manual_restoration_v4_set_6h10m';
-        if (!localStorage.getItem(manualRestorationFlagV4)) {
-          console.log("Applying one-time manual data restoration: 6h 10m focus time");
-          const sixHoursTenMinsInSeconds = 22200;
-          parsed.totalNetFocusTime = sixHoursTenMinsInSeconds;
-          parsed.dailyTotalFocusTime = sixHoursTenMinsInSeconds;
-          parsed.detoxPercent = 100;
-          localStorage.setItem(manualRestorationFlagV4, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
         // Check if we need to reset daily stats
         if (parsed.lastResetDate !== today) {
           parsed.totalNetFocusTime = 0;
@@ -2015,7 +1969,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return 300 * Math.pow(2, level - 3);
   };
 
-  const addXP = (amount: number) => {
+  const addXP = useCallback((amount: number) => {
     logActivity();
     setState(prev => {
       let newXP = prev.xp + amount;
@@ -2035,25 +1989,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         topSkill: prev.focusTime > 300 ? "Focus" : prev.topSkill
       };
     });
-  };
+  }, []);
 
-  const incrementTasks = () => {
+  const incrementTasks = useCallback(() => {
     logActivity();
     setState(prev => ({ ...prev, tasksCompleted: prev.tasksCompleted + 1 }));
     addXP(10); // 10 XP per task
-  };
+  }, [addXP]);
 
-  const addFitness = (amount: number) => {
+  const addFitness = useCallback((amount: number) => {
     logActivity();
     setState(prev => ({ ...prev, physicalFitness: Math.min(200, prev.physicalFitness + amount) }));
     addXP(5);
-  };
+  }, [addXP]);
 
-  const toggleFocus = () => {
+  const toggleFocus = useCallback(() => {
     setState(prev => ({ ...prev, isFocusing: !prev.isFocusing }));
-  };
+  }, []);
 
-  const startFocusSession = (durationMinutes: number, subjectId?: string) => {
+  const startFocusSession = useCallback((durationMinutes: number, subjectId?: string) => {
     if (durationMinutes <= 0) {
       console.warn("Cannot start session: Duration must be greater than 0.");
       return;
@@ -2061,6 +2015,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('distraction_start_time');
     localStorage.removeItem('current_session');
     localStorage.removeItem('pending_session'); // Clear any old pending session
+    localStorage.removeItem('isInteractingWithSafeResource');
     isManualExitRef.current = false;
     const startTime = new Date().toISOString();
 
@@ -2084,13 +2039,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionDistractionTime: 0,
       isSessionDistracted: false
     }));
-  };
+  }, [state.academicChapters]);
 
   const saveSessionFragment = async (netFocusTime: number, totalAttemptedTime: number) => {
     if (!state.user || !state.currentSessionStartTime) return;
 
-    const safeNetFocus = Number.isFinite(netFocusTime) ? netFocusTime : 0;
-    const safeTotalAttempted = Number.isFinite(totalAttemptedTime) ? totalAttemptedTime : 0;
+    const safeNetFocus = (Number.isFinite(netFocusTime) && netFocusTime > 0) ? netFocusTime : 0;
+    const safeTotalAttempted = (Number.isFinite(totalAttemptedTime) && totalAttemptedTime > 0) ? totalAttemptedTime : 0;
     const sessionScore = safeTotalAttempted > 0 
       ? Math.round((safeNetFocus / safeTotalAttempted) * 10000) / 100 
       : 100;
@@ -2123,14 +2078,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const endFocusSession = async (netFocusTime: number, totalAttemptedTime: number, resourceUsed?: string) => {
+  const endFocusSession = useCallback(async (netFocusTime: number, totalAttemptedTime: number, resourceUsed?: string) => {
     if (!isManualExitRef.current) {
       console.warn("Attempted to end session without manual exit trigger. Blocked.");
       return;
     }
     // NaN Guards & Absolute Math Support
-    let safeNetFocus = Number.isFinite(netFocusTime) ? Math.max(0, netFocusTime) : 0;
-    let safeTotalAttempted = Number.isFinite(totalAttemptedTime) ? Math.max(0, totalAttemptedTime) : 0;
+    let safeNetFocus = (Number.isFinite(netFocusTime) && netFocusTime > 0) ? netFocusTime : 0;
+    let safeTotalAttempted = (Number.isFinite(totalAttemptedTime) && totalAttemptedTime > 0) ? totalAttemptedTime : 0;
 
     // Validation Guard: Check if we have a better backup in localStorage
     try {
@@ -2268,9 +2223,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       return newState;
     });
-  };
+  }, [getOfflineQueue, saveOfflineQueue, state.user, state.currentSessionId, state.currentSessionStartTime, state.currentSessionDuration, state.xp, state.level, state.streak, state.lastStreakDate, state.totalNetFocusTime, state.dailyTotalFocusTime, state.dailySessions, state.focusTime, state.streakSeasonStartDate]);
 
-  const cancelFocusSession = () => {
+  const cancelFocusSession = useCallback(() => {
     if (!isManualExitRef.current) {
       console.warn("Attempted to cancel session without manual exit trigger. Blocked.");
       return;
@@ -2288,30 +2243,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentSessionResources: [],
       isManualExit: false
     }));
-  };
+  }, []);
 
-  const setIsManualExit = (val: boolean) => {
+  const setIsManualExit = useCallback((val: boolean) => {
     isManualExitRef.current = val;
     setState(prev => ({ ...prev, isManualExit: val }));
-  };
+  }, []);
 
-  const setSessionTimeLeft = (time: number) => {
+  const setSessionTimeLeft = useCallback((time: number) => {
     setState(prev => {
       return { ...prev, sessionTimeLeft: time };
     });
-  };
+  }, []);
 
-  const setSessionDistractionTime = (time: number) => {
+  const setSessionDistractionTime = useCallback((time: number) => {
     setState(prev => {
       return { ...prev, sessionDistractionTime: time };
     });
-  };
+  }, []);
 
-  const setIsSessionDistracted = (isDistracted: boolean) => {
+  const setIsSessionDistracted = useCallback((isDistracted: boolean) => {
     setState(prev => ({ ...prev, isSessionDistracted: isDistracted }));
-  };
+  }, []);
 
-  const updateDetox = (amount: number) => {
+  const updateDetox = useCallback((amount: number) => {
     logActivity();
     const addedSeconds = Math.trunc((amount / 100) * (state.dailyGoalHours * 3600));
     
@@ -2341,9 +2296,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     
     addXP(2);
-  };
+  }, [addXP, addToSyncQueue, state.dailyGoalHours, state.user]);
 
-  const setDailyGoalHours = (hours: number) => {
+  const setDailyGoalHours = useCallback((hours: number) => {
     setState(prev => ({ ...prev, dailyGoalHours: hours }));
     
     if (state.user) {
@@ -2358,9 +2313,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const addResource = (resource: Resource) => {
+  const addResource = useCallback((resource: Resource) => {
     setState(prev => {
       const newResources = [...prev.resources, resource];
       localStorage.setItem('byd_study_resources', safeStringify(newResources));
@@ -2381,9 +2336,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateResource = (id: string, updates: Partial<Resource>) => {
+  const updateResource = useCallback((id: string, updates: Partial<Resource>) => {
     setState(prev => {
       const newResources = prev.resources.map(r => r.id === id ? { ...r, ...updates } : r);
       localStorage.setItem('byd_study_resources', safeStringify(newResources));
@@ -2398,9 +2353,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         data: updates
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const removeResource = (id: string) => {
+  const removeResource = useCallback((id: string) => {
     setState(prev => {
       const newResources = prev.resources.filter(r => r.id !== id);
       localStorage.setItem('byd_study_resources', safeStringify(newResources));
@@ -2414,7 +2369,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         id: id
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
   const updateGender = (gender: string) => {
     setState(prev => ({ ...prev, gender }));
@@ -2432,7 +2387,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setState(prev => ({ ...prev, notifications: [] }));
   };
 
-  const updateHydration = (amount: number) => {
+  const updateHydration = useCallback((amount: number) => {
     if (amount > 50) return; // Unrealistic validation
     logActivity();
     setState(prev => ({ ...prev, hydrationIntake: amount }));
@@ -2451,9 +2406,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateSleep = (hours: number, sessionDelta: number = 0) => {
+  const updateSleep = useCallback((hours: number, sessionDelta: number = 0) => {
     if (hours > 24) return; // Unrealistic validation
     logActivity();
     setState(prev => {
@@ -2481,9 +2436,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         sleepSessions: newSessions
       };
     });
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateSteps = (steps: number) => {
+  const updateSteps = useCallback((steps: number) => {
     if (steps > 100000) return; // Unrealistic validation
     logActivity();
     setState(prev => ({ ...prev, steps }));
@@ -2502,9 +2457,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateCalories = (calories: number, bypass: boolean = false) => {
+  const updateCalories = useCallback((calories: number, bypass: boolean = false) => {
     if (!bypass && calories > 5000) return; // Unrealistic validation
     logActivity();
     setState(prev => ({ ...prev, consumedCalories: calories }));
@@ -2523,9 +2478,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateScreenTime = (hours: number, minutes: number) => {
+  const updateScreenTime = useCallback((hours: number, minutes: number) => {
     setState(prev => ({ ...prev, screenTimeHours: hours, screenTimeMinutes: minutes }));
     
     if (state.user) {
@@ -2542,9 +2497,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateHealthTargets = (targets: HealthTargets) => {
+  const updateHealthTargets = useCallback((targets: HealthTargets) => {
     setState(prev => ({ ...prev, healthTargets: targets }));
     
     if (state.user) {
@@ -2560,9 +2515,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateProfile = (profileData: Partial<NonNullable<AppState['profile']>>) => {
+  const updateProfile = useCallback(async (profileData: Partial<NonNullable<AppState['profile']>>) => {
     if (!state.user) return;
 
     // Update local state immediately
@@ -2589,9 +2544,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         updated_at: new Date().toISOString()
       }
     });
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateMood = (text: string, emoji: string) => {
+  const updateMood = useCallback(async (text: string, emoji: string) => {
     if (!state.user) return;
     
     setState(prev => ({ ...prev, latestMood: { text, emoji } }));
@@ -2609,9 +2564,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         timestamp: new Date().toISOString()
       }
     });
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateMacros = (protein: number, carbs: number, fats: number, calories?: number) => {
+  const updateMacros = useCallback(async (protein: number, carbs: number, fats: number, calories?: number) => {
     if (!state.user) return;
     const today = getLocalDateString(new Date());
     
@@ -2631,9 +2586,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         ...(calories !== undefined ? { calories } : {})
       }
     });
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const addTask = (task: Task) => {
+  const addTask = useCallback((task: Task) => {
     logActivity();
     
     // Update local state immediately
@@ -2656,9 +2611,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const deleteTask = (id: string) => {
+  const deleteTask = useCallback((id: string) => {
     // Update local state immediately
     setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
 
@@ -2669,9 +2624,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         id: id
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const updateTaskStatus = (id: string, status: Status) => {
+  const updateTaskStatus = useCallback((id: string, status: Status) => {
     logActivity();
     
     // Update local state immediately
@@ -2688,9 +2643,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         data: { status }
       });
     }
-  };
+  }, [addToSyncQueue, state.user]);
 
-  const equipBadge = (badgeId: string) => {
+  const equipBadge = useCallback((badgeId: string) => {
     setState(prev => {
       // Find the badge to get its category
       const badge = BADGES.find(b => b.id === badgeId);
@@ -2716,16 +2671,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       return { ...prev, equippedBadges: newEquipped };
     });
-  };
+  }, []);
 
   const login = (fullName: string, email: string) => {
     // This is now handled by Supabase Auth in AuthModal
   };
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await supabase.auth.signOut();
     setState(prev => ({ ...prev, user: null, profile: null, daysActive: 1 }));
-  };
+  }, []);
 
   // Memoize context value to prevent unnecessary re-renders of all consumers
   const contextValue = React.useMemo(() => ({
