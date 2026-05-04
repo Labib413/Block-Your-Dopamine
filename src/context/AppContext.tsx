@@ -997,23 +997,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // Test Supabase connection
     const testConnection = async () => {
       try {
-        const url = import.meta.env.VITE_SUPABASE_URL || 'undefined';
-        console.log("Testing Supabase connection to:", url);
+        const url = import.meta.env.VITE_SUPABASE_URL || '';
+        console.log("Testing Supabase connection...");
         
-        if (url === 'undefined' || !url) {
+        if (!url) {
           setIsSupabaseConnected(false);
-          setConnectionError("Supabase URL is missing. Please set VITE_SUPABASE_URL in Settings.");
+          setConnectionError("Supabase configuration missing (URL).");
           return;
         }
 
+        // Use a simple health check or a small query
         const { error, status } = await supabase.from('focus_logs').select('id').limit(1);
         
         if (error) {
           setIsSupabaseConnected(false);
           
           if (error.message.includes('Failed to fetch')) {
-            setConnectionError("Network Error: Failed to fetch. This usually means the Supabase URL is incorrect, the project is paused, or your internet is unstable.");
-            console.error("CRITICAL: Supabase 'Failed to fetch' detected. Possible causes:\n1. Incorrect VITE_SUPABASE_URL\n2. Supabase project is paused\n3. Network/CORS block\n4. Database is currently restarting");
+            setConnectionError("Database Disconnected: Invalid path or network error.");
+            console.error("Supabase 'Failed to fetch'. Check VITE_SUPABASE_URL format.");
+          } else if (error.message.includes('Invalid path')) {
+            setConnectionError("Database Disconnected: Invalid project URL path.");
           } else {
             setConnectionError(error.message);
           }
@@ -1021,12 +1024,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         } else {
           setIsSupabaseConnected(true);
           setConnectionError(null);
-          console.log("Supabase connection verified successfully. Status:", status);
+          console.log("Supabase connection verified successfully.");
         }
       } catch (err: any) {
         setIsSupabaseConnected(false);
-        setConnectionError(err.message || "Unknown connection error");
-        console.error("Supabase Connection Test Exception:", err);
+        setConnectionError("Connection Exception: " + (err.message || "Unknown error"));
       }
     };
     testConnection();
