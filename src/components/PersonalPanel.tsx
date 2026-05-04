@@ -82,13 +82,13 @@ const GlassSelect = ({
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute top-full left-0 right-0 z-[9999] mt-2 rounded-xl bg-[#0a0a0a]/98 backdrop-blur-2xl border border-[#00ff66]/30 shadow-[0_20px_50px_rgba(0,0,0,0.9)] custom-scrollbar"
+            className="fixed left-auto right-auto z-[9999] mt-2 rounded-xl bg-[#0a0a0a]/98 backdrop-blur-2xl border border-[#00ff66]/30 shadow-[0_20px_50px_rgba(0,0,0,0.9)] custom-scrollbar"
             style={{ 
               maxHeight: '160px', 
               overflowY: 'auto',
               overflowX: 'hidden',
               pointerEvents: 'auto',
-              position: 'absolute'
+              width: containerRef.current ? containerRef.current.offsetWidth : 'auto'
             }}
           >
             <style>{`
