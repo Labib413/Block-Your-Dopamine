@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { X, Mail, Lock, User, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { GlassCard } from "./GlassCard";
+import { logger } from "../lib/logger";
 
 import { supabase } from "../lib/supabase";
 
@@ -62,7 +63,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setError(null);
 
     try {
-      console.log("Verifying OTP for email:", email);
+      logger.log("Verifying OTP for email:", email);
       const { error: verifyError } = await supabase.auth.verifyOtp({
         email: email.trim(),
         token: cleanOtp,
@@ -73,7 +74,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       
       onClose();
     } catch (err: any) {
-      console.error("OTP Verification Error:", err);
+      logger.error("OTP Verification Error:", err);
       setError("Invalid code, please try again.");
     } finally {
       setLoading(false);
@@ -127,7 +128,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       if (authError) throw authError;
       // Note: Redirect happens automatically for OAuth
     } catch (err: any) {
-      console.error("Google Auth Error:", err);
+      logger.error("Google Auth Error:", err);
       setError("Google sign-in failed. Please try again.");
     } finally {
       setLoading(false);

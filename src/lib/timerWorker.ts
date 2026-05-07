@@ -24,12 +24,29 @@ self.onmessage = (e) => {
       const tick = () => {
         const now = Date.now();
         const totalElapsed = Math.floor((now - startTime) / 1000);
-        const timeLeft = Math.max(0, totalDuration - totalElapsed);
+        let timeLeft = Math.max(0, totalDuration - totalElapsed);
         
         let currentDistractionTotal = totalDistractionTime;
         if (distractionStartTime) {
           const currentDistractionElapsed = Math.floor((now - distractionStartTime) / 1000);
           currentDistractionTotal += Math.max(0, currentDistractionElapsed);
+        }
+
+        if (timeLeft <= 0) {
+          timeLeft = 0;
+          if (timerId) clearInterval(timerId);
+          timerId = null;
+          self.postMessage({
+            type: 'TICK',
+            payload: {
+              timeLeft: 0,
+              distractionTime: currentDistractionTotal,
+              totalElapsed: totalDuration,
+              timestamp: now
+            }
+          });
+          self.postMessage({ type: 'COMPLETED' });
+          return;
         }
 
         self.postMessage({
@@ -41,12 +58,6 @@ self.onmessage = (e) => {
             timestamp: now
           }
         });
-
-        if (timeLeft <= 0) {
-          if (timerId) clearInterval(timerId);
-          timerId = null;
-          self.postMessage({ type: 'COMPLETED' });
-        }
       };
 
       // Tick immediately

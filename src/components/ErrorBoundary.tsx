@@ -1,6 +1,7 @@
 import * as React from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
 import { GlassCard } from "./GlassCard";
+import { logger } from "../lib/logger";
 
 interface Props {
   children: React.ReactNode;
@@ -26,7 +27,7 @@ export class ErrorBoundary extends React.Component<any, any> {
   }
 
   public componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-    console.error("Uncaught error:", error, errorInfo);
+    logger.error("Uncaught error:", error, errorInfo);
   }
 
   private handleReset = () => {

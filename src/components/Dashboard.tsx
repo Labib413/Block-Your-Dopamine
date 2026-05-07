@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment, memo } from "react";
+import { useState, useEffect, Fragment, memo, useMemo } from "react";
 import { 
   Clock, 
   CheckCircle2, 
@@ -129,7 +129,8 @@ export function Dashboard() {
     getRequiredXP,
     tasks,
     hydrationIntake,
-    sleepHours
+    sleepHours,
+    geminiApiKey
   } = useApp();
 
   const [visibleLines, setVisibleLines] = useState({
@@ -142,24 +143,24 @@ export function Dashboard() {
   const progressPercent = (xp / requiredXP) * 100;
 
   useEffect(() => {
-    getDailyQuote().then(setQuote);
-  }, []);
+    getDailyQuote(geminiApiKey).then(setQuote);
+  }, [geminiApiKey]);
 
   // Debounce AI insight calls to prevent hitting rate limits
   useEffect(() => {
     if (tasksCompleted > 0 || focusTime > 0) {
       const timer = setTimeout(() => {
-        getAIInsight({ focusTime, tasks: tasksCompleted }).then(setAiInsight);
+        getAIInsight({ focusTime, tasks: tasksCompleted }, geminiApiKey).then(setAiInsight);
       }, 5000); // Only update every 5 seconds of activity
       return () => clearTimeout(timer);
     }
-  }, [tasksCompleted, Math.floor(focusTime / 60)]); // Only trigger on task change or every minute of focus
+  }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey]); // Only trigger on task change or every minute of focus
 
   // Update chart data based on activity
-  useEffect(() => {
-    const today = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date().getDay()];
-    
-    // Calculate metrics
+  const today = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date().getDay()];
+
+  const displayChartData = useMemo(() => {
+    // Calculate metrics for today
     const focusHours = totalNetFocusTime / 3600;
     const focusPercent = Math.min(100, (focusHours / 10) * 100); // 10h = 100%
     
@@ -170,7 +171,7 @@ export function Dashboard() {
     const healthPercent = Math.min(100, ((sleepHours / 8) * 50) + ((hydrationIntake / 8) * 50));
     const healthScore = (sleepHours * 0.6 + hydrationIntake * 0.4).toFixed(1);
 
-    setChartData(prev => prev.map(d => 
+    return chartData.map(d => 
       d.name === today ? { 
         ...d, 
         focus: focusPercent, 
@@ -180,8 +181,8 @@ export function Dashboard() {
         plannerRaw: plannerPercent.toFixed(0),
         healthRaw: healthScore
       } : d
-    ));
-  }, [totalNetFocusTime, tasks, sleepHours, hydrationIntake]);
+    );
+  }, [totalNetFocusTime, tasks, sleepHours, hydrationIntake, chartData, today]);
 
   const handleAIAction = async (type: 'consistency' | 'peak') => {
     setAiInsight("AI is thinking...");
@@ -191,7 +192,7 @@ export function Dashboard() {
       tasks: tasksCompleted, 
       level, 
       xp 
-    });
+    }, geminiApiKey);
     setAiInsight(insight);
   };
 
@@ -381,7 +382,7 @@ export function Dashboard() {
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+              <LineChart data={displayChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
                 <XAxis 
                   dataKey="name" 

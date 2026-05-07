@@ -21,35 +21,35 @@ const FALLBACK_INSIGHTS = [
   "The best way to predict the future is to create it through action."
 ];
 
-function getGenAI() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
+function getGenAI(apiKey?: string | null) {
+  const finalApiKey = apiKey || process.env.GEMINI_API_KEY;
+  if (!finalApiKey) {
     throw new Error("GEMINI_API_KEY is not defined");
   }
-  return new GoogleGenAI({ apiKey });
+  return new GoogleGenAI({ apiKey: finalApiKey });
 }
 
-async function callGemini(params: any) {
-  const ai = getGenAI();
+export async function callGemini(params: any, apiKey?: string | null) {
+  const ai = getGenAI(apiKey);
   try {
     return await ai.models.generateContent(params);
   } catch (error: any) {
     const errorMsg = error?.message?.toLowerCase() || "";
     const isPermissionError = errorMsg.includes("permission") || errorMsg.includes("403") || errorMsg.includes("denied");
     
-    // If permission denied for gemini-3-flash-preview, try fallback to gemini-1.5-flash
-    if (params.model === "gemini-3-flash-preview" && isPermissionError) {
-      console.warn("Permission denied for gemini-3-flash-preview, falling back to gemini-1.5-flash");
+    // If permission denied, try fallback to gemini-flash-latest
+    if (params.model !== "gemini-flash-latest" && isPermissionError) {
+      console.warn(`Permission denied for ${params.model}, falling back to gemini-flash-latest`);
       return await ai.models.generateContent({
         ...params,
-        model: "gemini-1.5-flash"
+        model: "gemini-flash-latest"
       });
     }
     throw error;
   }
 }
 
-export async function getDailyQuote() {
+export async function getDailyQuote(apiKey?: string | null) {
   const today = new Date().toDateString();
   const cached = localStorage.getItem('dailyQuote');
   
@@ -66,7 +66,7 @@ export async function getDailyQuote() {
 
   try {
     const response = await callGemini({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: "Generate a short, powerful, and unique productivity or self-improvement quote for a high-performance dashboard. The tone should be professional, slightly stoic, and inspiring. Return a JSON object with 'text' (the quote) and 'author' (the person who said it).",
       config: {
         responseMimeType: "application/json",
@@ -79,7 +79,7 @@ export async function getDailyQuote() {
           required: ["text", "author"]
         }
       }
-    });
+    }, apiKey);
     
     const quoteObj = JSON.parse(response.text || "{}");
     if (quoteObj.text && quoteObj.author) {
@@ -100,12 +100,12 @@ export async function getDailyQuote() {
   }
 }
 
-export async function getAIInsight(metrics: any) {
+export async function getAIInsight(metrics: any, apiKey?: string | null) {
   try {
     const response = await callGemini({
-      model: "gemini-3-flash-preview",
+      model: "gemini-flash-latest",
       contents: `Analyze these productivity metrics: ${JSON.stringify(metrics)}. Provide a one-sentence peak performance advice.`,
-    });
+    }, apiKey);
     return response.text || FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
   } catch (error: any) {
     if (error?.message?.includes("429") || error?.message?.includes("quota")) {

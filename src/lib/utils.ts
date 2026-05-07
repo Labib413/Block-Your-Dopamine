@@ -19,7 +19,33 @@ export function isUUID(str: string): boolean {
 }
 
 export function generateId() {
-  return Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
+/**
+ * Generates a deterministic UUID-like string from a regular string.
+ * This is useful for keeping IDs consistent for the same input.
+ */
+export function stringToUUID(str: string): string {
+  // Simple hash function (djb2)
+  let hash = 5381;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) + hash) + str.charCodeAt(i);
+  }
+  
+  // Convert hash to a 32-character hex string
+  const hex = Math.abs(hash).toString(16).padStart(8, '0');
+  const fullHex = (hex + hex + hex + hex).substring(0, 32);
+  
+  // Format as UUID v4-like structure (with fixed version/variant for format compliance)
+  return `${fullHex.slice(0, 8)}-${fullHex.slice(8, 12)}-4${fullHex.slice(13, 16)}-a${fullHex.slice(17, 20)}-${fullHex.slice(20, 32)}`;
 }
 
 export function safeStringify(obj: any, indent?: number): string {

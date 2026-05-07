@@ -14,6 +14,7 @@ import { HealthHub } from "./components/HealthHub";
 import { ReportsView } from "./components/ReportsView";
 import { AcademicHub } from "./components/AcademicHub";
 import { SyllabusView } from "./components/SyllabusView";
+import { CustomizeSyllabusView } from "./components/CustomizeSyllabusView";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { BadgeShowroom } from "./components/BadgeShowroom";
@@ -22,6 +23,7 @@ import { AuthModal } from "./components/AuthModal";
 function AppContent() {
   const [currentView, setCurrentView] = useState("Dashboard");
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [isCustomizingSyllabus, setIsCustomizingSyllabus] = useState(false);
   const [detoxInitialTab, setDetoxInitialTab] = useState<"Overview" | "Set Focus">("Overview");
   const [showBadges, setShowBadges] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
@@ -34,6 +36,18 @@ function AppContent() {
       syncData(currentView);
     }
   }, [currentView, user]);
+
+  // Manual Session Correction: Subtract 2h as requested by user
+  useEffect(() => {
+    const hasSubtracted = localStorage.getItem('manual_session_subtracted_2h_v1');
+    if (!hasSubtracted) {
+      console.log("Subtracting 2h focus session as requested...");
+      // 2 hours = 7200 seconds
+      modifyFocusTime(-7200, -7200);
+      addNotification("Session Corrected", "2 hours have been subtracted from your focus totals as requested.");
+      localStorage.setItem('manual_session_subtracted_2h_v1', 'true');
+    }
+  }, [modifyFocusTime, addNotification]);
 
   // Handle logout redirection
   useEffect(() => {
@@ -51,6 +65,7 @@ function AppContent() {
     setCurrentView(view);
     if (view !== "Academic") {
       setSelectedSubjectId(null);
+      setIsCustomizingSyllabus(false);
     }
     if (view !== "Detox") {
       setDetoxInitialTab("Overview");
@@ -121,52 +136,37 @@ function AppContent() {
         ) : currentView === "Planner" ? (
           <Planner onBack={() => handleNavigate("Dashboard")} />
         ) : currentView === "Academic" ? (
-          selectedSubjectId ? (
+          isCustomizingSyllabus ? (
+            <CustomizeSyllabusView onBack={() => setIsCustomizingSyllabus(false)} />
+          ) : selectedSubjectId ? (
             <SyllabusView subjectId={selectedSubjectId} onBack={() => setSelectedSubjectId(null)} />
           ) : (
-            <AcademicHub onBack={() => handleNavigate("Dashboard")} onSubjectClick={setSelectedSubjectId} onStudyNow={handleStudyNow} />
+            <AcademicHub 
+              onBack={() => handleNavigate("Dashboard")} 
+              onSubjectClick={setSelectedSubjectId} 
+              onStudyNow={handleStudyNow}
+              onCustomizeSyllabus={() => setIsCustomizingSyllabus(true)}
+            />
           )
         ) : currentView === "Health" ? (
-          <HealthHub onBack={() => handleNavigate("Dashboard")} />
+          <HealthHub onBack={() => handleNavigate("Dashboard")} onNavigate={handleNavigate} />
         ) : currentView === "Reports" ? (
           <ReportsView onBack={() => handleNavigate("Dashboard")} />
         ) : (
-          <div className="flex-1 flex flex-col p-8 overflow-hidden">
-            <div className="pb-8">
+          <>
+            <div className="p-8 pb-0">
               <Header onNavigate={handleNavigate} onShowBadges={() => setShowBadges(true)} />
             </div>
-            <GlassCard className="flex-1 flex flex-col items-center justify-center text-center relative overflow-hidden group">
-              {/* Background Decoration */}
-              <div className="absolute inset-0 bg-neon-green/5 blur-[120px] rounded-full translate-y-1/2 group-hover:bg-neon-green/10 transition-all duration-1000" />
-
-              <div className="relative z-10 flex flex-col items-center max-w-lg">
-                <div className="w-20 h-20 bg-neon-green/10 rounded-3xl flex items-center justify-center mb-8 border border-neon-green/20 group-hover:scale-110 transition-transform duration-500">
-                  <div className="w-3 h-3 bg-neon-green rounded-full animate-pulse shadow-[0_0_15px_#39ff14]" />
-                </div>
-
-                <h2 className="text-5xl font-sans font-black mb-6 tracking-tighter uppercase italic">
-                  {currentView} <span className="text-neon-green text-2xl align-top">★</span>
-                </h2>
-
-                <div className="h-px w-24 bg-gradient-to-r from-transparent via-neon-green/50 to-transparent mb-8" />
-
-                <p className="text-white/60 text-lg leading-relaxed mb-10 font-medium">
-                  We're currently architecting the <span className="text-white font-bold">{currentView}</span> module for peak cognitive performance.
+            <div className="flex-1 p-8">
+              <GlassCard className="h-full flex flex-col items-center justify-center text-center">
+                <h2 className="text-4xl font-sans font-bold mb-4">{currentView}</h2>
+                <p className="text-white/40 max-w-md">
+                  This module is currently being optimized for peak performance. 
+                  Check back soon for advanced {currentView.toLowerCase()} tracking.
                 </p>
-
-                <p className="text-white/20 text-xs font-bold uppercase tracking-[0.3em]">
-                  Status: Optimizing Core Systems
-                </p>
-
-                <button
-                  onClick={() => handleNavigate("Dashboard")}
-                  className="mt-12 px-8 py-3 rounded-xl bg-white/5 border border-white/10 text-white/40 text-[10px] font-black uppercase tracking-widest hover:bg-neon-green/10 hover:text-neon-green hover:border-neon-green/30 transition-all"
-                >
-                  Return to Headquarters
-                </button>
-              </div>
-            </GlassCard>
-          </div>
+              </GlassCard>
+            </div>
+          </>
         )}
       </main>
 

@@ -16,7 +16,8 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
     deleteNotification, 
     clearAllNotifications,
     equippedBadges,
-    badgeHealth
+    badgeHealth,
+    isSyncing
   } = useApp();
   
   const honorific = gender === "Female" ? "Ma'am." : "Sir.";
@@ -37,8 +38,14 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
   return (
     <header className="flex items-center mb-8 relative z-50">
       <div className="flex-1">
-        <h1 className="text-3xl font-sans font-bold tracking-tight">
+        <h1 className="text-3xl font-sans font-bold tracking-tight flex items-center gap-3">
           Welcome back, <span className="text-neon-green italic">{honorific}</span>
+          {isSyncing && (
+            <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-neon-green/10 border border-neon-green/20 animate-in fade-in duration-500">
+              <div className="w-1 h-1 rounded-full bg-neon-green animate-pulse" />
+              <span className="text-[8px] font-black uppercase tracking-[0.2em] text-neon-green/60">Syncing</span>
+            </div>
+          )}
         </h1>
         <p className="text-white/40 text-sm mt-1">Your productivity is up 12% today.</p>
       </div>
@@ -65,7 +72,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
                 "text-[10px] font-bold uppercase tracking-widest leading-none",
                 consecutiveMissedDays >= 2 ? "text-orange-400" : "text-white/40"
               )}>
-                {consecutiveMissedDays >= 2 ? "CRITICAL" : "Streak"}
+                {consecutiveMissedDays >= 2 ? "CRITICAL STREAK" : "Streak"}
               </span>
               <span className="text-sm font-sans font-bold text-white">{streak} DAYS</span>
             </div>

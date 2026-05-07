@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   ChevronLeft, 
@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp, AcademicChapter, ChapterResource } from "../context/AppContext";
-import { cn, generateId } from "../lib/utils";
+import { logger } from "../lib/logger";
+import { cn, generateId, stringToUUID } from "../lib/utils";
 import { HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
 
 interface SyllabusViewProps {
@@ -34,6 +35,57 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   } = useApp();
 
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
+  const [localChapters, setLocalChapters] = useState<AcademicChapter[]>([]);
+
+  // 1. Initial Hydration: Load from local state source of truth
+  useEffect(() => {
+    const defaultNames = HSC_SYLLABUS[subjectId] || [];
+    
+    const baseChapters = defaultNames.map((name) => {
+      const rawId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
+      const chapterId = stringToUUID(rawId);
+      
+      const cloudData = academicChapters.find(c => c.id === chapterId);
+      const granularKey = `byd_chapter_${chapterId}_checklist`;
+      const savedGranular = localStorage.getItem(granularKey);
+      
+      let chapter = cloudData || {
+        id: chapterId,
+        subject_id: subjectId,
+        chapter_name: name,
+        is_weak: false,
+        is_important: false,
+        is_active: true,
+        read_textbook: false,
+        watch_class: false,
+        practice_problems: false,
+        make_notes: false,
+        resources: []
+      } as AcademicChapter;
+
+      if (savedGranular) {
+        try {
+          const checklist = JSON.parse(savedGranular);
+          // MERGE LOGIC UPGRADE: If a tick is true in EITHER cloud or local, keep it true.
+          // This prevents "regression" where an old LS state nukes a new cloud state.
+          chapter = {
+            ...chapter,
+            read_textbook: checklist.read_textbook || (chapter.read_textbook ?? false),
+            watch_class: checklist.watch_class || (chapter.watch_class ?? false),
+            practice_problems: checklist.practice_problems || (chapter.practice_problems ?? false),
+            make_notes: checklist.make_notes || (chapter.make_notes ?? false)
+          };
+          
+          // Debug check for the user to verify in console
+          logger.log(`[BYD HYDRA] ${chapter.chapter_name}: Granular Hydrated`, checklist);
+        } catch (e) { logger.error(e); }
+      }
+      
+      return chapter;
+    }).filter(c => c.is_active !== false);
+
+    setLocalChapters(baseChapters);
+  }, [subjectId, academicChapters, user?.id]);
 
   const subject = useMemo(() => {
     const cloudSubject = academicSubjects.find(s => s.id === subjectId);
@@ -46,33 +98,44 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
     };
   }, [academicSubjects, subjectId]);
   
-  const chapters = useMemo(() => {
-    const defaultNames = HSC_SYLLABUS[subjectId] || ["Chapter 1", "Chapter 2", "Chapter 3"];
-    
-    return defaultNames.map((name, idx) => {
-      // Use name as part of ID if possible for better persistence across subjects
-      const chapterId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
-      const cloudData = academicChapters.find(c => c.id === chapterId);
-      
-      return cloudData || {
-        id: chapterId,
-        subject_id: subjectId,
-        chapter_name: name,
-        is_weak: false,
-        is_important: false,
-        read_textbook: false,
-        watch_class: false,
-        practice_problems: false,
-        make_notes: false,
-        resources: []
-      } as AcademicChapter;
-    });
-  }, [subjectId, academicChapters]);
+  const chapters = localChapters;
 
   const handleToggle = (chapterId: string, field: keyof AcademicChapter) => {
     const chapter = chapters.find(c => c.id === chapterId);
-    if (chapter) {
-      updateChapterProgress(chapterId, { [field]: !chapter[field], subject_id: subjectId, chapter_name: chapter.chapter_name });
+    if (!chapter) return;
+
+    const newValue = !chapter[field];
+    
+    // 2. Optimistic Update (Instant UI)
+    const updatedChapter = { ...chapter, [field]: newValue };
+    setLocalChapters(prev => prev.map(c => c.id === chapterId ? updatedChapter : c));
+
+    // 3. FULL STATE SYNC: Send the complete checklist state to prevent data loss
+    if (['read_textbook', 'watch_class', 'practice_problems', 'make_notes'].includes(field)) {
+      const granularKey = `byd_chapter_${chapterId}_checklist`;
+      const checklist = {
+        read_textbook: field === 'read_textbook' ? newValue : (chapter.read_textbook || false),
+        watch_class: field === 'watch_class' ? newValue : (chapter.watch_class || false),
+        practice_problems: field === 'practice_problems' ? newValue : (chapter.practice_problems || false),
+        make_notes: field === 'make_notes' ? newValue : (chapter.make_notes || false),
+        is_active: chapter.is_active,
+        _timestamp: Date.now()
+      };
+      localStorage.setItem(granularKey, JSON.stringify(checklist));
+      
+      // 4. Background Sync with FULL OBJECT
+      updateChapterProgress(chapterId, { 
+        ...checklist,
+        subject_id: subjectId, 
+        chapter_name: chapter.chapter_name 
+      });
+    } else {
+      // For non-checklist fields like is_weak or is_important
+      updateChapterProgress(chapterId, { 
+        [field]: newValue, 
+        subject_id: subjectId, 
+        chapter_name: chapter.chapter_name 
+      });
     }
   };
 
@@ -117,24 +180,27 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
 
       {/* Chapters List */}
       <div className="flex-1 overflow-y-auto p-8 pt-4 space-y-4 scrollbar-hide">
-        {chapters.map((chapter, index) => (
-          <div key={chapter.id}>
-            <GlassCard 
-              className={cn(
-                "p-0 transition-all duration-500 overflow-hidden",
-                expandedChapterId === chapter.id ? "ring-1 ring-neon-green/30 shadow-[0_0_30px_rgba(57,255,20,0.05)] border-neon-green/20" : "hover:border-white/20"
-              )}
-            >
-              <>
-              {/* Chapter Header */}
-              <div 
-                className="p-6 flex items-center justify-between cursor-pointer group"
-                onClick={() => setExpandedChapterId(expandedChapterId === chapter.id ? null : chapter.id)}
+        {chapters.length > 0 ? (
+          chapters.map((chapter, index) => (
+            <div key={chapter.id}>
+              <GlassCard 
+                className={cn(
+                  "p-0 transition-all duration-500 overflow-hidden",
+                  expandedChapterId === chapter.id ? "ring-1 ring-neon-green/30 shadow-[0_0_30px_rgba(57,255,20,0.05)] border-neon-green/20" : "hover:border-white/20"
+                )}
               >
-                <div className="flex items-center gap-6">
-                  <div className="text-2xl font-mono font-bold text-white/20 group-hover:text-neon-green/50 transition-colors">{index + 1}.</div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white transition-colors group-hover:text-neon-green">{chapter.chapter_name}</h3>
+                <>
+                {/* Chapter Header */}
+                <div 
+                  className="p-6 flex items-center justify-between cursor-pointer group"
+                  onClick={() => setExpandedChapterId(expandedChapterId === chapter.id ? null : chapter.id)}
+                >
+                  <div className="flex items-center gap-6">
+                    <div className="text-2xl font-mono font-bold text-white/20 group-hover:text-neon-green/50 transition-colors">{index + 1}.</div>
+                    <div>
+                      <h3 className="text-xl font-bold transition-colors group-hover:text-neon-green text-white">
+                        {chapter.chapter_name}
+                      </h3>
                     <div className="flex items-center gap-3 mt-1">
                       {chapter.is_weak && (
                         <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-red-400 bg-red-400/10 px-2 py-0.5 rounded-full border border-red-400/20">
@@ -305,8 +371,19 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
             </>
           </GlassCard>
           </div>
-        ))}
-      </div>
+        ))
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center py-20 text-center px-6">
+          <div className="w-20 h-20 bg-white/5 rounded-3xl flex items-center justify-center mb-6 border border-white/10 opacity-20">
+            <BookOpen className="w-10 h-10" />
+          </div>
+          <h3 className="text-2xl font-bold text-white mb-2 tracking-tight">No chapters selected</h3>
+          <p className="text-white/40 text-sm max-w-[280px] mx-auto leading-relaxed">
+            Your active syllabus for this subject is empty. Go to <span className="text-neon-green font-bold italic">Customize Syllabus</span> to add some!
+          </p>
+        </div>
+      )}
+    </div>
     </div>
   );
 }

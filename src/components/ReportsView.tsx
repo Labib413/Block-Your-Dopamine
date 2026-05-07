@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
+import { logger } from "../lib/logger";
 import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
@@ -38,7 +39,18 @@ interface SessionRecord {
 }
 
 export function ReportsView({ onBack }: { onBack: () => void }) {
-  const { user, tasksCompleted, tasks, weeklyHistory } = useApp();
+  const { 
+    user, 
+    tasksCompleted, 
+    tasks, 
+    weeklyHistory, 
+    totalNetFocusTime, 
+    detoxPercent,
+    steps,
+    hydrationIntake,
+    sleepHours,
+    consumedCalories
+  } = useApp();
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [reportRange, setReportRange] = useState<"Today" | "Last 7 Days" | "Last 30 Days">("Last 7 Days");
@@ -59,44 +71,61 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     completionRate: 0
   });
 
+  // Timezone-aware date string helper (Asia/Dhaka)
+  const getLocalDateString = (date: Date) => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  };
+
   useEffect(() => {
     async function fetchReports() {
       if (!user) return;
-      setIsLoading(true);
+      // Only show full loading spinner on initial fetch for this range
+      if (sessions.length === 0) setIsLoading(true);
       
-      let startDate = new Date();
-      if (reportRange === "Today") {
-        startDate.setHours(0, 0, 0, 0);
-      } else if (reportRange === "Last 7 Days") {
-        startDate.setDate(startDate.getDate() - 7);
+      const now = new Date();
+      // Calculate local start date in Dhaka time
+      const dhakaTodayStr = getLocalDateString(now);
+      const dhakaToday = new Date(dhakaTodayStr);
+      
+      let startDateStr = dhakaTodayStr;
+      if (reportRange === "Last 7 Days") {
+        const d = new Date(dhakaToday);
+        d.setDate(d.getDate() - 7);
+        startDateStr = getLocalDateString(d);
       } else if (reportRange === "Last 30 Days") {
-        startDate.setDate(startDate.getDate() - 30);
+        const d = new Date(dhakaToday);
+        d.setDate(d.getDate() - 30);
+        startDateStr = getLocalDateString(d);
       }
+
+      // Supabase query date (ISO format for start_time)
+      const queryStartDate = new Date(dhakaToday);
+      if (reportRange === "Last 7 Days") queryStartDate.setDate(queryStartDate.getDate() - 7);
+      else if (reportRange === "Last 30 Days") queryStartDate.setDate(queryStartDate.getDate() - 30);
+      else queryStartDate.setHours(0, 0, 0, 0); // Today
 
       try {
         const [logsRes, sessionsRes] = await Promise.all([
-          supabase.from('focus_logs').select('*').eq('user_id', user.id).gte('start_time', startDate.toISOString()).order('start_time', { ascending: false }),
-          supabase.from('sessions').select('*').eq('user_id', user.id).gte('start_time', startDate.toISOString()).order('start_time', { ascending: false })
+          supabase.from('focus_logs').select('*').eq('user_id', user.id).gte('start_time', queryStartDate.toISOString()).order('start_time', { ascending: false }),
+          supabase.from('sessions').select('*').eq('user_id', user.id).gte('start_time', queryStartDate.toISOString()).order('start_time', { ascending: false })
         ]);
 
         if (logsRes.error || sessionsRes.error) {
           const error = logsRes.error || sessionsRes.error;
-          if (error?.message.includes('Failed to fetch')) {
-            console.error("ReportsView: Failed to fetch from Supabase. Check your connection.");
-          }
           throw error;
         }
 
         const combined = new Map<string, any>();
         
-        // Process logs first (drafts/fragments)
         (logsRes.data || []).forEach(log => {
-          if (log.session_id) {
-            combined.set(log.session_id, log);
-          }
+          if (log.session_id) combined.set(log.session_id, log);
         });
         
-        // Process sessions (final) - overwrite drafts if session_id matches or duration is better
         (sessionsRes.data || []).forEach(s => {
           const mapped = {
             ...s,
@@ -106,12 +135,10 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           
           if (s.session_id) {
             const existing = combined.get(s.session_id);
-            // Only overwrite if the new data is more complete or if it's the final session record
-            if (!existing || mapped.session_duration >= existing.session_duration) {
+            if (!existing || mapped.session_duration >= (existing.session_duration || 0)) {
               combined.set(s.session_id, mapped);
             }
           } else {
-            // Fallback for sessions without ID (shouldn't happen with new logic)
             combined.set(`legacy_${s.id}`, mapped);
           }
         });
@@ -121,12 +148,12 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
 
         setSessions(combinedData);
 
-        // Fetch Health Data from Supabase
+        // Fetch Health Data using local date strings
         const { data: healthData } = await supabase
           .from('health_logs')
           .select('*')
           .eq('user_id', user.id)
-          .gte('entry_date', startDate.toISOString().split('T')[0]);
+          .gte('entry_date', startDateStr);
 
         if (healthData && healthData.length > 0) {
           const avgSteps = Math.round(healthData.reduce((acc, curr) => acc + (curr.steps || 0), 0) / healthData.length);
@@ -134,24 +161,32 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           const avgSleep = Number((healthData.reduce((acc, curr) => acc + (curr.sleep_hours || 0), 0) / healthData.length).toFixed(1));
           const totalCalories = healthData.reduce((acc, curr) => acc + (curr.calories || 0), 0);
 
+          // MERGE: If reportRange is "Today", prioritize AppContext values over DB (they are more live)
+          if (reportRange === "Today") {
+            setHealthStats({
+              avgSteps: steps > 0 ? steps : avgSteps,
+              avgHydration: hydrationIntake > 0 ? hydrationIntake : avgHydration,
+              avgSleep: sleepHours > 0 ? sleepHours : avgSleep,
+              totalCalories: consumedCalories > 0 ? consumedCalories : totalCalories
+            });
+          } else {
+            setHealthStats({ avgSteps, avgHydration, avgSleep, totalCalories });
+          }
+        } else if (reportRange === "Today") {
+          // Fallback to AppContext if DB is empty for Today
           setHealthStats({
-            avgSteps,
-            avgHydration,
-            avgSleep,
-            totalCalories
+            avgSteps: steps,
+            avgHydration: hydrationIntake,
+            avgSleep: sleepHours,
+            totalCalories: consumedCalories
           });
         } else {
-          setHealthStats({
-            avgSteps: 0,
-            avgHydration: 0,
-            avgSleep: 0,
-            totalCalories: 0
-          });
+          setHealthStats({ avgSteps: 0, avgHydration: 0, avgSleep: 0, totalCalories: 0 });
         }
 
-        // Planner Data from weeklyHistory if available, otherwise mock
+        // Planner Stats (Sync from Weekly History)
         if (weeklyHistory && weeklyHistory.length > 0) {
-          const relevantHistory = reportRange === "Today" ? [] : weeklyHistory.slice(-(reportRange === "Last 7 Days" ? 1 : 4));
+          const relevantHistory = reportRange === "Today" ? [] : weeklyHistory.slice(-(reportRange === "Last 7 Days" ? 7 : 30));
           const completed = relevantHistory.reduce((acc, curr) => acc + curr.tasksCompleted, 0) || tasksCompleted;
           const total = relevantHistory.reduce((acc, curr) => acc + curr.totalTasks, 0) || tasks.length;
           setPlannerStats({
@@ -168,24 +203,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
         }
 
       } catch (err) {
-        console.error("Error fetching reports:", err);
-        // Fallback to local data if Supabase fails or isn't set up
-        const mockSessions: SessionRecord[] = [
-          {
-            id: '1',
-            start_time: new Date(Date.now() - 86400000).toISOString(),
-            session_duration: 3600,
-            growth_percentage: 95
-          },
-          {
-            id: '2',
-            start_time: new Date(Date.now() - 172800000).toISOString(),
-            session_duration: 1800,
-            growth_percentage: 65
-          }
-        ];
-        // Filter mock data by range locally
-        setSessions(mockSessions.filter(s => new Date(s.start_time) >= startDate));
+        logger.error("Error fetching reports:", err);
       } finally {
         setIsLoading(false);
       }
@@ -195,46 +213,54 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
   }, [user, reportRange, weeklyHistory, tasksCompleted, tasks.length]);
 
   const stats = useMemo(() => {
-    const totalSeconds = sessions.reduce((acc, s) => acc + (s.session_duration || 0), 0);
-    const totalNetSeconds = sessions.reduce((acc, s) => acc + ((s.growth_percentage / 100) * (s.session_duration || 0)), 0);
-    const totalHours = (totalSeconds / 3600).toFixed(1);
-    
-    const avgDepth = totalSeconds > 0 
-      ? Math.round((totalNetSeconds / totalSeconds) * 100)
-      : 0;
-      
+    // Combine local real-time focus time if looking at "Today"
+    let totalSecs = sessions.reduce((acc, s) => acc + (s.session_duration || 0), 0);
+    let totalNetSecs = sessions.reduce((acc, s) => acc + ((s.growth_percentage / 100) * (s.session_duration || 0)), 0);
+
+    // If reportRange is Today and sessions from Supabase are empty, use Context fallback
+    if (reportRange === "Today" && sessions.length === 0 && totalNetFocusTime > 0) {
+      // Use AppContext data for current day if DB hasn't synced yet
+      return { 
+        totalHours: (totalNetFocusTime / 3600).toFixed(1), 
+        avgDepth: Math.round(detoxPercent), 
+        fullTrees: 1 // Approximation
+      };
+    }
+
+    const totalHours = (totalSecs / 3600).toFixed(1);
+    const avgDepth = totalSecs > 0 ? Math.round((totalNetSecs / totalSecs) * 100) : 0;
     const fullTrees = sessions.filter(s => s.growth_percentage >= 90).length;
 
     return { totalHours, avgDepth, fullTrees };
-  }, [sessions]);
+  }, [sessions, reportRange, totalNetFocusTime, detoxPercent]);
 
   const chartData = useMemo(() => {
     const rangeDays = reportRange === "Today" ? 1 : reportRange === "Last 7 Days" ? 7 : 30;
     
     if (reportRange === "Today") {
-      // Hourly breakdown for today
       return Array.from({ length: 24 }, (_, i) => {
         const hour = i;
         const hourSessions = sessions.filter(s => {
           const d = new Date(s.start_time);
-          return d.getHours() === hour;
+          // Convert to Dhaka time for hour comparison
+          const dhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(d));
+          return dhakaHour === hour;
         });
         const hours = hourSessions.reduce((acc, s) => acc + (s.session_duration || 0), 0) / 3600;
-        return {
-          name: `${hour}:00`,
-          hours: parseFloat(hours.toFixed(2)),
-        };
+        return { name: `${hour}:00`, hours: parseFloat(hours.toFixed(2)) };
       });
     }
 
+    // Fixed Date Grid for Charts (Local Dhaka Time)
+    const dhakaTodayStr = getLocalDateString(new Date());
     const lastDays = Array.from({ length: rangeDays }, (_, i) => {
-      const d = new Date();
+      const d = new Date(dhakaTodayStr);
       d.setDate(d.getDate() - (rangeDays - 1 - i));
-      return d.toISOString().split('T')[0];
+      return getLocalDateString(d);
     });
 
     return lastDays.map(date => {
-      const daySessions = sessions.filter(s => s.start_time.startsWith(date));
+      const daySessions = sessions.filter(s => getLocalDateString(new Date(s.start_time)) === date);
       const hours = daySessions.reduce((acc, s) => acc + (s.session_duration || 0), 0) / 3600;
       return {
         name: rangeDays === 30 

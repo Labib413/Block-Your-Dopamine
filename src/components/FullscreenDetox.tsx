@@ -6,6 +6,7 @@ import { TrendingUp, X, Cloud, Youtube, FileText, Image as ImageIcon, Maximize, 
 import { TreeGrowth } from "./TreeGrowth";
 import { supabase } from "../lib/supabase";
 import { HSC_SUBJECT_NAMES } from "../constants";
+import { logger } from "../lib/logger";
 
 // Native Browser PDF Viewer with scrolling and toolbar support
 const PDFViewer = React.memo(({ url, title, onReupload }: { url: string; title: string; onReupload?: (file: File) => void }) => {
@@ -16,13 +17,10 @@ const PDFViewer = React.memo(({ url, title, onReupload }: { url: string; title: 
     setLoadError(false);
   }, [url]);
 
-  // Force Public URL with cache buster to bypass Chrome security wall
-  const displayUrl = useMemo(() => {
+  // Use Google Docs Viewer to bypass CORS and force rendering instead of downloading
+  const viewerUrl = useMemo(() => {
     if (!url) return '';
-    const cacheBuster = `v=${Date.now()}`;
-    const separator = url.includes('?') ? '&' : '?';
-    // Ensure we append the PDF viewer parameters at the very end
-    return `${url}${separator}${cacheBuster}#view=FitH&scrollbar=1&toolbar=1`;
+    return 'https://docs.google.com/viewer?url=' + encodeURIComponent(url) + '&embedded=true';
   }, [url]);
 
   if (loadError) {
@@ -72,12 +70,14 @@ const PDFViewer = React.memo(({ url, title, onReupload }: { url: string; title: 
   return (
     <div className="w-full h-full flex flex-col bg-[#050505] overflow-hidden relative">
       <iframe
-        src={displayUrl}
+        src={viewerUrl}
+        width="100%"
+        height="100%"
+        frameBorder="0"
+        title={title || "PDF Viewer"}
         className="w-full h-full border-none"
         style={{ backgroundColor: '#050505' }}
-        title={title}
         onError={() => setLoadError(true)}
-        crossOrigin="anonymous"
       />
       
       <div className="absolute bottom-6 right-6 flex items-center gap-3">
@@ -273,7 +273,7 @@ const ResourceViewer = React.memo(({
         sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
         allowFullScreen
-        onLoad={() => console.log(`Resource loaded: ${tab.title}`)}
+        onLoad={() => logger.log(`Resource loaded: ${tab.title}`)}
       />
     </div>
   );
@@ -754,6 +754,8 @@ export const FullscreenDetox = React.memo(() => {
 
   // Reset state when a new session starts
   useEffect(() => {
+    if (isCompleted || isSessionCompleted) return;
+
     if (currentSessionId) {
       const saved = localStorage.getItem('current_session');
       if (!saved) {
@@ -769,8 +771,59 @@ export const FullscreenDetox = React.memo(() => {
         localStorage.removeItem('distraction_start_time');
       }
     }
-  }, [currentSessionId, currentSessionDuration]);
+  }, [currentSessionId, currentSessionDuration, isCompleted, isSessionCompleted]);
   
+  const handleSaveAndExit = React.useCallback(async () => {
+    if (isSaving || completionCalled.current) return;
+    setIsSaving(true);
+    
+    // Set UI states so the "Session Completed" text shows up (just to be sure)
+    setIsCompleted(true);
+    setIsSessionCompleted(true);
+    setIsSessionDistracted(false);
+    
+    try {
+      const now = Date.now();
+      const actualElapsedSeconds = Math.floor((now - startTime) / 1000);
+      
+      let finalDistractionTime = distractionTimeRef.current;
+      if (isDistractedRef.current && distractionStartTimeRef.current) {
+        finalDistractionTime += Math.floor((now - distractionStartTimeRef.current) / 1000);
+      }
+      
+      const netFocus = Math.max(0, actualElapsedSeconds - finalDistractionTime);
+      const totalAttempted = actualElapsedSeconds;
+      
+      // We don't rely on openTabs for this if we don't have it, but we can read from localStorage or ref.
+      const activeResourceStr = localStorage.getItem('current_session_active_tab') || "N/A";
+      let activeResource = "N/A";
+      try {
+         const t = JSON.parse(activeResourceStr);
+         if (t && t.title) activeResource = t.title;
+      } catch (e) {}
+
+      // Mark as completed
+      completionCalled.current = true;
+      
+      // 1. Show the success animation immediately
+      setSaveSuccess(true);
+      setIsSaving(false);
+      
+      // 2. Wait 1.5 seconds for the user to see the success message
+      setTimeout(async () => {
+        // 3. Save the session and exit (this instantly unmounts the component)
+        setIsManualExit(true);
+        await endFocusSession(netFocus, totalAttempted, activeResource);
+        cancelFocusSession();
+      }, 1500);
+      
+    } catch (error) {
+      console.error("Failed to save session:", error);
+      setIsSaving(false);
+      setShowSaveError(true);
+    }
+  }, [isSaving, startTime, endFocusSession, setIsManualExit, cancelFocusSession]);
+
   // Refs for internal tracking to prevent memory leaks and stale closures
   const timeLeftRef = React.useRef(0);
   const distractionTimeRef = React.useRef(0);
@@ -835,10 +888,10 @@ export const FullscreenDetox = React.memo(() => {
           }
         } else if (type === 'COMPLETED') {
           if (currentSessionId && !completionCalled.current) {
-            completionCalled.current = true;
             setIsCompleted(true);
             setIsSessionCompleted(true);
             setIsSessionDistracted(false);
+            setShowExitConfirm(false);
           }
         }
       };
@@ -864,6 +917,8 @@ export const FullscreenDetox = React.memo(() => {
 
   // Start/Resume worker
   useEffect(() => {
+    if (isCompleted || isSessionCompleted) return;
+    
     if (workerRef.current && currentSessionId && !isCompleted) {
       workerRef.current.postMessage({
         type: 'START',
@@ -883,17 +938,30 @@ export const FullscreenDetox = React.memo(() => {
       const saved = localStorage.getItem('current_session');
       if (saved) {
         const parsed = JSON.parse(saved);
-        timeLeftRef.current = Number(parsed.timeLeft) || currentSessionDuration * 60;
-        distractionTimeRef.current = Number(parsed.distractionTime) || 0;
+        timeLeftRef.current = typeof parsed.timeLeft === 'number' ? parsed.timeLeft : currentSessionDuration * 60;
+        distractionTimeRef.current = typeof parsed.distractionTime === 'number' ? parsed.distractionTime : 0;
+        
+        // Ensure if localStorage had 0, we explicitly hold it at 0
+        if (timeLeftRef.current <= 0) {
+           timeLeftRef.current = 0;
+        }
       } else {
-        timeLeftRef.current = currentSessionDuration * 60;
-        distractionTimeRef.current = 0;
+        if (isCompleted || isSessionCompleted) {
+           timeLeftRef.current = 0;
+        } else {
+           timeLeftRef.current = currentSessionDuration * 60;
+           distractionTimeRef.current = 0;
+        }
       }
     } catch (e) {
-      timeLeftRef.current = currentSessionDuration * 60;
-      distractionTimeRef.current = 0;
+      if (isCompleted || isSessionCompleted) {
+         timeLeftRef.current = 0;
+      } else {
+         timeLeftRef.current = currentSessionDuration * 60;
+         distractionTimeRef.current = 0;
+      }
     }
-  }, [currentSessionDuration]);
+  }, [currentSessionDuration, isCompleted, isSessionCompleted]);
 
   // Sync refs with state
   useEffect(() => { 
@@ -1026,69 +1094,6 @@ export const FullscreenDetox = React.memo(() => {
 
   const [showExitConfirm, setShowExitConfirm] = useState(false);
 
-  const handleCompleteSession = () => {
-    setIsCompleted(true);
-    setIsSessionDistracted(false);
-    
-    const now = Date.now();
-    const actualElapsedSeconds = Math.floor((now - startTime) / 1000);
-    
-    // Calculate final distraction time including ongoing distraction
-    let finalDistractionTime = distractionTimeRef.current;
-    if (isDistractedRef.current && distractionStartTimeRef.current) {
-      finalDistractionTime += Math.floor((now - distractionStartTimeRef.current) / 1000);
-    }
-    
-    // netFocus is the actual time spent focused (Total Elapsed - Distraction Time)
-    const netFocus = Math.max(0, actualElapsedSeconds - finalDistractionTime);
-    
-    // totalAttempted is the actual time the user spent in the session
-    const totalAttempted = actualElapsedSeconds;
-    
-    // Get the title of the active resource if available
-    const activeResource = openTabs.find(t => t.id === activeTabId)?.title || "N/A";
-    
-    endFocusSession(netFocus, totalAttempted, activeResource);
-  };
-
-  const handleFinalExit = async () => {
-    if (!isSessionCompleted || isSaving) return;
-    
-    setIsSaving(true);
-    
-    try {
-      // 1. Calculate final stats using absolute math
-      const now = Date.now();
-      const actualElapsedSeconds = Math.floor((now - startTime) / 1000);
-      
-      let finalDistractionTime = distractionTimeRef.current;
-      if (isDistractedRef.current && distractionStartTimeRef.current) {
-        finalDistractionTime += Math.floor((now - distractionStartTimeRef.current) / 1000);
-      }
-      
-      const netFocus = Math.max(0, actualElapsedSeconds - finalDistractionTime);
-      const totalAttempted = actualElapsedSeconds;
-      
-      // 2. Immediate Save Execution: Trigger context save
-      setIsManualExit(true);
-      await endFocusSession(netFocus, totalAttempted);
-      
-      // 3. Confirmation UI: Show 'Session Secured' message
-      setSaveSuccess(true);
-      setIsSaving(false);
-      
-      // 4. Force state cleanup and redirect
-      setTimeout(() => {
-        cancelFocusSession();
-      }, 1500); // Give time for the success message
-      
-    } catch (error) {
-      console.error("Failed to save session:", error);
-      setIsSaving(false);
-      setShowSaveError(true);
-    }
-  };
-
   const downloadSessionData = () => {
     if (!failedSessionData) return;
     const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(safeStringify(failedSessionData, 2));
@@ -1101,15 +1106,12 @@ export const FullscreenDetox = React.memo(() => {
   };
 
   const handleCancelSession = () => {
-    if (isSessionCompleted) {
-      handleFinalExit();
-    } else {
-      setShowExitConfirm(true);
-    }
+    setShowExitConfirm(true);
   };
 
   const confirmCancel = () => {
-    handleForceExit();
+    setIsManualExit(true);
+    cancelFocusSession();
     setShowExitConfirm(false);
   };
 
@@ -1455,12 +1457,12 @@ export const FullscreenDetox = React.memo(() => {
           </button>
 
           <button 
-            onClick={isSessionCompleted ? handleFinalExit : handleCancelSession}
+            onClick={isSessionCompleted ? handleSaveAndExit : handleCancelSession}
             disabled={isSaving}
             className={`px-4 h-10 rounded-xl flex items-center gap-2 transition-all group ${
               isSessionCompleted 
-                ? 'bg-neon-green/10 border-neon-green/20 text-neon-green hover:bg-neon-green hover:text-black' 
-                : 'bg-red-500/10 border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white'
+                ? 'bg-neon-green text-black font-bold shadow-[0_0_20px_rgba(57,255,20,0.4)] hover:bg-[#2eff0a] hover:shadow-[0_0_30px_rgba(57,255,20,0.6)]' 
+                : 'bg-red-500/10 border border-red-500/20 text-red-500 hover:bg-red-500 hover:text-white'
             }`}
           >
             {isSaving ? (
@@ -1471,7 +1473,7 @@ export const FullscreenDetox = React.memo(() => {
               <AlertCircle className="w-4 h-4 group-hover:scale-110 transition-transform" />
             )}
             <span className="text-[10px] font-black uppercase tracking-widest">
-              {isSaving ? 'Saving...' : isSessionCompleted ? 'End Session' : 'End Session'}
+              {isSaving ? 'SAVING...' : isSessionCompleted ? 'CLAIM SESSION' : 'END SESSION'}
             </span>
           </button>
         </div>
@@ -1542,33 +1544,33 @@ export const FullscreenDetox = React.memo(() => {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 backdrop-blur-md p-6"
+            className="fixed inset-0 z-[200] flex items-center justify-center bg-black/60 backdrop-blur-sm p-6"
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="max-w-md w-full bg-[#0A0A0A] border border-white/10 rounded-3xl p-8 text-center shadow-[0_0_50px_rgba(255,0,0,0.1)]"
+              className="max-w-md w-full bg-[#111] border border-white/10 rounded-3xl p-8 text-center"
             >
               <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
                 <AlertCircle className="w-8 h-8 text-red-500" />
               </div>
-              <h3 className="text-2xl font-sans font-bold mb-2 text-white">End Session?</h3>
-              <p className="text-white/40 mb-8">
-                All progress in this session will be discarded. This action cannot be undone.
+              <h3 className="text-2xl font-sans font-bold mb-2 text-white">Are you sure you want to leave?</h3>
+              <p className="text-white/40 mb-8 text-sm leading-relaxed">
+                Your session is not complete yet. Exiting now will discard your current progress and this session will not be saved.
               </p>
-              <div className="flex gap-4">
+              <div className="flex flex-col gap-3 object-center items-center justify-center w-full">
                 <button
                   onClick={() => setShowExitConfirm(false)}
-                  className="flex-1 py-4 rounded-2xl bg-white/5 border border-white/10 text-white font-bold uppercase tracking-widest hover:bg-white/10 transition-all"
+                  className="w-full py-4 rounded-xl bg-neon-green text-black font-bold uppercase tracking-widest hover:bg-[#2eff0a] transition-all shadow-[0_0_20px_rgba(57,255,20,0.3)]"
                 >
                   Stay Focused
                 </button>
                 <button
                   onClick={confirmCancel}
-                  className="flex-1 py-4 rounded-2xl bg-red-500 text-white font-bold uppercase tracking-widest hover:bg-red-600 transition-all shadow-[0_0_20px_rgba(239,68,68,0.3)]"
+                  className="w-full py-4 rounded-xl border border-red-500/50 text-red-500 font-bold uppercase tracking-widest hover:bg-red-500 hover:text-white transition-all"
                 >
-                  End Now
+                  End Session
                 </button>
               </div>
             </motion.div>

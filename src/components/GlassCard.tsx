@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import React, { ReactNode } from "react";
 import { motion } from "motion/react";
 import { cn } from "@/src/lib/utils";
 
@@ -7,6 +7,7 @@ interface GlassCardProps {
   className?: string;
   hoverEffect?: boolean;
   onClick?: () => void;
+  key?: string | number;
 }
 
 export function GlassCard({ children, className, hoverEffect = true, onClick }: GlassCardProps) {

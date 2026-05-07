@@ -34,6 +34,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
+import { logger } from "@/src/lib/logger";
 
 const GlassSelect = ({ 
   value, 
@@ -82,13 +83,13 @@ const GlassSelect = ({
             animate={{ opacity: 1, y: 4, scale: 1 }}
             exit={{ opacity: 0, y: -10, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="fixed left-auto right-auto z-[9999] mt-2 rounded-xl bg-[#0a0a0a]/98 backdrop-blur-2xl border border-[#00ff66]/30 shadow-[0_20px_50px_rgba(0,0,0,0.9)] custom-scrollbar"
+            className="absolute top-full left-0 right-0 z-[9999] mt-2 rounded-xl bg-[#0a0a0a]/98 backdrop-blur-2xl border border-[#00ff66]/30 shadow-[0_20px_50px_rgba(0,0,0,0.9)] custom-scrollbar"
             style={{ 
               maxHeight: '160px', 
               overflowY: 'auto',
               overflowX: 'hidden',
               pointerEvents: 'auto',
-              width: containerRef.current ? containerRef.current.offsetWidth : 'auto'
+              position: 'absolute'
             }}
           >
             <style>{`
@@ -204,7 +205,9 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
     equippedBadges,
     badgeHealth,
     isSyncing,
-    syncData
+    syncData,
+    geminiApiKey,
+    updateGeminiApiKey
   } = useApp();
 
   const hardReset = () => {
@@ -215,8 +218,8 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
       window.location.href = "/";
     }
   };
-
-  const [apiKey, setApiKey] = useState("");
+  
+  const [apiKey, setApiKey] = useState(geminiApiKey || "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [activeModules, setActiveModules] = useState<Record<string, boolean>>(() => {
@@ -283,7 +286,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
       addNotification("Profile Updated", "Your information has been successfully saved to the cloud.");
       setTimeout(() => setSaveStatus('idle'), 3000);
     } catch (err) {
-      console.error("Failed to save profile:", err);
+      logger.error("Failed to save profile:", err);
       addNotification("Save Failed", "Could not sync profile data. Please check your connection.");
     } finally {
       setIsSaving(false);
@@ -565,7 +568,14 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                 onChange={(e) => setApiKey(e.target.value)}
                 className="w-full pl-12 pr-24 py-4 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-sm font-mono text-[#00ff66] placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-[#00ff66]/50 transition-all"
               />
-              <button className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2 rounded-lg bg-[#00ff66] text-black text-[10px] font-black shadow-[0_0_12px_rgba(0,255,102,0.3)] hover:brightness-110 active:scale-[0.95] transition-all">
+              <button 
+                onClick={async () => {
+                  if (!apiKey.trim()) return;
+                  await updateGeminiApiKey(apiKey.trim());
+                  addNotification("API Key Connected", "Your Gemini API Key has been successfully linked and stored.");
+                }}
+                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2 rounded-lg bg-[#00ff66] text-black text-[10px] font-black shadow-[0_0_12px_rgba(0,255,102,0.3)] hover:brightness-110 active:scale-[0.95] transition-all"
+              >
                 CONNECT
               </button>
             </div>

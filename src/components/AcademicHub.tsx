@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, memo } from "react";
 import { motion } from "motion/react";
 import { 
   GraduationCap, 
@@ -9,13 +9,76 @@ import {
   Settings2,
   Users,
   Layout,
+  ArrowUpRight,
+  ArrowDownRight,
+  Minus,
   BookOpen
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
 
-export function AcademicHub({ onBack, onSubjectClick, onStudyNow }: { onBack: () => void, onSubjectClick: (id: string) => void, onStudyNow: (id: string) => void }) {
-  const { academicSubjects, academicSettings, updateAcademicProgress, updateAcademicSettings, startFocusSession } = useApp();
+const SubjectCard = memo(({ 
+  subject, 
+  idx, 
+  academicChapters, 
+  onClick 
+}: { 
+  subject: any, 
+  idx: number, 
+  academicChapters: any[], 
+  onClick: (id: string) => void 
+}) => {
+  return (
+    <div onClick={() => onClick(subject.id)}>
+      <GlassCard className="p-4 hover:border-white/20 transition-all duration-300 group cursor-pointer">
+        <div className="flex flex-col items-center gap-3">
+          <div className="relative w-20 h-20">
+            <svg className="w-full h-full transform -rotate-90">
+              <circle
+                cx="40"
+                cy="40"
+                r="34"
+                stroke="currentColor"
+                strokeWidth="4"
+                fill="transparent"
+                className="text-white/5"
+              />
+              <motion.circle
+                cx="40"
+                cy="40"
+                r="34"
+                stroke="currentColor"
+                strokeWidth="4"
+                fill="transparent"
+                strokeDasharray={2 * Math.PI * 34}
+                initial={{ strokeDashoffset: 2 * Math.PI * 34 }}
+                animate={{ strokeDashoffset: 2 * Math.PI * 34 * (1 - subject.progress / 100) }}
+                transition={{ duration: 1, delay: idx * 0.1 }}
+                className="text-neon-green"
+                strokeLinecap="round"
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span className="text-base font-mono font-bold text-white">{subject.progress}%</span>
+            </div>
+          </div>
+          <div className="text-center">
+            <p className="text-xs font-bold text-white group-hover:text-neon-green transition-colors leading-tight">{subject.name}</p>
+            <div className="flex flex-col items-center mt-1">
+              <p className="text-[9px] text-white/30 uppercase font-bold tracking-widest leading-none">Progress</p>
+              <p className="text-[8px] text-neon-green/60 font-mono mt-0.5">
+                {academicChapters.filter(c => c.subject_id === subject.id && c.is_active !== false).length} Chapters
+              </p>
+            </div>
+          </div>
+        </div>
+      </GlassCard>
+    </div>
+  );
+});
+
+export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyllabus }: { onBack: () => void, onSubjectClick: (id: string) => void, onStudyNow: (id: string) => void, onCustomizeSyllabus: () => void }) {
+  const { user, academicSubjects, academicChapters, academicSettings, updateAcademicProgress, updateAcademicSettings, startFocusSession } = useApp();
   const [activeTab, setActiveTab] = useState("Overview");
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -94,7 +157,11 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow }: { onBack: ()
   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const date = e.target.value;
     if (date) {
-      updateAcademicSettings({ examDate: new Date(date).toISOString() });
+      const updates: any = { 
+        examDate: new Date(date).toISOString(),
+        prepStartDate: new Date().toISOString() 
+      };
+      updateAcademicSettings(updates);
     }
   };
 
@@ -127,6 +194,45 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow }: { onBack: ()
   const overallProgress = Math.round(
     subjects.reduce((acc, s) => acc + (s.progress || 0), 0) / (subjects.length || 1)
   );
+
+  // Safe Fallback: Missing prepStartDate should evaluate to today's date if examDate exists
+  useEffect(() => {
+    if (academicSettings.examDate && !academicSettings.prepStartDate) {
+      updateAcademicSettings({ prepStartDate: new Date().toISOString() });
+    }
+  }, [academicSettings.examDate, academicSettings.prepStartDate, updateAcademicSettings]);
+
+  const paceData = useMemo(() => {
+    if (!academicSettings.examDate) return null;
+    
+    const examDate = new Date(academicSettings.examDate);
+    const now = new Date();
+    
+    // Sarothi Model: Use saved prepStartDate or default to NOW
+    const prepStartDate = academicSettings.prepStartDate 
+      ? new Date(academicSettings.prepStartDate) 
+      : now;
+      
+    const totalTimeRange = examDate.getTime() - prepStartDate.getTime();
+    const timeElapsed = now.getTime() - prepStartDate.getTime();
+    
+    // Edge Case: If ExamDate is in the past, timeElapsedPercentage is 100%
+    const timeElapsedPercentage = examDate.getTime() <= now.getTime() 
+      ? 100 
+      : totalTimeRange > 0 ? (timeElapsed / totalTimeRange) * 100 : 0;
+    
+    const paceDifference = overallProgress - timeElapsedPercentage;
+    const roundedDiff = Math.round(paceDifference);
+    
+    let status: 'Ahead' | 'Behind' | 'On Track' = 'On Track';
+    if (paceDifference > 0.5) status = 'Ahead';
+    else if (paceDifference < -0.5) status = 'Behind';
+    
+    return {
+      diff: Math.abs(roundedDiff),
+      status
+    };
+  }, [academicSettings.examDate, academicSettings.prepStartDate, overallProgress]);
 
   const focusSubject = subjects.find(s => s.id === academicSettings.focusSubjectId) || subjects[1]; // Default to Physics 2nd Paper as per sketch
 
@@ -176,6 +282,20 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow }: { onBack: ()
                 <span className="text-xs font-bold uppercase tracking-widest">Exam Countdown</span>
               </div>
             <div className="flex items-center gap-2 relative">
+                {paceData && (
+                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border backdrop-blur-md bg-black/20 transition-all duration-500 animate-in zoom-in-95 ${
+                    paceData.status === 'Ahead' ? 'border-[#22c55e]/30 text-[#22c55e]' : 
+                    paceData.status === 'Behind' ? 'border-[#ef4444]/30 text-[#ef4444]' : 
+                    'border-[#60a5fa]/30 text-[#60a5fa]'
+                  }`}>
+                    {paceData.status === 'Ahead' ? <ArrowUpRight className="w-3.5 h-3.5" /> : 
+                     paceData.status === 'Behind' ? <ArrowDownRight className="w-3.5 h-3.5" /> : 
+                     <Minus className="w-3.5 h-3.5" />}
+                    <span className="text-[10px] font-bold uppercase tracking-tight whitespace-nowrap">
+                      {paceData.status === 'On Track' ? 'On Track' : `${paceData.diff}% ${paceData.status}`}
+                    </span>
+                  </div>
+                )}
                 <button 
                   onClick={handleReset}
                   className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-400/50 transition-all hover:scale-110"
@@ -296,7 +416,10 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow }: { onBack: ()
             <Activity className="w-5 h-5 text-neon-green" />
             <h2 className="text-xl font-bold text-white tracking-tight">Subject Progress</h2>
           </div>
-          <button className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group">
+          <button 
+            onClick={onCustomizeSyllabus}
+            className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group"
+          >
             <Settings2 className="w-4 h-4 group-hover:rotate-90 transition-transform" />
             <span className="text-xs font-bold uppercase tracking-widest">Customize Syllabus</span>
           </button>
@@ -304,46 +427,13 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow }: { onBack: ()
 
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
           {subjects.map((subject, idx) => (
-            <div key={idx} onClick={() => onSubjectClick(subject.id)}>
-              <GlassCard className="p-4 hover:border-white/20 transition-all duration-300 group cursor-pointer">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative w-20 h-20">
-                    <svg className="w-full h-full transform -rotate-90">
-                      <circle
-                        cx="40"
-                        cy="40"
-                        r="34"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="transparent"
-                        className="text-white/5"
-                      />
-                      <motion.circle
-                        cx="40"
-                        cy="40"
-                        r="34"
-                        stroke="currentColor"
-                        strokeWidth="4"
-                        fill="transparent"
-                        strokeDasharray={2 * Math.PI * 34}
-                        initial={{ strokeDashoffset: 2 * Math.PI * 34 }}
-                        animate={{ strokeDashoffset: 2 * Math.PI * 34 * (1 - subject.progress / 100) }}
-                        transition={{ duration: 1, delay: idx * 0.1 }}
-                        className="text-neon-green"
-                        strokeLinecap="round"
-                      />
-                    </svg>
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-base font-mono font-bold text-white">{subject.progress}%</span>
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="text-xs font-bold text-white group-hover:text-neon-green transition-colors leading-tight">{subject.name}</p>
-                    <p className="text-[9px] text-white/30 uppercase font-bold tracking-widest mt-0.5">Progress</p>
-                  </div>
-                </div>
-              </GlassCard>
-            </div>
+            <SubjectCard 
+              key={subject.id} 
+              subject={subject} 
+              idx={idx} 
+              academicChapters={academicChapters} 
+              onClick={onSubjectClick} 
+            />
           ))}
         </div>
       </div>
