@@ -425,51 +425,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // One-time manual data adjustment: Subtract 2 hours (7200 seconds)
-        const manualAdjustmentFlag = 'manual_adjustment_v2_sub_2h';
-        if (!localStorage.getItem(manualAdjustmentFlag)) {
-          logger.log("Applying one-time manual data adjustment: -2 hours focus time");
-          const twoHoursInSeconds = 7200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime = Math.max(0, parsed.totalNetFocusTime - twoHoursInSeconds);
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime = Math.max(0, parsed.dailyTotalFocusTime - twoHoursInSeconds);
-          }
-          localStorage.setItem(manualAdjustmentFlag, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data adjustment: Add 6h to Net, 6h 10m to Total
-        const manualAdjustmentFlagV3 = 'manual_adjustment_v3_add_6h_6h10m';
-        if (!localStorage.getItem(manualAdjustmentFlagV3)) {
-          logger.log("Applying one-time manual data adjustment: +6h Net, +6h 10m Total");
-          const sixHoursInSeconds = 21600;
-          const sixHoursTenMinsInSeconds = 22200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime += sixHoursInSeconds;
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime += sixHoursTenMinsInSeconds;
-          }
-          localStorage.setItem(manualAdjustmentFlagV3, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data restoration: Set both to 6h 10m (22200 seconds)
-        const manualRestorationFlagV4 = 'manual_restoration_v4_set_6h10m';
-        if (!localStorage.getItem(manualRestorationFlagV4)) {
-          logger.log("Applying one-time manual data restoration: 6h 10m focus time");
-          const sixHoursTenMinsInSeconds = 22200;
-          parsed.totalNetFocusTime = sixHoursTenMinsInSeconds;
-          parsed.dailyTotalFocusTime = sixHoursTenMinsInSeconds;
-          parsed.detoxPercent = 100;
-          localStorage.setItem(manualRestorationFlagV4, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
 
         // Check if we need to reset daily stats
         if (parsed.lastResetDate !== today) {
@@ -1624,6 +1579,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
             next.streak = fs; next.lastStreakDate = flsd;
             next.consecutiveMissedDays = fcmd; next.streakSeasonStartDate = fsssd;
           }
+        }
+
+        // One-time manual data adjustment: Subtract 2 hours (7200 seconds)
+        const manualAdjustmentFlag = 'manual_adjustment_v2_sub_2h';
+        if (!localStorage.getItem(manualAdjustmentFlag)) {
+          logger.log("Applying one-time manual data adjustment: -2 hours focus time");
+          const twoHoursInSeconds = 7200;
+          if (typeof parsed.totalNetFocusTime === 'number') {
+            parsed.totalNetFocusTime = Math.max(0, parsed.totalNetFocusTime - twoHoursInSeconds);
+          }
+          if (typeof parsed.dailyTotalFocusTime === 'number') {
+            parsed.dailyTotalFocusTime = Math.max(0, parsed.dailyTotalFocusTime - twoHoursInSeconds);
+          }
+          localStorage.setItem(manualAdjustmentFlag, 'true');
+          // Update the saved state in localStorage immediately to ensure consistency
+          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
+        }
+
+        // One-time manual data adjustment: Add 6h to Net, 6h 10m to Total
+        const manualAdjustmentFlagV3 = 'manual_adjustment_v3_add_6h_6h10m';
+        if (!localStorage.getItem(manualAdjustmentFlagV3)) {
+          logger.log("Applying one-time manual data adjustment: +6h Net, +6h 10m Total");
+          const sixHoursInSeconds = 21600;
+          const sixHoursTenMinsInSeconds = 22200;
+          if (typeof parsed.totalNetFocusTime === 'number') {
+            parsed.totalNetFocusTime += sixHoursInSeconds;
+          }
+          if (typeof parsed.dailyTotalFocusTime === 'number') {
+            parsed.dailyTotalFocusTime += sixHoursTenMinsInSeconds;
+          }
+          localStorage.setItem(manualAdjustmentFlagV3, 'true');
+          // Update the saved state in localStorage immediately to ensure consistency
+          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
+        }
+
+        // One-time manual data restoration: Set both to 6h 10m (22200 seconds)
+        const manualRestorationFlagV4 = 'manual_restoration_v4_set_6h10m';
+        if (!localStorage.getItem(manualRestorationFlagV4)) {
+          logger.log("Applying one-time manual data restoration: 6h 10m focus time");
+          const sixHoursTenMinsInSeconds = 22200;
+          parsed.totalNetFocusTime = sixHoursTenMinsInSeconds;
+          parsed.dailyTotalFocusTime = sixHoursTenMinsInSeconds;
+          parsed.detoxPercent = 100;
+          localStorage.setItem(manualRestorationFlagV4, 'true');
+          // Update the saved state in localStorage immediately to ensure consistency
+          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
         }
 
         if (results.healthLogs?.data) {
