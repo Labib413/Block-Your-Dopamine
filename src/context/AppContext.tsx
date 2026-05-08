@@ -86,6 +86,15 @@ export interface HealthTargets {
   screenTime: string;
 }
 
+export interface GuardedWebsite {
+  id: string;
+  name: string;
+  url: string;
+  duration: number; // in minutes
+  start_time: string | null; // ISO string
+  is_active: boolean;
+}
+
 interface AppState {
   xp: number;
   level: number;
@@ -103,6 +112,8 @@ interface AppState {
   topSkill: string;
   resources: Resource[];
   sessionScores: number[]; // Array of all session detox scores
+  focusHistory: any[]; // Last 7 days of focus logs
+  healthHistory: any[]; // All health logs for trends
   
   // Health Metrics
   hydrationIntake: number;
@@ -185,6 +196,10 @@ interface AppState {
   academicSettings: AcademicSettings;
   academicChapters: AcademicChapter[];
   recalculateAllProgress: () => void;
+  
+  // Guarded Websites
+  guardedWebsites: GuardedWebsite[];
+  depexMode: boolean;
 }
 
 interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 'lastSyncTime'> {
@@ -250,6 +265,13 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   resetSyllabus: () => void;
   addChapterResource: (chapterId: string, resource: ChapterResource) => Promise<void>;
   deleteChapterResource: (chapterId: string, resourceId: string) => Promise<void>;
+  
+  // Guarded Website Actions
+  addGuardedWebsite: (site: Omit<GuardedWebsite, 'id' | 'start_time' | 'is_active'>) => Promise<void>;
+  removeGuardedWebsite: (id: string) => Promise<void>;
+  toggleDepexMode: () => Promise<void>;
+  updateGuardedWebsite: (id: string, updates: Partial<GuardedWebsite>) => Promise<void>;
+  
   isSupabaseConnected: boolean | null;
   connectionError: string | null;
 }
@@ -425,6 +447,51 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // One-time manual data adjustment: Subtract 2 hours (7200 seconds)
+        const manualAdjustmentFlag = 'manual_adjustment_v2_sub_2h';
+        if (!localStorage.getItem(manualAdjustmentFlag)) {
+          logger.log("Applying one-time manual data adjustment: -2 hours focus time");
+          const twoHoursInSeconds = 7200;
+          if (typeof parsed.totalNetFocusTime === 'number') {
+            parsed.totalNetFocusTime = Math.max(0, parsed.totalNetFocusTime - twoHoursInSeconds);
+          }
+          if (typeof parsed.dailyTotalFocusTime === 'number') {
+            parsed.dailyTotalFocusTime = Math.max(0, parsed.dailyTotalFocusTime - twoHoursInSeconds);
+          }
+          localStorage.setItem(manualAdjustmentFlag, 'true');
+          // Update the saved state in localStorage immediately to ensure consistency
+          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
+        }
+
+        // One-time manual data adjustment: Add 6h to Net, 6h 10m to Total
+        const manualAdjustmentFlagV3 = 'manual_adjustment_v3_add_6h_6h10m';
+        if (!localStorage.getItem(manualAdjustmentFlagV3)) {
+          logger.log("Applying one-time manual data adjustment: +6h Net, +6h 10m Total");
+          const sixHoursInSeconds = 21600;
+          const sixHoursTenMinsInSeconds = 22200;
+          if (typeof parsed.totalNetFocusTime === 'number') {
+            parsed.totalNetFocusTime += sixHoursInSeconds;
+          }
+          if (typeof parsed.dailyTotalFocusTime === 'number') {
+            parsed.dailyTotalFocusTime += sixHoursTenMinsInSeconds;
+          }
+          localStorage.setItem(manualAdjustmentFlagV3, 'true');
+          // Update the saved state in localStorage immediately to ensure consistency
+          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
+        }
+
+        // One-time manual data restoration: Set both to 6h 10m (22200 seconds)
+        const manualRestorationFlagV4 = 'manual_restoration_v4_set_6h10m';
+        if (!localStorage.getItem(manualRestorationFlagV4)) {
+          logger.log("Applying one-time manual data restoration: 6h 10m focus time");
+          const sixHoursTenMinsInSeconds = 22200;
+          parsed.totalNetFocusTime = sixHoursTenMinsInSeconds;
+          parsed.dailyTotalFocusTime = sixHoursTenMinsInSeconds;
+          parsed.detoxPercent = 100;
+          localStorage.setItem(manualRestorationFlagV4, 'true');
+          // Update the saved state in localStorage immediately to ensure consistency
+          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
+        }
 
         // Check if we need to reset daily stats
         if (parsed.lastResetDate !== today) {
@@ -577,6 +644,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           lastActivityTimestamp: parsed.lastActivityTimestamp || new Date().toISOString(),
           weeklyHistory: parsed.weeklyHistory || [],
           sessionScores: parsed.sessionScores || [],
+          focusHistory: parsed.focusHistory || [],
+          healthHistory: parsed.healthHistory || [],
           hasFetchedFocusData: false,
           latestMood: parsed.latestMood || null,
           macros: parsed.macros || { protein: 0, carbs: 0, fats: 0 },
@@ -604,6 +673,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
             if (item.where && item.where.id && !isUUID(item.where.id)) {
                 item.where.id = stringToUUID(String(item.where.id));
             }
+            // Migration for guarded_websites
+            if (item.table === 'guarded_websites' && item.data) {
+              if (item.data.isActive !== undefined) {
+                item.data.is_active = item.data.isActive;
+                delete item.data.isActive;
+              }
+              if (item.data.startTime !== undefined) {
+                item.data.start_time = item.data.startTime;
+                delete item.data.startTime;
+              }
+            }
             return item;
           }),
           offlineSyncQueue: (parsed.offlineSyncQueue || []).map((item: any) => {
@@ -625,6 +705,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           academicChapters: migratedChapters,
           academicSubjects: calculatedSubjects,
           tasks: migratedTasks,
+          guardedWebsites: (parsed.guardedWebsites || []).map((site: any) => ({
+            ...site,
+            is_active: site.is_active ?? site.isActive ?? false,
+            start_time: site.start_time ?? site.startTime ?? null
+          })),
+          depexMode: parsed.depexMode || false,
         };
       } catch (e) {
         logger.error("Failed to parse saved state", e);
@@ -703,6 +789,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       lastActivityTimestamp: now.toISOString(),
       weeklyHistory: [],
       sessionScores: [],
+      focusHistory: [],
+      healthHistory: [],
       isSyncing: false,
       hasFetchedFocusData: false,
       latestMood: null,
@@ -713,7 +801,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
       academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null)
+      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      guardedWebsites: [],
+      depexMode: false
     };
   });
 
@@ -1332,6 +1422,94 @@ export function AppProvider({ children }: { children: ReactNode }) {
     triggerSync();
   }, [triggerSync]);
 
+  const addGuardedWebsite = useCallback(async (site: Omit<GuardedWebsite, 'id' | 'start_time' | 'is_active'>) => {
+    const newSite: GuardedWebsite = {
+      ...site,
+      id: generateId(),
+      start_time: null,
+      is_active: false
+    };
+    
+    setState(prev => {
+      const next = {
+        ...prev,
+        guardedWebsites: [...prev.guardedWebsites, newSite]
+      };
+      
+      if (prev.user) {
+        addToSyncQueue({
+          table: 'guarded_websites',
+          type: 'upsert',
+          data: { ...newSite, user_id: prev.user.id },
+          onConflict: 'id'
+        });
+      }
+      return next;
+    });
+  }, [addToSyncQueue]);
+
+  const removeGuardedWebsite = useCallback(async (id: string) => {
+    setState(prev => {
+      const next = {
+        ...prev,
+        guardedWebsites: prev.guardedWebsites.filter(s => s.id !== id)
+      };
+      
+      if (prev.user) {
+        addToSyncQueue({
+          table: 'guarded_websites',
+          type: 'delete',
+          id: id
+        });
+      }
+      return next;
+    });
+  }, [addToSyncQueue]);
+
+  const toggleDepexMode = useCallback(async () => {
+    setState(prev => {
+      const nextDepex = !prev.depexMode;
+      const next = {
+        ...prev,
+        depexMode: nextDepex
+      };
+      
+      if (prev.user) {
+        addToSyncQueue({
+          table: 'profiles',
+          type: 'update',
+          id: prev.user.id,
+          data: { depex_mode: nextDepex }
+        });
+      }
+      return next;
+    });
+  }, [addToSyncQueue]);
+
+  const updateGuardedWebsite = useCallback(async (id: string, updates: Partial<GuardedWebsite>) => {
+    setState(prev => {
+      const updatedWebsites = prev.guardedWebsites.map(s => 
+        s.id === id ? { ...s, ...updates } : s
+      );
+      
+      const next = {
+        ...prev,
+        guardedWebsites: updatedWebsites
+      };
+      
+      const updatedSite = updatedWebsites.find(s => s.id === id);
+      if (updatedSite && prev.user) {
+        addToSyncQueue({
+          table: 'guarded_websites',
+          type: 'upsert',
+          data: { ...updatedSite, user_id: prev.user.id },
+          onConflict: 'id'
+        });
+      }
+      return next;
+    });
+  }, [addToSyncQueue]);
+
   // Retry Pending Sessions on Mount
   useEffect(() => {
     const retryPendingSession = async () => {
@@ -1489,12 +1667,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const endOfDhakaDay = new Date(dhakaTime);
         endOfDhakaDay.setUTCHours(23, 59, 59, 999);
         const endOfDhakaDayUTC = new Date(endOfDhakaDay.getTime() - dhakaOffset);
+        
+        // Extended range for weekly trends: last 7 days
+        const sevenDaysAgo = new Date(startOfDhakaDayUTC.getTime() - 7 * 24 * 60 * 60 * 1000);
 
-        const [logsRes, sessionsRes] = await Promise.all([
-          supabase.from('focus_logs').select('*').eq('user_id', userId).gte('start_time', startOfDhakaDayUTC.toISOString()).lte('start_time', endOfDhakaDayUTC.toISOString()),
-          supabase.from('sessions').select('*').eq('user_id', userId).gte('start_time', startOfDhakaDayUTC.toISOString()).lte('start_time', endOfDhakaDayUTC.toISOString())
+      const [logsRes, sessionsRes, guardedRes] = await Promise.all([
+          supabase.from('focus_logs').select('*').eq('user_id', userId).gte('start_time', sevenDaysAgo.toISOString()).lte('start_time', endOfDhakaDayUTC.toISOString()),
+          supabase.from('sessions').select('*').eq('user_id', userId).gte('start_time', sevenDaysAgo.toISOString()).lte('start_time', endOfDhakaDayUTC.toISOString()),
+          supabase.from('guarded_websites').select('*').eq('user_id', userId)
         ]);
         
+        if (guardedRes.data) {
+          setState(prev => ({ ...prev, guardedWebsites: guardedRes.data }));
+        }
+
         const combined = new Map<string, any>();
         (logsRes.data || []).forEach(log => { if (log.session_id) combined.set(log.session_id, log); });
         (sessionsRes.data || []).forEach(s => {
@@ -1557,6 +1743,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             gender: pd.gender || 'Male'
           };
           next.gender = pd.gender || prev.gender;
+          next.depexMode = pd.depex_mode || false;
         }
 
         if (results.tasks?.data) next.tasks = results.tasks.data;
@@ -1568,66 +1755,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
           let fsssd = sd.season_start_date || today;
 
           const sDiff = getDayDifference(fsssd, today);
-          if (sDiff >= 90) { fs = 0; fcmd = 0; flsd = null; fsssd = today; }
-          else if (flsd) {
-            const daysSince = getDayDifference(flsd, today);
-            if (daysSince >= 3) { fs = 0; fcmd = 0; }
-            else fcmd = (daysSince > 0 && flsd !== today) ? daysSince : 0;
+          // Auto-Reset logic for seasons: Disabled as part of streak preservation
+          if (flsd) {
+             const daysSince = getDayDifference(flsd, today);
+             // Streak loss logic was requested to be disabled, so we only update fcmd
+             fcmd = (daysSince > 0 && flsd !== today) ? daysSince : 0;
           }
 
-          if (fs > prev.streak || (flsd && flsd !== prev.lastStreakDate)) {
-            next.streak = fs; next.lastStreakDate = flsd;
-            next.consecutiveMissedDays = fcmd; next.streakSeasonStartDate = fsssd;
-          }
-        }
+          // Optimized Max-Wins Logic:
+          // 1. If remote date is newer than local, take remote.
+          // 2. If dates are same but remote count is higher, take remote.
+          // 3. Otherwise, trust local state as it might be a pending sync.
+          const isRemoteNewer = !prev.lastStreakDate || (flsd && flsd > prev.lastStreakDate);
+          const isRemoteHigher = fs > prev.streak;
 
-        // One-time manual data adjustment: Subtract 2 hours (7200 seconds)
-        const manualAdjustmentFlag = 'manual_adjustment_v2_sub_2h';
-        if (!localStorage.getItem(manualAdjustmentFlag)) {
-          logger.log("Applying one-time manual data adjustment: -2 hours focus time");
-          const twoHoursInSeconds = 7200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime = Math.max(0, parsed.totalNetFocusTime - twoHoursInSeconds);
+          if (isRemoteNewer || (flsd === prev.lastStreakDate && isRemoteHigher)) {
+            next.streak = fs; 
+            next.lastStreakDate = flsd;
+            next.consecutiveMissedDays = fcmd; 
+            next.streakSeasonStartDate = fsssd;
           }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime = Math.max(0, parsed.dailyTotalFocusTime - twoHoursInSeconds);
-          }
-          localStorage.setItem(manualAdjustmentFlag, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data adjustment: Add 6h to Net, 6h 10m to Total
-        const manualAdjustmentFlagV3 = 'manual_adjustment_v3_add_6h_6h10m';
-        if (!localStorage.getItem(manualAdjustmentFlagV3)) {
-          logger.log("Applying one-time manual data adjustment: +6h Net, +6h 10m Total");
-          const sixHoursInSeconds = 21600;
-          const sixHoursTenMinsInSeconds = 22200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime += sixHoursInSeconds;
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime += sixHoursTenMinsInSeconds;
-          }
-          localStorage.setItem(manualAdjustmentFlagV3, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data restoration: Set both to 6h 10m (22200 seconds)
-        const manualRestorationFlagV4 = 'manual_restoration_v4_set_6h10m';
-        if (!localStorage.getItem(manualRestorationFlagV4)) {
-          logger.log("Applying one-time manual data restoration: 6h 10m focus time");
-          const sixHoursTenMinsInSeconds = 22200;
-          parsed.totalNetFocusTime = sixHoursTenMinsInSeconds;
-          parsed.dailyTotalFocusTime = sixHoursTenMinsInSeconds;
-          parsed.detoxPercent = 100;
-          localStorage.setItem(manualRestorationFlagV4, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
         }
 
         if (results.healthLogs?.data) {
+          next.healthHistory = results.healthLogs.data;
           const health = results.healthLogs.data.find((h: any) => h.entry_date === today);
           if (health) {
             // "Stale-While-Revalidate": Merge DB data with local state using Max Wins for counters 
@@ -1660,8 +1811,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         if (results.focus) {
+          next.focusHistory = results.focus;
+          const todayStr = getLocalDateString(new Date());
+          const todaySessions = results.focus.filter((s: any) => {
+            const dateStr = getLocalDateString(new Date(s.start_time || s.timestamp));
+            return dateStr === todayStr;
+          });
+
           let tNet = 0, tAtt = 0, scs: number[] = [];
-          results.focus.forEach((s: any) => {
+          todaySessions.forEach((s: any) => {
             const dur = s.session_duration || 0;
             const sc = s.growth_percentage || 0;
             tAtt += dur; tNet += Math.trunc((sc / 100) * dur);
@@ -2436,7 +2594,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       : 100;
 
     // 1. OPTIMISTIC UI & State Cleanup
-    let computedNewStreak = 0;
+    const today = getLocalDateString(new Date());
+    const isNewStreakDay = state.lastStreakDate !== today;
+    // IF it's a new day, increment. IF it's today but streak is somehow 0, force to at least 1.
+    const finalStreakValue = isNewStreakDay ? state.streak + 1 : Math.max(state.streak, 1);
     
     setState(prev => {
       const newDailyNet = Math.trunc(prev.totalNetFocusTime + safeNetFocus);
@@ -2459,6 +2620,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem('current_session_tabs');
         localStorage.removeItem('current_session_active_tab');
         localStorage.removeItem('current_session_resource_states');
+        localStorage.removeItem('localStorage_isDistracted'); // Corrected key if mismatch
         localStorage.removeItem('isDistracted');
         localStorage.removeItem('startTime');
         localStorage.removeItem('isManualExit');
@@ -2466,10 +2628,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         logger.error("Failed to clear session from localStorage", e);
       }
 
-      const today = getLocalDateString(new Date());
-      const isNewStreakDay = prev.lastStreakDate !== today;
-      const newStreak = isNewStreakDay ? prev.streak + 1 : prev.streak;
-      computedNewStreak = newStreak;
+      const isNewStreakDayInner = prev.lastStreakDate !== today;
+      const newStreakInner = isNewStreakDayInner ? prev.streak + 1 : Math.max(prev.streak, 1);
 
       const newState = {
         ...prev,
@@ -2486,10 +2646,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         focusTime: prev.focusTime + safeTotalAttempted,
         xp: newXP,
         level: newLevel,
-        streak: newStreak,
+        streak: newStreakInner,
         lastStreakDate: today,
         consecutiveMissedDays: 0
       };
+
+      logger.log(`[BYD STREAK DEBUG] Session End. Today: ${today}, PrevStreakDate: ${prev.lastStreakDate}, NewStreak: ${newStreakInner}`);
 
       // Persistent save BEFORE background sync
       try {
@@ -2514,8 +2676,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const finalStreakData = {
       user_id: state.user?.id,
-      streak_count: computedNewStreak,
-      last_streak_date: getLocalDateString(new Date()),
+      streak_count: finalStreakValue,
+      last_streak_date: today,
       consecutive_missed_days: 0,
       season_start_date: state.streakSeasonStartDate
     };
@@ -3133,11 +3295,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     addChapterResource,
     deleteChapterResource,
+    addGuardedWebsite,
+    removeGuardedWebsite,
+    toggleDepexMode,
+    updateGuardedWebsite,
     modifyFocusTime,
     addNotification,
     isSupabaseConnected,
     connectionError
-  }), [state, clock, isSupabaseConnected, connectionError]);
+  }), [state, clock, isSupabaseConnected, connectionError, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
 
   // 3. HARD RESET / RECALCULATION ON MOUNT
   // This ensures that any inconsistent state from hydration or legacy versions is immediately corrected

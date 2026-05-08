@@ -210,7 +210,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
             </div>
 
             <div className="max-h-[400px] overflow-y-auto scrollbar-hide">
-              {notifications?.length === 0 ? (
+              {(!notifications || notifications.length === 0) ? (
                 <div className="p-8 text-center">
                   <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-3">
                     <Bell className="w-6 h-6 text-white/20" />
@@ -219,7 +219,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
-                  {notifications.slice(0, 5).map((notif) => (
+                  {(notifications || []).slice(0, 5).map((notif) => (
                     <div key={notif.id} className="p-4 hover:bg-white/5 transition-colors group relative">
                       <div className="flex justify-between items-start mb-1">
                         <h4 className="text-xs font-bold text-white pr-6">{notif.title}</h4>

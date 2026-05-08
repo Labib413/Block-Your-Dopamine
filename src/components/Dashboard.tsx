@@ -21,25 +21,16 @@ import { GlassCard } from "./GlassCard";
 import { getDailyQuote, getAIInsight } from "../services/gemini";
 import { 
   ResponsiveContainer, 
-  LineChart, 
-  Line, 
+  AreaChart, 
+  Area, 
   XAxis, 
   YAxis, 
   Tooltip,
   CartesianGrid
 } from "recharts";
 import { cn, formatTime } from "@/src/lib/utils";
+import { DistractionGuard } from "./DistractionGuard";
 import { useApp } from "../context/AppContext";
-
-const initialChartData = [
-  { name: "Mon", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-  { name: "Tue", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-  { name: "Wed", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-  { name: "Thu", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-  { name: "Fri", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-  { name: "Sat", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-  { name: "Sun", focus: 0, planner: 0, health: 0, focusRaw: 0, plannerRaw: 0, healthRaw: 0 },
-];
 
 const DailyInspiration = memo(({ quote }: { quote: { text: string; author?: string } }) => {
   return (
@@ -83,31 +74,7 @@ const DailyInspiration = memo(({ quote }: { quote: { text: string; author?: stri
 export function Dashboard() {
   const [quote, setQuote] = useState({ text: "Loading inspiration...", author: "" });
   const [aiInsight, setAiInsight] = useState("Analyzing your performance...");
-  const [chartData, setChartData] = useState(initialChartData);
   const [activeTab, setActiveTab] = useState("Week");
-  const [blockedWebsites, setBlockedWebsites] = useState<{ name: string; url: string }[]>(() => {
-    const saved = localStorage.getItem("blockedWebsites");
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [newSiteName, setNewSiteName] = useState("");
-  const [newSiteUrl, setNewSiteUrl] = useState("");
-
-  useEffect(() => {
-    localStorage.setItem("blockedWebsites", JSON.stringify(blockedWebsites));
-  }, [blockedWebsites]);
-
-  const addWebsite = (e: any) => {
-    e.preventDefault();
-    if (newSiteName && newSiteUrl) {
-      setBlockedWebsites([...blockedWebsites, { name: newSiteName, url: newSiteUrl }]);
-      setNewSiteName("");
-      setNewSiteUrl("");
-    }
-  };
-
-  const removeWebsite = (index: number) => {
-    setBlockedWebsites(blockedWebsites.filter((_, i) => i !== index));
-  };
 
   const { 
     xp, 
@@ -130,7 +97,9 @@ export function Dashboard() {
     tasks,
     hydrationIntake,
     sleepHours,
-    geminiApiKey
+    geminiApiKey,
+    focusHistory,
+    healthHistory
   } = useApp();
 
   const [visibleLines, setVisibleLines] = useState({
@@ -138,6 +107,15 @@ export function Dashboard() {
     planner: true,
     health: true
   });
+
+  const getLocalDateString = (date: Date) => {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Dhaka',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  };
 
   const requiredXP = getRequiredXP(level);
   const progressPercent = (xp / requiredXP) * 100;
@@ -156,33 +134,71 @@ export function Dashboard() {
     }
   }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey]); // Only trigger on task change or every minute of focus
 
-  // Update chart data based on activity
-  const today = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][new Date().getDay()];
-
   const displayChartData = useMemo(() => {
-    // Calculate metrics for today
-    const focusHours = totalNetFocusTime / 3600;
-    const focusPercent = Math.min(100, (focusHours / 10) * 100); // 10h = 100%
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    const todayDate = new Date();
     
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter(t => t.status === 'Done').length;
-    const plannerPercent = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
-    
-    const healthPercent = Math.min(100, ((sleepHours / 8) * 50) + ((hydrationIntake / 8) * 50));
-    const healthScore = (sleepHours * 0.6 + hydrationIntake * 0.4).toFixed(1);
+    // Create map for last 7 days
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(todayDate.getDate() - (6 - i));
+      const dateStr = getLocalDateString(d);
+      return {
+        dateStr,
+        name: dayNames[d.getDay()],
+        focus: 0,
+        planner: 0,
+        health: 0,
+        focusRaw: 0,
+        plannerRaw: 0,
+        healthRaw: 0
+      };
+    });
 
-    return chartData.map(d => 
-      d.name === today ? { 
-        ...d, 
-        focus: focusPercent, 
-        planner: plannerPercent, 
-        health: healthPercent,
-        focusRaw: focusHours.toFixed(1),
-        plannerRaw: plannerPercent.toFixed(0),
-        healthRaw: healthScore
-      } : d
-    );
-  }, [totalNetFocusTime, tasks, sleepHours, hydrationIntake, chartData, today]);
+    // Aggregate Focus (Net focus time)
+    (focusHistory || []).forEach(s => {
+      const sDate = new Date(s.start_time || s.timestamp);
+      const dStr = getLocalDateString(sDate);
+      const day = last7Days.find(d => d.dateStr === dStr);
+      if (day) {
+        const dur = s.session_duration || 0;
+        const score = s.growth_percentage || 0;
+        day.focusRaw += (score / 100) * dur;
+      }
+    });
+
+    // Aggregate Health Metrics
+    (healthHistory || []).forEach(h => {
+      const day = last7Days.find(d => d.dateStr === h.entry_date);
+      if (day) {
+        const sleep = h.sleep_hours || 0;
+        const hydration = h.hydration || 0;
+        const score = (sleep * 0.6 + hydration * 0.4);
+        day.healthRaw = Math.max(day.healthRaw, score);
+      }
+    });
+
+    // Aggregate Planner Tasks
+    tasks.forEach(t => {
+      if (t.status === 'Done') {
+        const day = last7Days.find(d => d.dateStr === t.date);
+        if (day) {
+          day.plannerRaw += 1;
+        }
+      }
+    });
+
+    // Normalize
+    return last7Days.map(d => ({
+      ...d,
+      focus: Math.min(100, (d.focusRaw / 28800) * 100), // 8h goal
+      health: Math.min(100, (d.healthRaw / 6) * 100), // Score 6 goal
+      planner: Math.min(100, (d.plannerRaw / 5) * 100), // 5 tasks goal
+      focusRawValue: (d.focusRaw / 3600).toFixed(1),
+      healthRawValue: d.healthRaw.toFixed(1),
+      plannerRawValue: d.plannerRaw
+    }));
+  }, [focusHistory, healthHistory, tasks]);
 
   const handleAIAction = async (type: 'consistency' | 'peak') => {
     setAiInsight("AI is thinking...");
@@ -337,30 +353,30 @@ export function Dashboard() {
                   onClick={() => setVisibleLines(prev => ({ ...prev, focus: !prev.focus }))}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
-                    visibleLines.focus ? "bg-neon-green/10 border-neon-green/30 text-neon-green" : "bg-white/5 border-white/10 text-white/20"
+                    visibleLines.focus ? "bg-[#39FF14]/10 border-[#39FF14]/30 text-[#39FF14]" : "bg-white/5 border-white/10 text-white/20"
                   )}
                 >
-                  <div className={cn("w-2 h-2 rounded-full", visibleLines.focus ? "bg-neon-green shadow-[0_0_8px_#39FF14]" : "bg-white/20")} />
+                  <div className={cn("w-2 h-2 rounded-full", visibleLines.focus ? "bg-[#39FF14] shadow-[0_0_8px_#39FF14]" : "bg-white/20")} />
                   <span className="text-[10px] font-black uppercase tracking-widest">Focus</span>
                 </button>
                 <button 
                   onClick={() => setVisibleLines(prev => ({ ...prev, planner: !prev.planner }))}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
-                    visibleLines.planner ? "bg-purple-500/10 border-purple-500/30 text-purple-500" : "bg-white/5 border-white/10 text-white/20"
+                    visibleLines.planner ? "bg-[#a855f7]/10 border-[#a855f7]/30 text-[#a855f7]" : "bg-white/5 border-white/10 text-white/20"
                   )}
                 >
-                  <div className={cn("w-2 h-2 rounded-full", visibleLines.planner ? "bg-purple-500 shadow-[0_0_8px_#A855F7]" : "bg-white/20")} />
+                  <div className={cn("w-2 h-2 rounded-full", visibleLines.planner ? "bg-[#a855f7] shadow-[0_0_8px_#a855f7]" : "bg-white/20")} />
                   <span className="text-[10px] font-black uppercase tracking-widest">Planner</span>
                 </button>
                 <button 
                   onClick={() => setVisibleLines(prev => ({ ...prev, health: !prev.health }))}
                   className={cn(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
-                    visibleLines.health ? "bg-blue-400/10 border-blue-400/30 text-blue-400" : "bg-white/5 border-white/10 text-white/20"
+                    visibleLines.health ? "bg-[#60a5fa]/10 border-[#60a5fa]/30 text-[#60a5fa]" : "bg-white/5 border-white/10 text-white/20"
                   )}
                 >
-                  <div className={cn("w-2 h-2 rounded-full", visibleLines.health ? "bg-blue-400 shadow-[0_0_8px_#60A5FA]" : "bg-white/20")} />
+                  <div className={cn("w-2 h-2 rounded-full", visibleLines.health ? "bg-[#60a5fa] shadow-[0_0_8px_#60a5fa]" : "bg-white/20")} />
                   <span className="text-[10px] font-black uppercase tracking-widest">Health</span>
                 </button>
               </div>
@@ -382,11 +398,25 @@ export function Dashboard() {
           </div>
           <div className="h-72 w-full">
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={displayChartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
+              <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="colorFocus" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#39FF14" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#39FF14" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorHealth" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="colorPlanner" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3}/>
+                    <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
                 <XAxis 
                   dataKey="name" 
-                  stroke="rgba(255,255,255,0.2)" 
+                  stroke="#444" 
                   fontSize={10} 
                   tickLine={false} 
                   axisLine={false}
@@ -400,20 +430,22 @@ export function Dashboard() {
                   content={({ active, payload, label }) => {
                     if (active && payload && payload.length) {
                       return (
-                        <div className="bg-black/80 backdrop-blur-xl border border-white/10 p-4 rounded-2xl shadow-2xl">
-                          <p className="text-white/40 text-[10px] font-black uppercase tracking-widest mb-3">{label} Metrics</p>
-                          <div className="space-y-2">
+                        <div className="bg-[#1a1d21]/95 backdrop-blur-xl border border-white/10 p-4 rounded-xl shadow-2xl ring-1 ring-white/5">
+                          <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{label} Analysis</p>
+                          <div className="space-y-3">
                             {payload.map((entry: any, index: number) => (
-                              <div key={index} className="flex items-center justify-between gap-8">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: entry.color }} />
-                                  <span className="text-xs font-bold text-white/80 capitalize">{entry.name}</span>
+                              <div key={index} className="flex items-center justify-between gap-10">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                                  <span className="text-xs font-bold text-white/90 capitalize">{entry.name}</span>
                                 </div>
-                                <span className="text-xs font-mono font-bold" style={{ color: entry.color }}>
-                                  {entry.name === 'focus' ? `${entry.payload.focusRaw}h` : 
-                                   entry.name === 'planner' ? `${entry.payload.plannerRaw}%` : 
-                                   `${entry.payload.healthRaw} Score`}
-                                </span>
+                                <div className="flex flex-col items-end">
+                                  <span className="text-xs font-mono font-bold" style={{ color: entry.color }}>
+                                    {entry.name === 'focus' ? `${entry.payload.focusRawValue}h` : 
+                                     entry.name === 'planner' ? `${entry.payload.plannerRawValue} Tasks` : 
+                                     `${entry.payload.healthRawValue} Score`}
+                                  </span>
+                                </div>
                               </div>
                             ))}
                           </div>
@@ -424,127 +456,47 @@ export function Dashboard() {
                   }}
                 />
                 {visibleLines.focus && (
-                  <Line 
+                  <Area 
                     type="monotone" 
                     dataKey="focus" 
                     name="focus"
                     stroke="#39FF14" 
                     strokeWidth={3}
-                    dot={{ r: 4, fill: "#39FF14", strokeWidth: 0 }}
-                    activeDot={{ r: 6, strokeWidth: 0, shadow: "0 0 15px #39FF14" }}
-                    connectNulls
-                    animationDuration={1500}
+                    fillOpacity={1}
+                    fill="url(#colorFocus)"
+                    animationDuration={2000}
                   />
                 )}
                 {visibleLines.planner && (
-                  <Line 
+                  <Area 
                     type="monotone" 
                     dataKey="planner" 
                     name="planner"
-                    stroke="#A855F7" 
+                    stroke="#a855f7" 
                     strokeWidth={3}
-                    dot={{ r: 4, fill: "#A855F7", strokeWidth: 0 }}
-                    activeDot={{ r: 6, strokeWidth: 0, shadow: "0 0 15px #A855F7" }}
-                    connectNulls
-                    animationDuration={1500}
+                    fillOpacity={1}
+                    fill="url(#colorPlanner)"
+                    animationDuration={2000}
                   />
                 )}
                 {visibleLines.health && (
-                  <Line 
+                  <Area 
                     type="monotone" 
                     dataKey="health" 
                     name="health"
-                    stroke="#60A5FA" 
+                    stroke="#60a5fa" 
                     strokeWidth={3}
-                    dot={{ r: 4, fill: "#60A5FA", strokeWidth: 0 }}
-                    activeDot={{ r: 6, strokeWidth: 0, shadow: "0 0 15px #60A5FA" }}
-                    connectNulls
-                    animationDuration={1500}
+                    fillOpacity={1}
+                    fill="url(#colorHealth)"
+                    animationDuration={2000}
                   />
                 )}
-              </LineChart>
+              </AreaChart>
             </ResponsiveContainer>
           </div>
         </GlassCard>
 
-        <GlassCard 
-          className="col-span-4 border-red-500/50 shadow-[0_0_30px_rgba(239,68,68,0.2)] bg-red-950/40 rounded-[32px] p-8 relative overflow-visible" 
-          hoverEffect={false}
-        >
-          <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 to-transparent pointer-events-none" />
-          <div className="relative z-10">
-            <div className="flex items-start gap-4 mb-8">
-              <div className="w-14 h-14 rounded-2xl bg-red-500/20 flex items-center justify-center relative overflow-visible shadow-[0_0_15px_rgba(239,68,68,0.4)]">
-                <div className="absolute inset-0 bg-red-500/30 blur-lg opacity-50" />
-                <ShieldAlert className="w-7 h-7 text-red-500 relative z-10 animate-pulse" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold text-red-500/60 uppercase tracking-[0.2em] mb-1">SECURITY PROTOCOL</div>
-                <h3 className="text-2xl font-sans font-bold text-red-500 drop-shadow-[0_0_12px_rgba(239,68,68,0.6)]">Distraction Guard</h3>
-              </div>
-            </div>
-            
-            <div className="space-y-6">
-              <form onSubmit={addWebsite} className="space-y-3">
-                <div className="space-y-2">
-                  <input
-                    type="text"
-                    placeholder="Website Name (e.g. Facebook)"
-                    value={newSiteName}
-                    onChange={(e) => setNewSiteName(e.target.value)}
-                    className="w-full bg-red-500/5 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-white placeholder:text-red-500/30 focus:outline-none focus:border-red-500/50 transition-all"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Website Link (e.g. facebook.com)"
-                    value={newSiteUrl}
-                    onChange={(e) => setNewSiteUrl(e.target.value)}
-                    className="w-full bg-red-500/5 border border-red-500/20 rounded-xl px-4 py-3 text-sm text-white placeholder:text-red-500/30 focus:outline-none focus:border-red-500/50 transition-all"
-                  />
-                </div>
-                <button 
-                  type="submit"
-                  className="w-full py-3 rounded-xl bg-red-500 text-white font-bold text-xs uppercase tracking-widest hover:bg-red-600 transition-all shadow-[0_0_15px_rgba(239,68,68,0.4)] flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add to Guard
-                </button>
-              </form>
-
-              <div className="space-y-2 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
-                {blockedWebsites.length === 0 ? (
-                  <div className="text-center py-8 border border-dashed border-red-500/20 rounded-2xl">
-                    <Globe className="w-8 h-8 text-red-500/20 mx-auto mb-2" />
-                    <p className="text-xs text-red-500/40 font-medium uppercase tracking-wider">No websites guarded</p>
-                  </div>
-                ) : (
-                  blockedWebsites.map((site, index) => (
-                    <div 
-                      key={index}
-                      className="flex items-center justify-between p-4 rounded-2xl bg-red-500/5 border border-red-500/10 group/item hover:border-red-500/30 transition-all"
-                    >
-                      <div className="flex items-center gap-3 overflow-hidden">
-                        <div className="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
-                          <LinkIcon className="w-4 h-4 text-red-500" />
-                        </div>
-                        <div className="overflow-hidden">
-                          <div className="text-sm font-bold text-white truncate">{site.name}</div>
-                          <div className="text-[10px] text-red-500/60 truncate">{site.url}</div>
-                        </div>
-                      </div>
-                      <button 
-                        onClick={() => removeWebsite(index)}
-                        className="p-2 rounded-lg hover:bg-red-500/20 text-red-500/40 hover:text-red-500 transition-all"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </div>
-        </GlassCard>
+        <DistractionGuard />
       </div>
     </div>
   );
