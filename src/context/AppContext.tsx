@@ -167,6 +167,7 @@ interface AppState {
   // Auth
   user: User | null;
   profile: {
+    username?: string;
     fullName: string;
     avatarUrl?: string;
     institution?: string;
@@ -1838,6 +1839,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.profile?.data) {
           const pd = results.profile.data;
           next.profile = {
+            username: pd.username || '',
             fullName: pd.full_name || prev.profile?.fullName || '',
             avatarUrl: pd.avatar_url || prev.profile?.avatarUrl,
             institution: pd.institution || '', class: pd.class || '',

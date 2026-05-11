@@ -24,7 +24,7 @@ import { PublicProfile } from "./components/PublicProfile";
 
 function RequireAuthMatch() {
   const { username } = useParams<{ username: string }>();
-  const { user, isAuthReady } = useApp();
+  const { user, isAuthReady, profile } = useApp();
 
   if (!isAuthReady) {
     // Show splash screen or nothing while checking
@@ -36,7 +36,7 @@ function RequireAuthMatch() {
     return <Navigate to="/public/dashboard" replace />;
   }
 
-  const currentUsername = user.user_metadata?.username || user.email?.split('@')[0];
+  const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
 
   if (username !== currentUsername) {
     // If trying to access someone else's workspace, redirect to own workspace
@@ -57,8 +57,8 @@ function AppWorkspace() {
   const [showBadges, setShowBadges] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   
-  const { isFocusing, currentSessionId, user, modifyFocusTime, addNotification, isSupabaseConnected, connectionError, syncData, updateAcademicSettings } = useApp();
-  const currentUsername = user?.user_metadata?.username || user?.email?.split('@')[0];
+  const { isFocusing, currentSessionId, user, profile, modifyFocusTime, addNotification, isSupabaseConnected, connectionError, syncData, updateAcademicSettings } = useApp();
+  const currentUsername = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0];
 
   // Sync data on view changes
   useEffect(() => {
@@ -207,14 +207,14 @@ function AppWorkspace() {
 }
 
 function RootRedirect() {
-  const { user, isAuthReady } = useApp();
+  const { user, isAuthReady, profile } = useApp();
   
   if (!isAuthReady) {
     return <div className="min-h-screen bg-[#050505]" />;
   }
   
   if (user) {
-    const currentUsername = user.user_metadata?.username || user.email?.split('@')[0];
+    const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
     return <Navigate to={`/${currentUsername}/dashboard`} replace />;
   }
   return <Navigate to="/public/dashboard" replace />; // Or public fallback

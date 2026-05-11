@@ -1,4 +1,5 @@
 import { useState, FormEvent, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Mail, Lock, User, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -13,6 +14,7 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
+  const navigate = useNavigate();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,7 +66,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     try {
       logger.log("Verifying OTP for email:", email);
-      const { error: verifyError } = await supabase.auth.verifyOtp({
+      const { data, error: verifyError } = await supabase.auth.verifyOtp({
         email: email.trim(),
         token: cleanOtp,
         type: 'signup',
@@ -73,6 +75,18 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       if (verifyError) throw verifyError;
       
       onClose();
+      if (data.user) {
+        let currentUsername = data.user.user_metadata?.username || data.user.email?.split('@')[0] || "user";
+        try {
+          const { data: profile } = await supabase.from('profiles').select('username').eq('id', data.user.id).single();
+          if (profile && profile.username) {
+            currentUsername = profile.username;
+          }
+        } catch (e) {
+          console.error("Failed to fetch username", e);
+        }
+        navigate(`/${currentUsername}/dashboard`, { replace: true });
+      }
     } catch (err: any) {
       logger.error("OTP Verification Error:", err);
       setError("Invalid code, please try again.");
@@ -88,12 +102,24 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
     try {
       if (isLogin) {
-        const { error: authError } = await supabase.auth.signInWithPassword({
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
           email,
           password,
         });
         if (authError) throw authError;
         onClose();
+        if (data.user) {
+          let currentUsername = data.user.user_metadata?.username || data.user.email?.split('@')[0] || "user";
+          try {
+            const { data: profile } = await supabase.from('profiles').select('username').eq('id', data.user.id).single();
+            if (profile && profile.username) {
+              currentUsername = profile.username;
+            }
+          } catch (e) {
+            console.error("Failed to fetch username", e);
+          }
+          navigate(`/${currentUsername}/dashboard`, { replace: true });
+        }
       } else {
         const { error: authError } = await supabase.auth.signUp({
           email,
