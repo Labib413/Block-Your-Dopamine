@@ -57,6 +57,18 @@ export interface AcademicSettings {
   prepStartDate: string | null;
 }
 
+export interface AcademicRoutine {
+  id: string;
+  user_id?: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+  title: string;
+  subject_id: string | null;
+  color_type: string;
+  is_done: boolean;
+}
+
 export interface ChapterResource {
   id: string;
   title: string;
@@ -195,6 +207,7 @@ interface AppState {
   academicSubjects: AcademicSubject[];
   academicSettings: AcademicSettings;
   academicChapters: AcademicChapter[];
+  academicRoutines: AcademicRoutine[];
   recalculateAllProgress: () => void;
   
   // Guarded Websites
@@ -265,6 +278,9 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   resetSyllabus: () => void;
   addChapterResource: (chapterId: string, resource: ChapterResource) => Promise<void>;
   deleteChapterResource: (chapterId: string, resourceId: string) => Promise<void>;
+  addAcademicRoutine: (routine: Omit<AcademicRoutine, 'id' | 'user_id'>) => Promise<void>;
+  updateAcademicRoutine: (id: string, updates: Partial<AcademicRoutine>) => Promise<void>;
+  deleteAcademicRoutine: (id: string) => Promise<void>;
   
   // Guarded Website Actions
   addGuardedWebsite: (site: Omit<GuardedWebsite, 'id' | 'start_time' | 'is_active'>) => Promise<void>;
@@ -274,6 +290,7 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   
   isSupabaseConnected: boolean | null;
   connectionError: string | null;
+  isAuthReady: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -704,6 +721,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           academicSettings: parsed.academicSettings || { examDate: null, focusSubjectId: null, prepStartDate: null },
           academicChapters: migratedChapters,
           academicSubjects: calculatedSubjects,
+          academicRoutines: parsed.academicRoutines || [],
           tasks: migratedTasks,
           guardedWebsites: (parsed.guardedWebsites || []).map((site: any) => ({
             ...site,
@@ -802,6 +820,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
       academicChapters: generateDefaultChapters(null),
       academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
     };
@@ -809,6 +828,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
 
   const addNotification = useCallback((title: string, message: string) => {
     setState(prev => ({
@@ -1280,6 +1300,85 @@ export function AppProvider({ children }: { children: ReactNode }) {
     triggerSync();
   }, [state.user?.id, triggerSync]);
 
+  const addAcademicRoutine = useCallback(async (routine: Omit<AcademicRoutine, 'id' | 'user_id'>) => {
+    const id = stringToUUID(Date.now().toString() + Math.random().toString());
+    const newRoutine: AcademicRoutine = { ...routine, id };
+
+    setState(prev => {
+      const updatedRoutines = [...prev.academicRoutines, newRoutine];
+      const newSyncQueue = [...(prev.syncQueue || [])];
+      
+      newSyncQueue.push({
+        table: 'academic_routines',
+        type: 'upsert',
+        data: { ...newRoutine, user_id: prev.user?.id },
+        onConflict: 'id'
+      });
+
+      const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
+      try {
+        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
+        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
+      } catch (e) {
+        logger.error("Routine add persistence failed", e);
+      }
+      return nextState;
+    });
+    triggerSync();
+  }, [triggerSync]);
+
+  const updateAcademicRoutine = useCallback(async (id: string, updates: Partial<AcademicRoutine>) => {
+    setState(prev => {
+      const updatedRoutines = prev.academicRoutines.map(r => 
+        r.id === id ? { ...r, ...updates } : r
+      );
+      
+      const updatedRoutine = updatedRoutines.find(r => r.id === id);
+      if (!updatedRoutine) return prev;
+
+      const newSyncQueue = [...(prev.syncQueue || [])];
+      newSyncQueue.push({
+        table: 'academic_routines',
+        type: 'upsert',
+        data: { ...updatedRoutine, user_id: prev.user?.id },
+        onConflict: 'id'
+      });
+
+      const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
+      try {
+        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
+        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
+      } catch (e) {
+        logger.error("Routine update persistence failed", e);
+      }
+      return nextState;
+    });
+    triggerSync();
+  }, [triggerSync]);
+
+  const deleteAcademicRoutine = useCallback(async (id: string) => {
+    setState(prev => {
+      const updatedRoutines = prev.academicRoutines.filter(r => r.id !== id);
+      
+      const newSyncQueue = [...(prev.syncQueue || [])];
+      newSyncQueue.push({
+        table: 'academic_routines',
+        type: 'delete',
+        data: { id },
+      });
+
+      const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
+      try {
+        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
+        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
+      } catch (e) {
+        logger.error("Routine delete persistence failed", e);
+      }
+      return nextState;
+    });
+    triggerSync();
+  }, [triggerSync]);
+
   // Offline sync queue management
   const OFFLINE_QUEUE_KEY = 'offline_sync_queue';
   
@@ -1619,6 +1718,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setState(prev => ({ ...prev, user, profile }));
         fetchUserData(user.id);
       }
+      setIsAuthReady(true);
     });
 
     // Listen for auth changes
@@ -1634,6 +1734,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } else {
         setState(prev => ({ ...prev, user: null, profile: null }));
       }
+      setIsAuthReady(true);
     });
 
     return () => subscription.unsubscribe();
@@ -1722,6 +1823,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         jobs.academicProgress = supabase.from('academic_progress').select('*').eq('user_id', userId);
         jobs.academicSettings = supabase.from('academic_settings').select('*').eq('user_id', userId).single();
         jobs.academicChapters = supabase.from('academic_chapters').select('*').eq('user_id', userId);
+        jobs.academicRoutines = supabase.from('academic_routines').select('*').eq('user_id', userId);
       }
 
       const keys = Object.keys(jobs);
@@ -1886,6 +1988,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           });
           next.academicChapters = mergedChapters;
           next.academicSubjects = calculateAllSubjectsProgress(mergedChapters, userId);
+        }
+        if (results.academicRoutines?.data) {
+          next.academicRoutines = results.academicRoutines.data;
         }
 
         next.isSyncing = false;
@@ -2291,19 +2396,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
 
     if (changed) {
-      setState(prev => ({
-        ...prev,
-        unlockedBadgeIds: Array.from(newUnlocked),
-        notifications: [
-          {
-            id: generateId(),
-            title: "New Badge Unlocked!",
-            message: "You've earned a new Focus badge. Check your showroom.",
-            time: "Just now"
-          },
-          ...prev.notifications
-        ]
-      }));
+      const finalUnlocked = Array.from(newUnlocked);
+      setState(prev => {
+        if (prev.user) {
+          addToSyncQueue({
+            table: 'profiles',
+            type: 'update',
+            id: prev.user.id,
+            data: { badges: finalUnlocked }
+          });
+        }
+        return {
+          ...prev,
+          unlockedBadgeIds: finalUnlocked,
+          notifications: [
+            {
+              id: generateId(),
+              title: "New Badge Unlocked!",
+              message: "You've earned a new Focus badge. Check your showroom.",
+              time: "Just now"
+            },
+            ...prev.notifications
+          ]
+        };
+      });
     }
   };
 
@@ -2462,6 +2578,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       while (newXP >= getRequiredXP(newLevel)) {
         newXP -= getRequiredXP(newLevel);
         newLevel += 1;
+      }
+
+      if (prev.user && (newXP !== prev.xp || newLevel !== prev.level)) {
+        addToSyncQueue({
+          table: 'profiles',
+          type: 'update',
+          id: prev.user.id,
+          data: { xp: newXP, level: newLevel }
+        });
       }
 
       return { 
@@ -3213,16 +3338,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // If already equipped, unequip it
       if (currentIndex !== -1) {
         newEquipped[currentIndex] = null;
-        return { ...prev, equippedBadges: newEquipped };
+      } else {
+        if (badge.category === 'Health') {
+          newEquipped[0] = badgeId;
+        } else if (badge.category === 'Focus') {
+          newEquipped[1] = badgeId;
+        } else {
+          // Special or any can go to slot 3
+          newEquipped[2] = badgeId;
+        }
       }
 
-      if (badge.category === 'Health') {
-        newEquipped[0] = badgeId;
-      } else if (badge.category === 'Focus') {
-        newEquipped[1] = badgeId;
-      } else {
-        // Special or any can go to slot 3
-        newEquipped[2] = badgeId;
+      if (prev.user) {
+        addToSyncQueue({
+          table: 'profiles',
+          type: 'update',
+          id: prev.user.id,
+          data: { equipped_badges: newEquipped }
+        });
       }
 
       return { ...prev, equippedBadges: newEquipped };
@@ -3295,6 +3428,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     },
     addChapterResource,
     deleteChapterResource,
+    addAcademicRoutine,
+    updateAcademicRoutine,
+    deleteAcademicRoutine,
     addGuardedWebsite,
     removeGuardedWebsite,
     toggleDepexMode,
@@ -3302,8 +3438,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     modifyFocusTime,
     addNotification,
     isSupabaseConnected,
-    connectionError
-  }), [state, clock, isSupabaseConnected, connectionError, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
+    connectionError,
+    isAuthReady
+  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
 
   // 3. HARD RESET / RECALCULATION ON MOUNT
   // This ensures that any inconsistent state from hydration or legacy versions is immediately corrected

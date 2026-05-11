@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, Outlet } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
@@ -19,23 +20,53 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { BadgeShowroom } from "./components/BadgeShowroom";
 import { AuthModal } from "./components/AuthModal";
+import { PublicProfile } from "./components/PublicProfile";
 
-function AppContent() {
-  const [currentView, setCurrentView] = useState("Dashboard");
+function RequireAuthMatch() {
+  const { username } = useParams<{ username: string }>();
+  const { user, isAuthReady } = useApp();
+
+  if (!isAuthReady) {
+    // Show splash screen or nothing while checking
+    return <div className="min-h-screen bg-[#050505]" />;
+  }
+
+  if (!user) {
+    // If not logged in, prompt auth or handle unauthorized
+    return <Navigate to="/public/dashboard" replace />;
+  }
+
+  const currentUsername = user.user_metadata?.username || user.email?.split('@')[0];
+
+  if (username !== currentUsername) {
+    // If trying to access someone else's workspace, redirect to own workspace
+    return <Navigate to={`/${currentUsername}/dashboard`} replace />;
+  }
+
+  return <Outlet />;
+}
+
+function AppWorkspace() {
+  const { view } = useParams<{ view: string }>();
+  const navigate = useNavigate();
+  const currentView = (view ? view.charAt(0).toUpperCase() + view.slice(1) : "Dashboard");
+
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [isCustomizingSyllabus, setIsCustomizingSyllabus] = useState(false);
   const [detoxInitialTab, setDetoxInitialTab] = useState<"Overview" | "Set Focus">("Overview");
   const [showBadges, setShowBadges] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
-  const { isFocusing, currentSessionId, user, modifyFocusTime, addNotification, isSupabaseConnected, connectionError, syncData, updateAcademicSettings } = useApp();
   
+  const { isFocusing, currentSessionId, user, modifyFocusTime, addNotification, isSupabaseConnected, connectionError, syncData, updateAcademicSettings } = useApp();
+  const currentUsername = user?.user_metadata?.username || user?.email?.split('@')[0];
+
   // Sync data on view changes
   useEffect(() => {
     if (user) {
       console.log(`Switching to ${currentView} - triggering background sync...`);
       syncData(currentView);
     }
-  }, [currentView, user]);
+  }, [currentView, user, syncData]);
 
   // Manual Session Correction: Subtract 2h as requested by user
   useEffect(() => {
@@ -49,33 +80,32 @@ function AppContent() {
     }
   }, [modifyFocusTime, addNotification]);
 
-  // Handle logout redirection
-  useEffect(() => {
-    if (!user && currentView === "Personal") {
-      setCurrentView("Dashboard");
-      setShowAuth(true);
-    }
-  }, [user, currentView]);
-
-  const handleNavigate = (view: string) => {
-    if (view === "Personal" && !user) {
+  const handleNavigate = (targetView: string) => {
+    if (targetView === "Personal" && !user) {
       setShowAuth(true);
       return;
     }
-    setCurrentView(view);
-    if (view !== "Academic") {
+    
+    if (targetView !== "Academic") {
       setSelectedSubjectId(null);
       setIsCustomizingSyllabus(false);
     }
-    if (view !== "Detox") {
+    if (targetView !== "Detox") {
       setDetoxInitialTab("Overview");
+    }
+    
+    if (currentUsername) {
+      navigate(`/${currentUsername}/${targetView.toLowerCase()}`);
+    } else {
+      navigate(`/public/${targetView.toLowerCase()}`);
     }
   };
 
   const handleStudyNow = (subjectId: string) => {
     updateAcademicSettings({ focusSubjectId: subjectId });
     setDetoxInitialTab("Set Focus");
-    setCurrentView("Detox");
+    if (currentUsername) navigate(`/${currentUsername}/detox`);
+    else navigate(`/public/detox`);
   };
 
   if (isFocusing) {
@@ -100,17 +130,17 @@ function AppContent() {
         {isSupabaseConnected === false && (
           <div className="mx-8 mt-8 p-4 rounded-xl bg-red-500/10 border border-red-500/20 backdrop-blur-md flex items-center justify-between animate-in fade-in slide-in-from-top-4 duration-500">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-              <div>
-                <p className="text-sm font-bold text-red-400">Database Disconnected</p>
-                <p className="text-xs text-red-400/60">{connectionError || "Failed to fetch. Check your Supabase URL or project status."}</p>
-              </div>
+               <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+               <div>
+                 <p className="text-sm font-bold text-red-400">Database Disconnected</p>
+                 <p className="text-xs text-red-400/60">{connectionError || "Failed to fetch. Check your Supabase URL or project status."}</p>
+               </div>
             </div>
             <button 
-              onClick={() => window.location.reload()}
-              className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-[10px] font-bold text-red-400 uppercase tracking-wider transition-colors"
+               onClick={() => window.location.reload()}
+               className="px-3 py-1.5 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-[10px] font-bold text-red-400 uppercase tracking-wider transition-colors"
             >
-              Retry Connection
+               Retry Connection
             </button>
           </div>
         )}
@@ -176,10 +206,37 @@ function AppContent() {
   );
 }
 
+function RootRedirect() {
+  const { user, isAuthReady } = useApp();
+  
+  if (!isAuthReady) {
+    return <div className="min-h-screen bg-[#050505]" />;
+  }
+  
+  if (user) {
+    const currentUsername = user.user_metadata?.username || user.email?.split('@')[0];
+    return <Navigate to={`/${currentUsername}/dashboard`} replace />;
+  }
+  return <Navigate to="/public/dashboard" replace />; // Or public fallback
+}
+
 export default function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/" element={<RootRedirect />} />
+          <Route path="/:username/public" element={<PublicProfile />} />
+          <Route path="/public">
+             <Route index element={<Navigate to="dashboard" replace />} />
+             <Route path=":view" element={<AppWorkspace />} />
+          </Route>
+          <Route path="/:username" element={<RequireAuthMatch />}>
+             <Route index element={<Navigate to="dashboard" replace />} />
+             <Route path=":view" element={<AppWorkspace />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
     </AppProvider>
   );
 }

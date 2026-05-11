@@ -135,17 +135,41 @@ export function Dashboard() {
   }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey]); // Only trigger on task change or every minute of focus
 
   const displayChartData = useMemo(() => {
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
     
-    // Create map for last 7 days
-    const last7Days = Array.from({ length: 7 }, (_, i) => {
-      const d = new Date();
-      d.setDate(todayDate.getDate() - (6 - i));
-      const dateStr = getLocalDateString(d);
+    let numPoints = 7;
+    let labelFormat: (d: Date) => string;
+    let mapKey: (d: Date) => string;
+
+    if (activeTab === "Week") {
+      numPoints = 7;
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      labelFormat = (d) => dayNames[d.getDay()];
+      mapKey = (d) => getLocalDateString(d);
+    } else if (activeTab === "Month") {
+      numPoints = 30;
+      labelFormat = (d) => `${d.getDate()}`;
+      mapKey = (d) => getLocalDateString(d);
+    } else { // Year
+      numPoints = 12;
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      labelFormat = (d) => monthNames[d.getMonth()];
+      mapKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+
+    const dataPoints = Array.from({ length: numPoints }, (_, i) => {
+      const d = new Date(todayDate);
+      if (activeTab === "Year") {
+        d.setMonth(d.getMonth() - (11 - i));
+        d.setDate(1); // Standardize on first of month to avoid overflow issues
+      } else {
+        d.setDate(d.getDate() - (numPoints - 1 - i));
+      }
+      
       return {
-        dateStr,
-        name: dayNames[d.getDay()],
+        key: mapKey(d),
+        name: labelFormat(d),
         focus: 0,
         planner: 0,
         health: 0,
@@ -158,47 +182,63 @@ export function Dashboard() {
     // Aggregate Focus (Net focus time)
     (focusHistory || []).forEach(s => {
       const sDate = new Date(s.start_time || s.timestamp);
-      const dStr = getLocalDateString(sDate);
-      const day = last7Days.find(d => d.dateStr === dStr);
-      if (day) {
+      const k = activeTab === "Year" 
+        ? `${sDate.getFullYear()}-${String(sDate.getMonth() + 1).padStart(2, '0')}`
+        : getLocalDateString(sDate);
+      const dp = dataPoints.find(d => d.key === k);
+      if (dp) {
         const dur = s.session_duration || 0;
         const score = s.growth_percentage || 0;
-        day.focusRaw += (score / 100) * dur;
+        dp.focusRaw += (score / 100) * dur;
       }
     });
 
     // Aggregate Health Metrics
     (healthHistory || []).forEach(h => {
-      const day = last7Days.find(d => d.dateStr === h.entry_date);
-      if (day) {
+      const k = activeTab === "Year" 
+        ? h.entry_date.substring(0, 7)
+        : h.entry_date;
+      const dp = dataPoints.find(d => d.key === k);
+      if (dp) {
         const sleep = h.sleep_hours || 0;
         const hydration = h.hydration || 0;
         const score = (sleep * 0.6 + hydration * 0.4);
-        day.healthRaw = Math.max(day.healthRaw, score);
+        if (activeTab === "Year") {
+          dp.healthRaw += score;
+        } else {
+          dp.healthRaw = Math.max(dp.healthRaw, score);
+        }
       }
     });
 
     // Aggregate Planner Tasks
     tasks.forEach(t => {
       if (t.status === 'Done') {
-        const day = last7Days.find(d => d.dateStr === t.date);
-        if (day) {
-          day.plannerRaw += 1;
+        const k = activeTab === "Year" 
+          ? t.date.substring(0, 7)
+          : t.date;
+        const dp = dataPoints.find(d => d.key === k);
+        if (dp) {
+          dp.plannerRaw += 1;
         }
       }
     });
 
     // Normalize
-    return last7Days.map(d => ({
+    const focusGoal = activeTab === "Year" ? 28800 * 30 : 28800; // 8h/day goal
+    const healthGoal = activeTab === "Year" ? 6 * 30 : 6;
+    const plannerGoal = activeTab === "Year" ? 5 * 30 : 5;
+
+    return dataPoints.map(d => ({
       ...d,
-      focus: Math.min(100, (d.focusRaw / 28800) * 100), // 8h goal
-      health: Math.min(100, (d.healthRaw / 6) * 100), // Score 6 goal
-      planner: Math.min(100, (d.plannerRaw / 5) * 100), // 5 tasks goal
+      focus: Math.min(100, (d.focusRaw / focusGoal) * 100),
+      health: Math.min(100, (d.healthRaw / healthGoal) * 100),
+      planner: Math.min(100, (d.plannerRaw / plannerGoal) * 100),
       focusRawValue: (d.focusRaw / 3600).toFixed(1),
       healthRawValue: d.healthRaw.toFixed(1),
       plannerRawValue: d.plannerRaw
     }));
-  }, [focusHistory, healthHistory, tasks]);
+  }, [focusHistory, healthHistory, tasks, activeTab]);
 
   const handleAIAction = async (type: 'consistency' | 'peak') => {
     setAiInsight("AI is thinking...");

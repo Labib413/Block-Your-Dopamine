@@ -15,6 +15,7 @@ import {
   BookOpen
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
+import { AcademicRoutineView } from "./AcademicRoutineView";
 import { useApp } from "../context/AppContext";
 
 const SubjectCard = memo(({ 
@@ -271,172 +272,187 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyl
         ))}
       </div>
 
-      {/* Main Stats Card */}
-      <GlassCard className="p-8 relative overflow-hidden group">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
-          {/* Countdown & Focus Section */}
-          <div className="lg:col-span-2 space-y-8">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2 text-white/60">
-                <ClockIcon className="w-4 h-4" />
-                <span className="text-xs font-bold uppercase tracking-widest">Exam Countdown</span>
-              </div>
-            <div className="flex items-center gap-2 relative">
-                {paceData && (
-                  <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border backdrop-blur-md bg-black/20 transition-all duration-500 animate-in zoom-in-95 ${
-                    paceData.status === 'Ahead' ? 'border-[#22c55e]/30 text-[#22c55e]' : 
-                    paceData.status === 'Behind' ? 'border-[#ef4444]/30 text-[#ef4444]' : 
-                    'border-[#60a5fa]/30 text-[#60a5fa]'
-                  }`}>
-                    {paceData.status === 'Ahead' ? <ArrowUpRight className="w-3.5 h-3.5" /> : 
-                     paceData.status === 'Behind' ? <ArrowDownRight className="w-3.5 h-3.5" /> : 
-                     <Minus className="w-3.5 h-3.5" />}
-                    <span className="text-[10px] font-bold uppercase tracking-tight whitespace-nowrap">
-                      {paceData.status === 'On Track' ? 'On Track' : `${paceData.diff}% ${paceData.status}`}
-                    </span>
+      {/* Main Content Area */}
+      {activeTab === 'Overview' && (
+        <>
+          {/* Main Stats Card */}
+          <GlassCard className="p-8 relative overflow-hidden group">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-12 relative z-10">
+              {/* Countdown & Focus Section */}
+              <div className="lg:col-span-2 space-y-8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-white/60">
+                    <ClockIcon className="w-4 h-4" />
+                    <span className="text-xs font-bold uppercase tracking-widest">Exam Countdown</span>
                   </div>
-                )}
-                <button 
-                  onClick={handleReset}
-                  className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-400/50 transition-all hover:scale-110"
-                  title="Reset Countdown"
-                >
-                  <RotateCcw className="w-4 h-4" />
-                </button>
-                <div className="relative group">
-                  <button 
-                    type="button"
-                    className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 group-hover:text-neon-green group-hover:border-neon-green/50 transition-all group-hover:scale-110"
-                  >
-                    <CalendarIcon className="w-4 h-4" />
-                  </button>
-                  <input 
-                    type="datetime-local" 
-                    ref={dateInputRef}
-                    onChange={handleDateChange}
-                    className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
-                    title="Set Exam Date"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap gap-4">
-              {[
-                { value: timeLeft.years, label: 'Year' },
-                { value: timeLeft.months, label: 'Month' },
-                { value: timeLeft.days, label: 'Days' },
-                { value: timeLeft.hours, label: 'Hour' }
-              ].map((unit, idx) => (
-                <div key={idx} className="flex-1 min-w-[80px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center group-hover:bg-white/10 transition-colors">
-                  <div className="text-2xl font-mono font-bold text-neon-green mb-1">{unit.value}</div>
-                  <div className="text-[10px] uppercase font-bold text-white/30 tracking-widest">{unit.label}</div>
-                </div>
-              ))}
-            </div>
-
-            <div className="pt-4">
-              <div className="flex items-center gap-2 text-white/60 mb-4">
-                <ShieldAlert className="w-4 h-4 text-neon-green" />
-                <span className="text-xs font-bold uppercase tracking-widest">Need Focus</span>
-              </div>
-              <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-10 h-10 bg-neon-green/10 rounded-xl flex items-center justify-center">
-                    <BookOpen className="text-neon-green w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-white font-bold">{focusSubject?.name}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-neon-green transition-all duration-1000" 
-                          style={{ width: `${focusSubject?.progress || 0}%` }}
-                        />
+                <div className="flex items-center gap-2 relative">
+                    {paceData && (
+                      <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border backdrop-blur-md bg-black/20 transition-all duration-500 animate-in zoom-in-95 ${
+                        paceData.status === 'Ahead' ? 'border-[#22c55e]/30 text-[#22c55e]' : 
+                        paceData.status === 'Behind' ? 'border-[#ef4444]/30 text-[#ef4444]' : 
+                        'border-[#60a5fa]/30 text-[#60a5fa]'
+                      }`}>
+                        {paceData.status === 'Ahead' ? <ArrowUpRight className="w-3.5 h-3.5" /> : 
+                         paceData.status === 'Behind' ? <ArrowDownRight className="w-3.5 h-3.5" /> : 
+                         <Minus className="w-3.5 h-3.5" />}
+                        <span className="text-[10px] font-bold uppercase tracking-tight whitespace-nowrap">
+                          {paceData.status === 'On Track' ? 'On Track' : `${paceData.diff}% ${paceData.status}`}
+                        </span>
                       </div>
-                      <span className="text-[10px] text-neon-green font-bold">{focusSubject?.progress || 0}%</span>
+                    )}
+                    <button 
+                      onClick={handleReset}
+                      className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 hover:text-red-400 hover:border-red-400/50 transition-all hover:scale-110"
+                      title="Reset Countdown"
+                    >
+                      <RotateCcw className="w-4 h-4" />
+                    </button>
+                    <div className="relative group">
+                      <button 
+                        type="button"
+                        className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/40 group-hover:text-neon-green group-hover:border-neon-green/50 transition-all group-hover:scale-110"
+                      >
+                        <CalendarIcon className="w-4 h-4" />
+                      </button>
+                      <input 
+                        type="datetime-local" 
+                        ref={dateInputRef}
+                        onChange={handleDateChange}
+                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full z-20"
+                        title="Set Exam Date"
+                      />
                     </div>
                   </div>
                 </div>
-                <button 
-                  onClick={() => onStudyNow(focusSubject?.id || '')}
-                  className="px-5 py-2.5 rounded-xl bg-neon-green text-black font-bold text-xs uppercase tracking-tight flex items-center gap-2 hover:shadow-[0_0_20px_rgba(57,255,20,0.4)] transition-all hover:scale-105"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                  Study Now
-                </button>
+
+                <div className="flex flex-wrap gap-4">
+                  {[
+                    { value: timeLeft.years, label: 'Year' },
+                    { value: timeLeft.months, label: 'Month' },
+                    { value: timeLeft.days, label: 'Days' },
+                    { value: timeLeft.hours, label: 'Hour' }
+                  ].map((unit, idx) => (
+                    <div key={idx} className="flex-1 min-w-[80px] p-4 rounded-2xl bg-white/5 border border-white/10 text-center group-hover:bg-white/10 transition-colors">
+                      <div className="text-2xl font-mono font-bold text-neon-green mb-1">{unit.value}</div>
+                      <div className="text-[10px] uppercase font-bold text-white/30 tracking-widest">{unit.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="pt-4">
+                  <div className="flex items-center gap-2 text-white/60 mb-4">
+                    <ShieldAlert className="w-4 h-4 text-neon-green" />
+                    <span className="text-xs font-bold uppercase tracking-widest">Need Focus</span>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 bg-neon-green/10 rounded-xl flex items-center justify-center">
+                        <BookOpen className="text-neon-green w-5 h-5" />
+                      </div>
+                      <div>
+                        <h3 className="text-white font-bold">{focusSubject?.name}</h3>
+                        <div className="flex items-center gap-2 mt-1">
+                          <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-neon-green transition-all duration-1000" 
+                              style={{ width: `${focusSubject?.progress || 0}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-neon-green font-bold">{focusSubject?.progress || 0}%</span>
+                        </div>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => onStudyNow(focusSubject?.id || '')}
+                      className="px-5 py-2.5 rounded-xl bg-neon-green text-black font-bold text-xs uppercase tracking-tight flex items-center gap-2 hover:shadow-[0_0_20px_rgba(57,255,20,0.4)] transition-all hover:scale-105"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" />
+                      Study Now
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Overall Progress Circle */}
+              <div className="flex flex-col items-center justify-center border-l border-white/5 pl-8">
+                 <div className="relative w-48 h-48">
+                    <svg className="w-full h-full transform -rotate-90">
+                      <circle
+                        cx="96"
+                        cy="96"
+                        r="84"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        className="text-white/5"
+                      />
+                      <motion.circle
+                        cx="96"
+                        cy="96"
+                        r="84"
+                        stroke="currentColor"
+                        strokeWidth="8"
+                        fill="transparent"
+                        strokeDasharray={2 * Math.PI * 84}
+                        initial={{ strokeDashoffset: 2 * Math.PI * 84 }}
+                        animate={{ strokeDashoffset: 2 * Math.PI * 84 * (1 - overallProgress / 100) }}
+                        transition={{ duration: 1.5, ease: "easeOut" }}
+                        className="text-neon-green"
+                        strokeLinecap="round"
+                      />
+                    </svg>
+                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                      <span className="text-5xl font-mono font-bold text-white leading-none">{overallProgress}%</span>
+                      <span className="text-[10px] uppercase font-bold text-white/40 tracking-widest mt-2">Syllabus Done</span>
+                    </div>
+                 </div>
               </div>
             </div>
+
+            {/* Dynamic Background Blur */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-neon-green/5 blur-[100px] pointer-events-none" />
+          </GlassCard>
+
+          {/* Grid Section */}
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-neon-green" />
+                <h2 className="text-xl font-bold text-white tracking-tight">Subject Progress</h2>
+              </div>
+              <button 
+                onClick={onCustomizeSyllabus}
+                className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group"
+              >
+                <Settings2 className="w-4 h-4 group-hover:rotate-90 transition-transform" />
+                <span className="text-xs font-bold uppercase tracking-widest">Customize Syllabus</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
+              {subjects.map((subject, idx) => (
+                <SubjectCard 
+                  key={subject.id} 
+                  subject={subject} 
+                  idx={idx} 
+                  academicChapters={academicChapters} 
+                  onClick={onSubjectClick} 
+                />
+              ))}
+            </div>
           </div>
+        </>
+      )}
 
-          {/* Overall Progress Circle */}
-          <div className="flex flex-col items-center justify-center border-l border-white/5 pl-8">
-             <div className="relative w-48 h-48">
-                <svg className="w-full h-full transform -rotate-90">
-                  <circle
-                    cx="96"
-                    cy="96"
-                    r="84"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    fill="transparent"
-                    className="text-white/5"
-                  />
-                  <motion.circle
-                    cx="96"
-                    cy="96"
-                    r="84"
-                    stroke="currentColor"
-                    strokeWidth="8"
-                    fill="transparent"
-                    strokeDasharray={2 * Math.PI * 84}
-                    initial={{ strokeDashoffset: 2 * Math.PI * 84 }}
-                    animate={{ strokeDashoffset: 2 * Math.PI * 84 * (1 - overallProgress / 100) }}
-                    transition={{ duration: 1.5, ease: "easeOut" }}
-                    className="text-neon-green"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <span className="text-5xl font-mono font-bold text-white leading-none">{overallProgress}%</span>
-                  <span className="text-[10px] uppercase font-bold text-white/40 tracking-widest mt-2">Syllabus Done</span>
-                </div>
-             </div>
-          </div>
+      {activeTab === 'Set Routine' && <AcademicRoutineView onStudyNow={onStudyNow} />}
+
+      {activeTab === 'Community' && (
+        <div className="flex flex-col items-center justify-center p-12 text-center text-white/40 min-h-[400px]">
+          <Users className="w-16 h-16 mb-4 opacity-50" />
+          <h2 className="text-2xl font-bold tracking-tight mb-2">Community Features Coming Soon</h2>
+          <p className="max-w-md">Join study groups, compare progress, and share your routine with friends.</p>
         </div>
-
-        {/* Dynamic Background Blur */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-neon-green/5 blur-[100px] pointer-events-none" />
-      </GlassCard>
-
-      {/* Grid Section */}
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Activity className="w-5 h-5 text-neon-green" />
-            <h2 className="text-xl font-bold text-white tracking-tight">Subject Progress</h2>
-          </div>
-          <button 
-            onClick={onCustomizeSyllabus}
-            className="flex items-center gap-2 text-white/40 hover:text-white transition-colors group"
-          >
-            <Settings2 className="w-4 h-4 group-hover:rotate-90 transition-transform" />
-            <span className="text-xs font-bold uppercase tracking-widest">Customize Syllabus</span>
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-3 gap-4">
-          {subjects.map((subject, idx) => (
-            <SubjectCard 
-              key={subject.id} 
-              subject={subject} 
-              idx={idx} 
-              academicChapters={academicChapters} 
-              onClick={onSubjectClick} 
-            />
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
 }
