@@ -6,7 +6,6 @@ import { TheSparkIcon } from './icons/TheSparkIcon';
 import { 
   User, 
   ShieldCheck, 
-  AlertTriangle,
   Save, 
   LogOut, 
   Settings, 
@@ -31,7 +30,8 @@ import {
   HeartPulse,
   Leaf,
   Cloud,
-  RefreshCw
+  RefreshCw,
+  Lightbulb
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
@@ -210,15 +210,6 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
     updateGeminiApiKey
   } = useApp();
 
-  const hardReset = () => {
-    const confirmed = window.confirm("CRITICAL ACTION: This will perform a Hard Reset, clearing ALL local state and cache. Continue?");
-    if (confirmed) {
-      localStorage.clear();
-      sessionStorage.clear();
-      window.location.href = "/";
-    }
-  };
-  
   const [apiKey, setApiKey] = useState(geminiApiKey || "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
@@ -707,24 +698,30 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             </div>
           </div>
 
-          {/* Failsafe Reset Card */}
-          <div className="p-7 rounded-[32px] bg-white/[0.02] backdrop-blur-2xl border border-red-500/10 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-red-500/5 to-transparent pointer-events-none" />
+          {/* Feedback Card */}
+          <div className="p-7 rounded-[32px] bg-[#1a1d21]/50 backdrop-blur-md border border-neon-green/20 shadow-2xl relative overflow-hidden group">
+            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-neon-green/5 to-transparent pointer-events-none" />
             
-            <div className="flex items-center gap-3 mb-5 relative z-10">
-              <AlertTriangle className="w-4.5 h-4.5 text-red-400" />
-              <h3 className="text-base font-bold text-white/90">Failsafe Reset</h3>
+            <div className="flex items-center gap-3 mb-3 relative z-10">
+              <Lightbulb className="w-5 h-5 text-neon-green" />
+              <h3 className="text-base font-bold text-white/90">Help Us Build BYD</h3>
             </div>
             
-            <p className="text-[11px] text-white/50 leading-relaxed mb-6 relative z-10 font-medium">
-              If the app is stuck or the timer is broken, use this to clear all local state and restart.
+            <p className="text-[11px] text-white/50 leading-relaxed mb-4 relative z-10 font-medium">
+              Found a bug or have a killer idea? Your feedback helps us make the app better for everyone.
             </p>
 
+            <ul className="text-[10px] text-white/40 space-y-1.5 mb-6 relative z-10 list-disc ml-4">
+              <li>Write about bugs here</li>
+              <li>Give us suggestions for new features</li>
+              <li>Report any performance issues</li>
+            </ul>
+
             <button 
-              onClick={hardReset}
-              className="w-full py-4 rounded-xl bg-red-500/10 backdrop-blur-md border border-red-500/20 text-[10px] font-black text-red-400 tracking-[0.2em] hover:bg-red-500/20 active:scale-[0.98] transition-all relative z-10"
+              onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScHKHARQjP2x-J5q-jQGtz7vo9WX_-irtmOo_35SY2djnkbQQ/viewform?usp=publish-editor', '_blank')}
+              className="w-full py-4 rounded-xl bg-neon-green/10 backdrop-blur-md border border-neon-green/20 text-[10px] font-black text-neon-green tracking-[0.2em] hover:bg-neon-green/20 hover:shadow-[0_0_20px_rgba(57,255,20,0.3)] active:scale-[0.98] transition-all relative z-10"
             >
-              HARD RESET SYSTEM
+              LAUNCH FEEDBACK FORM
             </button>
           </div>
         </section>
