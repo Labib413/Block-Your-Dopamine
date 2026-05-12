@@ -79,7 +79,7 @@ const SubjectCard = memo(({
 });
 
 export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyllabus }: { onBack: () => void, onSubjectClick: (id: string) => void, onStudyNow: (id: string) => void, onCustomizeSyllabus: () => void }) {
-  const { user, academicSubjects, academicChapters, academicSettings, updateAcademicProgress, updateAcademicSettings, startFocusSession } = useApp();
+  const { user, academicSubjects, academicChapters, academicSettings, updateAcademicProgress, updateAcademicSettings, startFocusSession, isDataLoading } = useApp();
   const [activeTab, setActiveTab] = useState("Overview");
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -236,6 +236,22 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyl
   }, [academicSettings.examDate, academicSettings.prepStartDate, overallProgress]);
 
   const focusSubject = subjects.find(s => s.id === academicSettings.focusSubjectId) || subjects[1]; // Default to Physics 2nd Paper as per sketch
+
+  if (isDataLoading) {
+    return (
+      <div className="flex-1 p-8 md:px-12 pt-4 relative isolate min-h-screen flex flex-col animate-pulse">
+        <div className="h-40 bg-white/5 rounded-[32px] mb-8 mt-24" />
+        <div className="flex gap-4 mb-4">
+          <div className="w-24 h-10 bg-white/5 rounded-xl" />
+          <div className="w-24 h-10 bg-white/5 rounded-xl" />
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          {[1,2,3,4].map(i => <div key={i} className="h-48 bg-white/5 rounded-[32px]" />)}
+        </div>
+        <div className="h-64 bg-white/5 rounded-[32px] mb-8" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 p-8 space-y-8 overflow-y-auto scrollbar-hide animate-in fade-in duration-700">

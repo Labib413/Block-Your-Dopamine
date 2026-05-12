@@ -71,6 +71,174 @@ const DailyInspiration = memo(({ quote }: { quote: { text: string; author?: stri
   );
 });
 
+const ProgressCircle = memo(({ level, progressPercent, xp, requiredXP, weeklyRank, globalRank, topSkill }: { level: number, progressPercent: number, xp: number, requiredXP: number, weeklyRank: string, globalRank: string, topSkill: string }) => (
+  <GlassCard className="col-span-8 flex items-center gap-12">
+    <div className="relative w-40 h-40 flex items-center justify-center">
+      <svg className="w-full h-full transform -rotate-90">
+        <circle
+          cx="80"
+          cy="80"
+          r="70"
+          stroke="currentColor"
+          strokeWidth="8"
+          fill="transparent"
+          className="text-white/5"
+        />
+        <circle
+          cx="80"
+          cy="80"
+          r="70"
+          stroke="currentColor"
+          strokeWidth="8"
+          fill="transparent"
+          strokeDasharray={440}
+          strokeDashoffset={440 - (440 * progressPercent) / 100}
+          className="text-neon-green drop-shadow-[0_0_8px_rgba(57,255,20,0.5)] transition-all duration-500"
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Level {level}</span>
+        <div className="flex items-baseline justify-center tabular-nums">
+          <span className="text-2xl font-sans font-bold text-white">
+            {Math.floor(progressPercent)}
+          </span>
+          <span className="text-2xl font-bold text-white ml-0.5">%</span>
+        </div>
+      </div>
+    </div>
+
+    <div className="flex-1">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-xl font-sans font-bold">Progress Overview</h3>
+      </div>
+      <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/10 mb-3">
+        <div 
+          className="h-full bg-neon-green shadow-[0_0_10px_rgba(57,255,20,0.5)] transition-all duration-1000" 
+          style={{ width: `${progressPercent}%` }} 
+        />
+      </div>
+      <div className="flex justify-end">
+        <span className="text-xs font-bold text-white/40 uppercase tracking-widest">{xp}/{requiredXP} XP earned to Level {level + 1}</span>
+      </div>
+      
+      <div className="grid grid-cols-3 gap-4 mt-8">
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Weekly Rank</div>
+          <div className="text-lg font-sans font-bold text-white">{weeklyRank}</div>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Global Rank</div>
+          <div className="text-lg font-sans font-bold text-white">{globalRank}</div>
+        </div>
+        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
+          <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Top Skill</div>
+          <div className="text-lg font-sans font-bold text-white">{topSkill}</div>
+        </div>
+      </div>
+    </div>
+  </GlassCard>
+));
+
+const TrendsChart = memo(({ displayChartData, visibleLines }: { displayChartData: any[], visibleLines: any }) => (
+  <ResponsiveContainer width="100%" height="100%">
+    <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+      {/* existing defs */}
+      <defs>
+        <linearGradient id="colorFocus" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor="#39FF14" stopOpacity={0.3}/>
+          <stop offset="95%" stopColor="#39FF14" stopOpacity={0}/>
+        </linearGradient>
+        <linearGradient id="colorHealth" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3}/>
+          <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
+        </linearGradient>
+        <linearGradient id="colorPlanner" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3}/>
+          <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
+        </linearGradient>
+      </defs>
+      <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
+      <XAxis 
+        dataKey="name" 
+        stroke="#444" 
+        fontSize={10} 
+        tickLine={false} 
+        axisLine={false}
+        dy={10}
+      />
+      <YAxis 
+        domain={[0, 100]} 
+        hide 
+      />
+      <Tooltip 
+        content={({ active, payload, label }) => {
+          if (active && payload && payload.length) {
+            return (
+              <div className="bg-[#1a1d21]/95 backdrop-blur-xl border border-white/10 p-4 rounded-xl shadow-2xl ring-1 ring-white/5">
+                <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{label} Analysis</p>
+                <div className="space-y-3">
+                  {payload.map((entry: any, index: number) => (
+                    <div key={index} className="flex items-center justify-between gap-10">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+                        <span className="text-xs font-bold text-white/90 capitalize">{entry.name}</span>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs font-mono font-bold" style={{ color: entry.color }}>
+                          {entry.name === 'focus' ? `${entry.payload.focusRawValue}h` : 
+                           entry.name === 'planner' ? `${entry.payload.plannerRawValue} Tasks` : 
+                           `${entry.payload.healthRawValue} Score`}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        }}
+      />
+      {visibleLines.focus && (
+        <Area 
+          type="monotone" 
+          dataKey="focus" 
+          name="focus"
+          stroke="#39FF14" 
+          strokeWidth={3}
+          fillOpacity={1}
+          fill="url(#colorFocus)"
+          animationDuration={2000}
+        />
+      )}
+      {visibleLines.planner && (
+        <Area 
+          type="monotone" 
+          dataKey="planner" 
+          name="planner"
+          stroke="#a855f7" 
+          strokeWidth={3}
+          fillOpacity={1}
+          fill="url(#colorPlanner)"
+          animationDuration={2000}
+        />
+      )}
+      {visibleLines.health && (
+        <Area 
+          type="monotone" 
+          dataKey="health" 
+          name="health"
+          stroke="#60a5fa" 
+          strokeWidth={3}
+          fillOpacity={1}
+          fill="url(#colorHealth)"
+          animationDuration={2000}
+        />
+      )}
+    </AreaChart>
+  </ResponsiveContainer>
+));
+
 export function Dashboard() {
   const [quote, setQuote] = useState({ text: "Loading inspiration...", author: "" });
   const [aiInsight, setAiInsight] = useState("Analyzing your performance...");
@@ -99,7 +267,8 @@ export function Dashboard() {
     sleepHours,
     geminiApiKey,
     focusHistory,
-    healthHistory
+    healthHistory,
+    isDataLoading
   } = useApp();
 
   const [visibleLines, setVisibleLines] = useState({
@@ -126,13 +295,13 @@ export function Dashboard() {
 
   // Debounce AI insight calls to prevent hitting rate limits
   useEffect(() => {
-    if (tasksCompleted > 0 || focusTime > 0) {
+    if ((tasksCompleted > 0 || focusTime > 0) && !isDataLoading) {
       const timer = setTimeout(() => {
         getAIInsight({ focusTime, tasks: tasksCompleted }, geminiApiKey).then(setAiInsight);
       }, 5000); // Only update every 5 seconds of activity
       return () => clearTimeout(timer);
     }
-  }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey]); // Only trigger on task change or every minute of focus
+  }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey, isDataLoading]); // Only trigger on task change or every minute of focus
 
   const displayChartData = useMemo(() => {
     const todayDate = new Date();
@@ -252,78 +421,32 @@ export function Dashboard() {
     setAiInsight(insight);
   };
 
+  if (isDataLoading) {
+    return (
+      <div className="flex-1 p-8 md:px-12 pt-4 animate-pulse">
+        <div className="h-32 bg-white/5 rounded-[32px] mb-8" />
+        <div className="grid grid-cols-12 gap-8 mb-8">
+          <div className="col-span-8 h-48 bg-white/5 rounded-[32px]" />
+          <div className="col-span-4 h-48 bg-white/5 rounded-[32px]" />
+        </div>
+        <div className="grid grid-cols-4 gap-6 mb-8">
+          {[1,2,3,4].map(i => <div key={i} className="h-36 bg-white/5 rounded-[32px]" />)}
+        </div>
+        <div className="grid grid-cols-12 gap-8">
+          <div className="col-span-8 h-96 bg-white/5 rounded-[32px]" />
+          <div className="col-span-4 h-96 bg-white/5 rounded-[32px]" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 overflow-y-auto overflow-x-visible p-8 md:px-12 pt-4">
       {/* Daily Inspiration Wrapper to prevent clipping */}
       <DailyInspiration quote={quote} />
 
       <div className="grid grid-cols-12 gap-8 mb-8">
-        {/* Progress Card */}
-        <GlassCard className="col-span-8 flex items-center gap-12">
-          <div className="relative w-40 h-40 flex items-center justify-center">
-            <svg className="w-full h-full transform -rotate-90">
-              <circle
-                cx="80"
-                cy="80"
-                r="70"
-                stroke="currentColor"
-                strokeWidth="8"
-                fill="transparent"
-                className="text-white/5"
-              />
-              <circle
-                cx="80"
-                cy="80"
-                r="70"
-                stroke="currentColor"
-                strokeWidth="8"
-                fill="transparent"
-                strokeDasharray={440}
-                strokeDashoffset={440 - (440 * progressPercent) / 100}
-                className="text-neon-green drop-shadow-[0_0_8px_rgba(57,255,20,0.5)] transition-all duration-500"
-              />
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center">
-              <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Level {level}</span>
-              <div className="flex items-baseline justify-center tabular-nums">
-                <span className="text-2xl font-sans font-bold text-white">
-                  {Math.floor(progressPercent)}
-                </span>
-                <span className="text-2xl font-bold text-white ml-0.5">%</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-sans font-bold">Progress Overview</h3>
-            </div>
-            <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/10 mb-3">
-              <div 
-                className="h-full bg-neon-green shadow-[0_0_10px_rgba(57,255,20,0.5)] transition-all duration-1000" 
-                style={{ width: `${progressPercent}%` }} 
-              />
-            </div>
-            <div className="flex justify-end">
-              <span className="text-xs font-bold text-white/40 uppercase tracking-widest">{xp}/{requiredXP} XP earned to Level {level + 1}</span>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-4 mt-8">
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Weekly Rank</div>
-                <div className="text-lg font-sans font-bold text-white">{weeklyRank}</div>
-              </div>
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Global Rank</div>
-                <div className="text-lg font-sans font-bold text-white">{globalRank}</div>
-              </div>
-              <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-                <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Top Skill</div>
-                <div className="text-lg font-sans font-bold text-white">{topSkill}</div>
-              </div>
-            </div>
-          </div>
-        </GlassCard>
+        <ProgressCircle level={level} progressPercent={progressPercent} xp={xp} requiredXP={requiredXP} weeklyRank={weeklyRank} globalRank={globalRank} topSkill={topSkill} />
 
         {/* AI Insight Card */}
         <GlassCard className="col-span-4 flex flex-col p-6">
@@ -437,102 +560,7 @@ export function Dashboard() {
             </div>
           </div>
           <div className="h-72 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={displayChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorFocus" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#39FF14" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#39FF14" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorHealth" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#60a5fa" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#60a5fa" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorPlanner" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#a855f7" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#a855f7" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#222" vertical={false} />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="#444" 
-                  fontSize={10} 
-                  tickLine={false} 
-                  axisLine={false}
-                  dy={10}
-                />
-                <YAxis 
-                  domain={[0, 100]} 
-                  hide 
-                />
-                <Tooltip 
-                  content={({ active, payload, label }) => {
-                    if (active && payload && payload.length) {
-                      return (
-                        <div className="bg-[#1a1d21]/95 backdrop-blur-xl border border-white/10 p-4 rounded-xl shadow-2xl ring-1 ring-white/5">
-                          <p className="text-white/40 text-[10px] font-black uppercase tracking-[0.2em] mb-3">{label} Analysis</p>
-                          <div className="space-y-3">
-                            {payload.map((entry: any, index: number) => (
-                              <div key={index} className="flex items-center justify-between gap-10">
-                                <div className="flex items-center gap-2.5">
-                                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-                                  <span className="text-xs font-bold text-white/90 capitalize">{entry.name}</span>
-                                </div>
-                                <div className="flex flex-col items-end">
-                                  <span className="text-xs font-mono font-bold" style={{ color: entry.color }}>
-                                    {entry.name === 'focus' ? `${entry.payload.focusRawValue}h` : 
-                                     entry.name === 'planner' ? `${entry.payload.plannerRawValue} Tasks` : 
-                                     `${entry.payload.healthRawValue} Score`}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  }}
-                />
-                {visibleLines.focus && (
-                  <Area 
-                    type="monotone" 
-                    dataKey="focus" 
-                    name="focus"
-                    stroke="#39FF14" 
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorFocus)"
-                    animationDuration={2000}
-                  />
-                )}
-                {visibleLines.planner && (
-                  <Area 
-                    type="monotone" 
-                    dataKey="planner" 
-                    name="planner"
-                    stroke="#a855f7" 
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorPlanner)"
-                    animationDuration={2000}
-                  />
-                )}
-                {visibleLines.health && (
-                  <Area 
-                    type="monotone" 
-                    dataKey="health" 
-                    name="health"
-                    stroke="#60a5fa" 
-                    strokeWidth={3}
-                    fillOpacity={1}
-                    fill="url(#colorHealth)"
-                    animationDuration={2000}
-                  />
-                )}
-              </AreaChart>
-            </ResponsiveContainer>
+            <TrendsChart displayChartData={displayChartData} visibleLines={visibleLines} />
           </div>
         </GlassCard>
 

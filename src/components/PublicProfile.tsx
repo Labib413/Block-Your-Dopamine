@@ -1,35 +1,25 @@
-import React, { useEffect, useState } from "react";
+import React, { useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
 import { GlassCard } from "./GlassCard";
 import { Award, Trophy } from "lucide-react";
 import { BADGES } from "../constants";
+import { useSupabaseFetch } from "../hooks/useSupabaseFetch";
 
 export function PublicProfile() {
   const { username } = useParams<{ username: string }>();
-  const [data, setData] = useState<{ badges: string[], level: number, xp: number } | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchPublicData() {
-      try {
-        const { data: profile, error } = await supabase
-          .from('profiles')
-          .select('badges, level, xp')
-          .eq('username', username)
-          .single();
-          
-        if (!error && profile) {
-          setData(profile);
-        }
-      } catch (err) {
-        console.error("Error fetching public profile:", err);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchPublicData();
+  const fetchProfile = useCallback(async () => {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('badges, level, xp')
+      .eq('username', username)
+      .single();
+    if (error) throw error;
+    return profile;
   }, [username]);
+
+  const { data, isLoading } = useSupabaseFetch(`public_profile_${username}`, fetchProfile);
 
   return (
     <div className="min-h-screen bg-[#050505] flex flex-col items-center justify-center p-8 selection:bg-neon-green/30">
@@ -50,7 +40,7 @@ export function PublicProfile() {
           <Trophy className="w-12 h-12 text-neon-green/50" />
         </div>
 
-        {loading ? (
+        {isLoading ? (
           <div className="flex justify-center p-12">
             <div className="w-8 h-8 rounded-full border-4 border-neon-green border-t-transparent animate-spin" />
           </div>

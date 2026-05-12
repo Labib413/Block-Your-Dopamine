@@ -8,24 +8,26 @@
 DO $$
 BEGIN
   IF EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'detox_settings') THEN
-    INSERT INTO public.user_preferences (
-      user_id, daily_focus_goal_minutes, daily_calorie_goal, daily_step_goal,
-      daily_sleep_goal, daily_hydration_goal, daily_screen_time_goal, updated_at
-    )
-    SELECT user_id, daily_focus_goal_minutes, daily_calorie_goal, daily_step_goal,
-           daily_sleep_goal, daily_hydration_goal, daily_screen_time_goal, updated_at
-    FROM public.detox_settings
-    ON CONFLICT (user_id) DO UPDATE SET
-      daily_focus_goal_minutes = EXCLUDED.daily_focus_goal_minutes,
-      daily_calorie_goal = EXCLUDED.daily_calorie_goal,
-      daily_step_goal = EXCLUDED.daily_step_goal,
-      daily_sleep_goal = EXCLUDED.daily_sleep_goal,
-      daily_hydration_goal = EXCLUDED.daily_hydration_goal,
-      daily_screen_time_goal = EXCLUDED.daily_screen_time_goal,
-      updated_at = EXCLUDED.updated_at;
+    EXECUTE '
+      INSERT INTO public.user_preferences (
+        user_id, daily_focus_goal_minutes, daily_calorie_goal, daily_step_goal,
+        daily_sleep_goal, daily_hydration_goal, daily_screen_time_goal, updated_at
+      )
+      SELECT user_id, daily_focus_goal_minutes, daily_calorie_goal, daily_step_goal,
+             daily_sleep_goal, daily_hydration_goal, daily_screen_time_goal, updated_at
+      FROM public.detox_settings
+      ON CONFLICT (user_id) DO UPDATE SET
+        daily_focus_goal_minutes = EXCLUDED.daily_focus_goal_minutes,
+        daily_calorie_goal = EXCLUDED.daily_calorie_goal,
+        daily_step_goal = EXCLUDED.daily_step_goal,
+        daily_sleep_goal = EXCLUDED.daily_sleep_goal,
+        daily_hydration_goal = EXCLUDED.daily_hydration_goal,
+        daily_screen_time_goal = EXCLUDED.daily_screen_time_goal,
+        updated_at = EXCLUDED.updated_at
+    ';
 
     -- Drop the redundant detox_settings table
-    DROP TABLE public.detox_settings;
+    EXECUTE 'DROP TABLE public.detox_settings';
   END IF;
 END $$;
 

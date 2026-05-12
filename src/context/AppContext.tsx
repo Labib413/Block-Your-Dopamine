@@ -292,6 +292,7 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   isSupabaseConnected: boolean | null;
   connectionError: string | null;
   isAuthReady: boolean;
+  isDataLoading: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -830,6 +831,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [isSupabaseConnected, setIsSupabaseConnected] = useState<boolean | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
+  const [isDataLoading, setIsDataLoading] = useState(true);
 
   const addNotification = useCallback((title: string, message: string) => {
     setState(prev => ({
@@ -2023,6 +2025,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     } finally {
       isSyncingRef.current = false;
+      setIsDataLoading(false);
     }
   }, [state.user?.id, state.academicChapters, state.syncQueue, processSyncQueue]);
 
@@ -3542,8 +3545,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addNotification,
     isSupabaseConnected,
     connectionError,
-    isAuthReady
-  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
+    isAuthReady,
+    isDataLoading
+  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, isDataLoading, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
 
   // 3. HARD RESET / RECALCULATION ON MOUNT
   // This ensures that any inconsistent state from hydration or legacy versions is immediately corrected
