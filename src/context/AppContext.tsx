@@ -297,13 +297,15 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const DHAKA_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Dhaka',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
 const getLocalDateString = (date: Date) => {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date); // Returns YYYY-MM-DD
+  return DHAKA_DATE_FORMATTER.format(date); // Returns YYYY-MM-DD
 };
 
 const getYesterdayDateString = () => {
@@ -354,6 +356,18 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
   const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
 
+  // Optimization: Pre-calculate maps for O(1) lookups
+  const chapterMap = new Map(uniqueChapters.map(c => [c.id, c]));
+
+  let globalSettingsParsed: any[] = [];
+  try {
+    const globalSettings = localStorage.getItem('BYD_Syllabus_Settings');
+    if (globalSettings) {
+      globalSettingsParsed = JSON.parse(globalSettings);
+    }
+  } catch (e) {}
+  const globalSettingsMap = new Map(globalSettingsParsed.map((c: any) => [c.id, c]));
+
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
     const officialNames = HSC_SYLLABUS[subjectId] || [];
@@ -368,23 +382,23 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check localStorage explicitly if chapter not in state yet
       let isActive = true;
       try {
         const checklistSaved = localStorage.getItem(`byd_chapter_${chapterId}_checklist`);
-        const globalSettings = localStorage.getItem('BYD_Syllabus_Settings');
         
         if (checklistSaved) {
           const parsed = JSON.parse(checklistSaved);
           if (parsed.is_active !== undefined) isActive = parsed.is_active;
-        } else if (globalSettings) {
-          const parsedGlobal = JSON.parse(globalSettings);
-          const matched = parsedGlobal.find((c: any) => c.id === chapterId);
-          if (matched && matched.is_active !== undefined) isActive = matched.is_active;
-        } else if (chapter) {
-          isActive = chapter.is_active;
+        } else {
+          const matched = globalSettingsMap.get(chapterId);
+          if (matched && matched.is_active !== undefined) {
+            isActive = matched.is_active;
+          } else if (chapter) {
+            isActive = chapter.is_active;
+          }
         }
       } catch (e) {
         if (chapter) isActive = chapter.is_active;
@@ -1011,13 +1025,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const nextState = { ...prev, academicSubjects: updatedSubjects, syncQueue: newSyncQueue };
 
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Progress persistence failed", e);
-      }
-
       return nextState;
     });
     triggerSync();
@@ -1041,13 +1048,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const nextState = { ...prev, academicSettings: updatedSettings, syncQueue: newSyncQueue };
-
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Settings persistence failed", e);
-      }
 
       return nextState;
     });
@@ -1148,15 +1148,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const subjectId = chapter.subject_id;
       
       try {
-        const saved = localStorage.getItem('blockYourDopamineState');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          parsed.academicChapters = finalUpdatedChapters;
-          parsed.academicSubjects = finalUpdatedSubjects;
-          parsed._timestamp = timestamp;
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
         // SYLLABUS SETTINGS EXPLICIT SAVE (Per Requirement)
         localStorage.setItem('BYD_Syllabus_Settings', safeStringify(finalUpdatedChapters));
 
@@ -1251,14 +1242,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const nextState = { ...prev, academicChapters: updatedChapters, syncQueue: newSyncQueue };
 
-      // Immediate persistence
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Resource add persistence failed", e);
-      }
-
       return nextState;
     });
     triggerSync();
@@ -1290,14 +1273,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       const nextState = { ...prev, academicChapters: updatedChapters, syncQueue: newSyncQueue };
 
-      // Immediate persistence
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Resource delete persistence failed", e);
-      }
-
       return nextState;
     });
     triggerSync();
@@ -1319,12 +1294,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Routine add persistence failed", e);
-      }
       return nextState;
     });
     triggerSync();
@@ -1348,12 +1317,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Routine update persistence failed", e);
-      }
       return nextState;
     });
     triggerSync();
@@ -1371,12 +1334,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        logger.error("Routine delete persistence failed", e);
-      }
       return nextState;
     });
     triggerSync();
@@ -2380,36 +2337,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Throttled localStorage save to prevent performance issues during frequent updates
-  const lastSaveTimeRef = useRef<number>(0);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  useEffect(() => {
-    const saveToStorage = () => {
-      try {
-        // Optimization: Don't save transient UI state like currentTime to localStorage
-        // This reduces the payload size and frequency of disk writes
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = state;
-        localStorage.setItem('blockYourDopamineState', safeStringify(persistentState));
-        lastSaveTimeRef.current = Date.now();
-      } catch (e) {
-        console.error("Failed to save state to localStorage", e);
-      }
-    };
-
-    const now = Date.now();
-    // Throttle: Save immediately if it's been more than 10 seconds, otherwise wait
-    if (now - lastSaveTimeRef.current > 10000) {
-      saveToStorage();
-    } else {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(saveToStorage, 10000);
-    }
-
-    return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-    };
-  }, [state]);
 
   // Persist Auth Data separately for consistency
   useEffect(() => {
@@ -2498,7 +2425,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const logActivity = () => {
+  const logActivity = useCallback(() => {
     const now = new Date().toISOString();
     setState(prev => {
       const newHealth = { ...prev.badgeHealth };
@@ -2518,7 +2445,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         badgeHealth: newHealth
       };
     });
-  };
+  }, []);
 
   const performDailyReset = (prev: AppState, today: string, timeStr: string): AppState => {
     if (prev.lastResetDate === today) return prev;
@@ -3258,18 +3185,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (!state.user) return;
     const today = getLocalDateString(new Date());
     
-    setState(prev => {
-      const nextState = { ...prev, macros: { protein, carbs, fats } };
-
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        console.error("Macros persistence failed", e);
-      }
-
-      return nextState;
-    });
+    setState(prev => ({ ...prev, macros: { protein, carbs, fats } }));
 
     addToSyncQueue({
     table: 'macro_data',
@@ -3311,22 +3227,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const addTask = (task: Task) => {
+  const addTask = useCallback((task: Task) => {
     logActivity();
     
     // Update local state immediately
-    setState(prev => {
-      const nextState = { ...prev, tasks: [...prev.tasks, task] };
-
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        console.error("Task add persistence failed", e);
-      }
-
-      return nextState;
-    });
+    setState(prev => ({ ...prev, tasks: [...prev.tasks, task] }));
 
     if (state.user) {
       addToSyncQueue({
@@ -3345,61 +3250,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       });
     }
-  };
+  }, [state.user, addToSyncQueue, logActivity]);
 
-  const deleteTask = (id: string) => {
+  const deleteTask = useCallback((id: string) => {
     // Update local state immediately
-    setState(prev => {
-      const nextState = { ...prev, tasks: prev.tasks.filter(t => t.id !== id) };
-
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        console.error("Task delete persistence failed", e);
-      }
-
-      return nextState;
-    });
+    setState(prev => ({ ...prev, tasks: prev.tasks.filter(t => t.id !== id) }));
 
     if (state.user) {
-    addToSyncQueue({
-      table: 'planner_tasks',
-      type: 'delete',
-      id: id
-    });
-  }
-};
+      addToSyncQueue({
+        table: 'planner_tasks',
+        type: 'delete',
+        id: id
+      });
+    }
+  }, [state.user, addToSyncQueue]);
 
-  const updateTaskStatus = (id: string, status: Status) => {
+  const updateTaskStatus = useCallback((id: string, status: Status) => {
     logActivity();
     
     // Update local state immediately
-    setState(prev => {
-      const nextState = {
-        ...prev,
-        tasks: prev.tasks.map(t => t.id === id ? { ...t, status } : t)
-      };
-
-      try {
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
-      } catch (e) {
-        console.error("Task update persistence failed", e);
-      }
-
-      return nextState;
-    });
+    setState(prev => ({
+      ...prev,
+      tasks: prev.tasks.map(t => t.id === id ? { ...t, status } : t)
+    }));
 
     if (state.user) {
-    addToSyncQueue({
-      table: 'planner_tasks',
-      type: 'update',
-      id: id,
-      data: { status }
-    });
-  }
-};
+      addToSyncQueue({
+        table: 'planner_tasks',
+        type: 'update',
+        id: id,
+        data: { status }
+      });
+    }
+  }, [state.user, addToSyncQueue, logActivity]);
 
   const equipBadge = (badgeId: string) => {
     setState(prev => {

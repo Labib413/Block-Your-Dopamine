@@ -1,0 +1,3 @@
+## 2025-05-15 - [Persistence Consolidation & Memoization]
+**Learning:** Removing redundant synchronous `localStorage` calls in action handlers can significantly reduce main-thread blocking during rapid state updates. However, it's critical to ensure the centralized persistence hook (e.g., a debounced `useEffect`) is robust and covers all necessary state slices to avoid data loss. Additionally, `React.memo` is only effective if parent-provided callbacks are wrapped in `useCallback`.
+**Action:** Always verify the existence and dependencies of the primary persistence hook before pruning manual `localStorage` calls. Ensure all passed handlers to memoized components have stable references.

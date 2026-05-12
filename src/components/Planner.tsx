@@ -51,6 +51,15 @@ const getCategoryIcon = (catName: string) => {
   return cat ? cat.icon : Tag;
 };
 
+const getPriorityColor = (p: Priority | null) => {
+  switch (p) {
+    case "High": return "text-red-400 border-red-400/30 bg-red-400/10 shadow-[0_0_10px_rgba(248,113,113,0.2)]";
+    case "Medium": return "text-yellow-400 border-yellow-400/30 bg-yellow-400/10 shadow-[0_0_10px_rgba(250,204,21,0.2)]";
+    case "Low": return "text-green-400 border-green-400/30 bg-green-400/10 shadow-[0_0_10px_rgba(74,222,128,0.2)]";
+    default: return "text-white/40 border-white/20 bg-white/5";
+  }
+};
+
 export function Planner({ onBack }: PlannerProps) {
   const { tasks, addTask, deleteTask, updateTaskStatus } = useApp();
   const [title, setTitle] = useState("");
@@ -119,15 +128,6 @@ export function Planner({ onBack }: PlannerProps) {
 
   const handleStatusChange = (id: string, newStatus: Status) => {
     updateTaskStatus(id, newStatus);
-  };
-
-  const getPriorityColor = (p: Priority | null) => {
-    switch (p) {
-      case "High": return "text-red-400 border-red-400/30 bg-red-400/10 shadow-[0_0_10px_rgba(248,113,113,0.2)]";
-      case "Medium": return "text-yellow-400 border-yellow-400/30 bg-yellow-400/10 shadow-[0_0_10px_rgba(250,204,21,0.2)]";
-      case "Low": return "text-green-400 border-green-400/30 bg-green-400/10 shadow-[0_0_10px_rgba(74,222,128,0.2)]";
-      default: return "text-white/40 border-white/20 bg-white/5";
-    }
   };
 
   const todoTasks = tasks.filter(t => t.status === "To Do");
@@ -481,12 +481,17 @@ export function Planner({ onBack }: PlannerProps) {
   );
 }
 
-const TaskCard: React.FC<{ 
+const TaskCard = React.memo(({
+  task,
+  onDelete,
+  onStatusChange,
+  getPriorityColor
+}: {
   task: Task, 
   onDelete: (id: string) => void,
   onStatusChange: (id: string, status: Status) => void,
   getPriorityColor: (p: Priority | null) => string
-}> = ({ task, onDelete, onStatusChange, getPriorityColor }) => {
+}) => {
   const handleStatusCycle = () => {
     if (task.status === "To Do") onStatusChange(task.id, "In Progress");
     else if (task.status === "In Progress") onStatusChange(task.id, "Done");
@@ -573,4 +578,4 @@ const TaskCard: React.FC<{
       </div>
     </GlassCard>
   );
-};
+});
