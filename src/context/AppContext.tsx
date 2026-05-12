@@ -1804,7 +1804,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (!view || view === 'Dashboard' || view === 'Reports' || view === 'Detox') {
         jobs.focus = fetchFocusData();
-        jobs.detoxSettings = supabase.from('detox_settings').select('*').eq('user_id', userId).single();
         jobs.prefs = supabase.from('user_preferences').select('*').eq('user_id', userId).single();
       }
 
@@ -1902,7 +1901,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const dsSetting = results.detoxSettings?.data || results.prefs?.data;
+        const dsSetting = results.prefs?.data;
         if (dsSetting) {
           next.dailyGoalHours = (dsSetting.daily_focus_goal_minutes || 120) / 60;
           next.healthTargets = {
@@ -2046,7 +2045,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.user) return;
     
-    // Real-time listener for focus_logs
+    // Real-time listeners for data synchronization across devices
+    const profileChannel = supabase
+      .channel('profile_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${state.user.id}`
+        },
+        async (payload) => {
+          logger.log('Profile updated via real-time:', payload);
+          // Refresh profile data and stats immediately
+          const { data } = await supabase.from('profiles').select('*').eq('id', state.user.id).single();
+          if (data) {
+            setState(prev => ({
+              ...prev,
+              xp: data.xp ?? prev.xp,
+              level: data.level ?? prev.level,
+              profile: {
+                ...prev.profile,
+                username: data.username || '',
+                fullName: data.full_name || prev.profile?.fullName || '',
+                avatarUrl: data.avatar_url,
+                institution: data.institution || '',
+                class: data.class || '',
+                subjectGroup: data.subject_group || '',
+                year: data.year || '',
+                gender: data.gender || 'Male'
+              },
+              geminiApiKey: data.gemini_api_key || prev.geminiApiKey,
+              depexMode: data.depex_mode || prev.depexMode,
+              unlockedBadgeIds: data.badges || prev.unlockedBadgeIds,
+              equippedBadges: data.equipped_badges || prev.equippedBadges
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    const prefsChannel = supabase
+      .channel('user_prefs_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_preferences',
+          filter: `user_id=eq.${state.user.id}`
+        },
+        async (payload) => {
+          logger.log('User preferences updated via real-time:', payload);
+          const { data } = await supabase.from('user_preferences').select('*').eq('user_id', state.user.id).single();
+          if (data) {
+            setState(prev => ({
+              ...prev,
+              dailyGoalHours: data.daily_focus_goal_minutes ? Math.floor(data.daily_focus_goal_minutes / 60) : prev.dailyGoalHours,
+              healthTargets: {
+                hydration: String(data.daily_hydration_goal) || prev.healthTargets.hydration,
+                sleep: String(data.daily_sleep_goal) || prev.healthTargets.sleep,
+                footsteps: String(data.daily_step_goal) || prev.healthTargets.footsteps,
+                calories: String(data.daily_calorie_goal) || prev.healthTargets.calories
+              }
+            }));
+          }
+        }
+      )
+      .subscribe();
+
     const channel = supabase
       .channel('focus_logs_changes')
       .on(
@@ -2073,6 +2141,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       clearInterval(syncInterval);
       supabase.removeChannel(channel);
+      supabase.removeChannel(profileChannel);
+      supabase.removeChannel(prefsChannel);
     };
   }, [state.user?.id, masterSync]);
 
@@ -3369,8 +3439,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // 1. Wipe remote auth session
     await supabase.auth.signOut();
-    setState(prev => ({ ...prev, user: null, profile: null, daysActive: 1 }));
+    
+    // 2. Wipe all local storage to ensure no sensitive data remains
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // 3. Reset application state entirely
+    setState(prev => ({ 
+      ...prev, 
+      user: null, 
+      profile: null,
+      xp: 0,
+      level: 1,
+      streak: 0,
+      focusTime: 0,
+      tasks: [],
+      dailyGoalHours: 2,
+      detoxPercent: 100,
+      physicalFitness: 0,
+      daysActive: 1,
+      syncQueue: [],
+      equippedBadges: [null, null, null],
+      unlockedBadgeIds: [],
+      healthTargets: {
+        hydration: '8',
+        sleep: '8',
+        footsteps: '10000',
+        calories: '2000'
+      },
+      guardedWebsites: [],
+      macros: { protein: 0, carbs: 0, fats: 0 }
+    }));
   };
 
   // Memoize context value to prevent unnecessary re-renders of all consumers
