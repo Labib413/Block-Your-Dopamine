@@ -48,6 +48,16 @@ export function stringToUUID(str: string): string {
   return `${fullHex.slice(0, 8)}-${fullHex.slice(8, 12)}-4${fullHex.slice(13, 16)}-a${fullHex.slice(17, 20)}-${fullHex.slice(20, 32)}`;
 }
 
+export function sanitizeUrl(url: string): string {
+  if (!url) return "about:blank";
+  const trimmed = url.trim();
+  const dangerousProtocols = /^(javascript|data|vbscript|file):/i;
+  if (dangerousProtocols.test(trimmed)) {
+    return "about:blank";
+  }
+  return trimmed;
+}
+
 export function safeStringify(obj: any, indent?: number): string {
   const cache = new Set();
   return JSON.stringify(obj, (key, value) => {
