@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, Outlet } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { Dashboard } from "./components/Dashboard";
@@ -21,6 +22,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BadgeShowroom } from "./components/BadgeShowroom";
 import { AuthModal } from "./components/AuthModal";
 import { PublicProfile } from "./components/PublicProfile";
+
+const queryClient = new QueryClient();
 
 function RequireAuthMatch() {
   const { username } = useParams<{ username: string }>();
@@ -252,19 +255,21 @@ function RootRedirect() {
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<RootRedirect />} />
-          <Route path="/login" element={<AuthPage />} />
-          <Route path="/public/:view" element={<AppWorkspace />} />
-          <Route path="/public" element={<Navigate to="/public/dashboard" replace />} />
-          <Route path="/:username" element={<RequireAuthMatch />}>
-             <Route index element={<Navigate to="dashboard" replace />} />
-             <Route path=":view" element={<AppWorkspace />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </AppProvider>
+    <QueryClientProvider client={queryClient}>
+      <AppProvider>
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<RootRedirect />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/public/:view" element={<AppWorkspace />} />
+            <Route path="/public" element={<Navigate to="/public/dashboard" replace />} />
+            <Route path="/:username" element={<RequireAuthMatch />}>
+               <Route index element={<Navigate to="dashboard" replace />} />
+               <Route path=":view" element={<AppWorkspace />} />
+            </Route>
+          </Routes>
+        </BrowserRouter>
+      </AppProvider>
+    </QueryClientProvider>
   );
 }
