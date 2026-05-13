@@ -16,7 +16,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp, AcademicChapter, ChapterResource } from "../context/AppContext";
 import { logger } from "../lib/logger";
-import { cn, generateId, stringToUUID, sanitizeUrl } from "../lib/utils";
+import { cn, generateId, stringToUUID } from "../lib/utils";
 import { HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
 
 interface SyllabusViewProps {
@@ -46,8 +46,6 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
       const chapterId = stringToUUID(rawId);
       
       const cloudData = academicChapters.find(c => c.id === chapterId);
-      const granularKey = `byd_chapter_${chapterId}_checklist`;
-      const savedGranular = localStorage.getItem(granularKey);
       
       let chapter = cloudData || {
         id: chapterId,
@@ -63,24 +61,6 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
         resources: []
       } as AcademicChapter;
 
-      if (savedGranular) {
-        try {
-          const checklist = JSON.parse(savedGranular);
-          // MERGE LOGIC UPGRADE: If a tick is true in EITHER cloud or local, keep it true.
-          // This prevents "regression" where an old LS state nukes a new cloud state.
-          chapter = {
-            ...chapter,
-            read_textbook: checklist.read_textbook || (chapter.read_textbook ?? false),
-            watch_class: checklist.watch_class || (chapter.watch_class ?? false),
-            practice_problems: checklist.practice_problems || (chapter.practice_problems ?? false),
-            make_notes: checklist.make_notes || (chapter.make_notes ?? false)
-          };
-          
-          // Debug check for the user to verify in console
-          logger.log(`[BYD HYDRA] ${chapter.chapter_name}: Granular Hydrated`, checklist);
-        } catch (e) { logger.error(e); }
-      }
-      
       return chapter;
     }).filter(c => c.is_active !== false);
 
@@ -112,7 +92,6 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
 
     // 3. FULL STATE SYNC: Send the complete checklist state to prevent data loss
     if (['read_textbook', 'watch_class', 'practice_problems', 'make_notes'].includes(field)) {
-      const granularKey = `byd_chapter_${chapterId}_checklist`;
       const checklist = {
         read_textbook: field === 'read_textbook' ? newValue : (chapter.read_textbook || false),
         watch_class: field === 'watch_class' ? newValue : (chapter.watch_class || false),
@@ -121,7 +100,6 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
         is_active: chapter.is_active,
         _timestamp: Date.now()
       };
-      localStorage.setItem(granularKey, JSON.stringify(checklist));
       
       // 4. Background Sync with FULL OBJECT
       updateChapterProgress(chapterId, { 
@@ -342,7 +320,7 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                                 </div>
                                 <div className="overflow-hidden">
                                   <p className="text-sm font-bold text-white truncate">{res.title}</p>
-                                  <a href={sanitizeUrl(res.url)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-white/30 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
+                                  <a href={res.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-white/30 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
                                     {res.url}
                                     <ExternalLink className="w-2.5 h-2.5" />
                                   </a>

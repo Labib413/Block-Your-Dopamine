@@ -12,7 +12,8 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Minus,
-  BookOpen
+  BookOpen,
+  AlertCircle
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { AcademicRoutineView } from "./AcademicRoutineView";
@@ -79,7 +80,7 @@ const SubjectCard = memo(({
 });
 
 export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyllabus }: { onBack: () => void, onSubjectClick: (id: string) => void, onStudyNow: (id: string) => void, onCustomizeSyllabus: () => void }) {
-  const { user, academicSubjects, academicChapters, academicSettings, updateAcademicProgress, updateAcademicSettings, startFocusSession, isDataLoading } = useApp();
+  const { user, academicSubjects, academicChapters, academicSettings, updateAcademicProgress, updateAcademicSettings, startFocusSession, isDataLoading, connectionError } = useApp();
   const [activeTab, setActiveTab] = useState("Overview");
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -237,7 +238,22 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyl
 
   const focusSubject = subjects.find(s => s.id === academicSettings.focusSubjectId) || subjects[1]; // Default to Physics 2nd Paper as per sketch
 
-  if (isDataLoading) {
+  if (connectionError && user) {
+    return (
+      <div className="flex-1 p-8 md:px-12 pt-4 flex flex-col items-center justify-center min-h-screen">
+        <GlassCard className="p-8 text-center max-w-lg border-red-500/20 bg-red-500/5">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-red-50 mb-2">Connection Error</h2>
+          <p className="text-red-200/60 text-sm mb-6">{connectionError}</p>
+          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded-lg transition-colors text-sm font-bold tracking-widest uppercase">
+            Retry Connection
+          </button>
+        </GlassCard>
+      </div>
+    );
+  }
+
+  if (isDataLoading && user) {
     return (
       <div className="flex-1 p-8 md:px-12 pt-4 relative isolate min-h-screen flex flex-col animate-pulse">
         <div className="h-40 bg-white/5 rounded-[32px] mb-8 mt-24" />

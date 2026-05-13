@@ -33,7 +33,7 @@ function RequireAuthMatch() {
 
   if (!user) {
     // If not logged in, prompt auth or handle unauthorized
-    return <Navigate to="/public/dashboard" replace />;
+    return <Navigate to="/login" replace />;
   }
 
   const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
@@ -55,9 +55,8 @@ function AppWorkspace() {
   const [isCustomizingSyllabus, setIsCustomizingSyllabus] = useState(false);
   const [detoxInitialTab, setDetoxInitialTab] = useState<"Overview" | "Set Focus">("Overview");
   const [showBadges, setShowBadges] = useState(false);
-  const [showAuth, setShowAuth] = useState(false);
   
-  const { isFocusing, currentSessionId, user, profile, modifyFocusTime, addNotification, isSupabaseConnected, connectionError, syncData, updateAcademicSettings } = useApp();
+  const { isFocusing, currentSessionId, user, profile, modifyFocusTime, addNotification, isSupabaseConnected, connectionError, syncData, updateAcademicSettings, isAuthModalOpen, setIsAuthModalOpen, isLoggingOut } = useApp();
   const currentUsername = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0];
 
   // Sync data on view changes
@@ -81,8 +80,8 @@ function AppWorkspace() {
   }, [modifyFocusTime, addNotification]);
 
   const handleNavigate = (targetView: string) => {
-    if (targetView === "Personal" && !user) {
-      setShowAuth(true);
+    if (["Personal", "Reports"].includes(targetView) && !user) {
+      setIsAuthModalOpen(true);
       return;
     }
     
@@ -201,7 +200,38 @@ function AppWorkspace() {
       </main>
 
       <BadgeShowroom isOpen={showBadges} onClose={() => setShowBadges(false)} />
-      <AuthModal isOpen={showAuth} onClose={() => setShowAuth(false)} />
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+
+      <AnimatePresence>
+        {isLoggingOut && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-[#050505]/80 backdrop-blur-sm"
+          >
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-neon-green/30 border-t-neon-green rounded-full animate-spin" />
+              <p className="text-neon-green font-bold tracking-widest uppercase">Logging out safely...</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function AuthPage() {
+  const { user, profile } = useApp();
+  
+  if (user) {
+    const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
+    return <Navigate to={`/${currentUsername}/dashboard`} replace />;
+  }
+
+  return (
+    <div className="flex h-screen bg-[#050505] items-center justify-center">
+      <AuthModal isOpen={true} onClose={() => {}} />
     </div>
   );
 }
@@ -217,7 +247,7 @@ function RootRedirect() {
     const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
     return <Navigate to={`/${currentUsername}/dashboard`} replace />;
   }
-  return <Navigate to="/public/dashboard" replace />; // Or public fallback
+  return <Navigate to="/public/dashboard" replace />;
 }
 
 export default function App() {
@@ -226,11 +256,9 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<RootRedirect />} />
-          <Route path="/:username/public" element={<PublicProfile />} />
-          <Route path="/public">
-             <Route index element={<Navigate to="dashboard" replace />} />
-             <Route path=":view" element={<AppWorkspace />} />
-          </Route>
+          <Route path="/login" element={<AuthPage />} />
+          <Route path="/public/:view" element={<AppWorkspace />} />
+          <Route path="/public" element={<Navigate to="/public/dashboard" replace />} />
           <Route path="/:username" element={<RequireAuthMatch />}>
              <Route index element={<Navigate to="dashboard" replace />} />
              <Route path=":view" element={<AppWorkspace />} />

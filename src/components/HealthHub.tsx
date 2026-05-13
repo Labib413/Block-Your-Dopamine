@@ -276,13 +276,13 @@ export const HealthHub: React.FC<HealthHubProps> = ({ onBack, onNavigate }) => {
             <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap items-center justify-between gap-2">
               <StatusItem icon={Monitor} value={`${screenTimeHours}h`} label="Time" />
               <div className="w-[1px] h-4 bg-white/10" />
-              <StatusItem icon={Droplets} value={hydrationIntake.toString()} label="Glasses" />
+              <StatusItem icon={Droplets} value={(hydrationIntake || 0).toString()} label="Glasses" />
               <div className="w-[1px] h-4 bg-white/10" />
               <StatusItem icon={Footprints} value={steps.toLocaleString()} label="steps" />
               <div className="w-[1px] h-4 bg-white/10" />
               <StatusItem icon={Moon} value={`${sleepHours.toFixed(1)}h`} label="sleep" />
               <div className="w-[1px] h-4 bg-white/10" />
-              <StatusItem icon={Flame} value={consumedCalories.toString()} label="cal." />
+              <StatusItem icon={Flame} value={(consumedCalories || 0).toString()} label="cal." />
             </div>
           </div>
         </div>

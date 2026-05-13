@@ -6,6 +6,7 @@ import { BADGES } from "../constants";
 
 export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: string) => void, onShowBadges?: () => void }) {
   const { 
+    user,
     level, 
     xp, 
     streak, 
@@ -20,7 +21,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
     isSyncing
   } = useApp();
   
-  const honorific = gender === "Female" ? "Ma'am." : "Sir.";
+  const honorific = user ? (gender === "Female" ? "Ma'am." : "Sir.") : "Guest.";
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -39,7 +40,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
     <header className="flex items-center mb-8 relative z-50">
       <div className="flex-1">
         <h1 className="text-3xl font-sans font-bold tracking-tight flex items-center gap-3">
-          Welcome back, <span className="text-neon-green italic">{honorific}</span>
+          {user ? "Welcome back, " : "Welcome, "} <span className="text-neon-green italic">{honorific}</span>
           {isSyncing && (
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-neon-green/10 border border-neon-green/20 animate-in fade-in duration-500">
               <div className="w-1 h-1 rounded-full bg-neon-green animate-pulse" />

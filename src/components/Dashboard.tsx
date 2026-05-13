@@ -15,6 +15,7 @@ import {
   Trash2,
   Globe,
   Quote,
+  AlertCircle,
   Link as LinkIcon
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
@@ -30,7 +31,7 @@ import {
 } from "recharts";
 import { cn, formatTime } from "@/src/lib/utils";
 import { DistractionGuard } from "./DistractionGuard";
-import { useApp } from "../context/AppContext";
+import { useDisplayState } from "../hooks/useDisplayState";
 
 const DailyInspiration = memo(({ quote }: { quote: { text: string; author?: string } }) => {
   return (
@@ -245,6 +246,7 @@ export function Dashboard() {
   const [activeTab, setActiveTab] = useState("Week");
 
   const { 
+    user,
     xp, 
     level, 
     focusTime, 
@@ -268,8 +270,10 @@ export function Dashboard() {
     geminiApiKey,
     focusHistory,
     healthHistory,
-    isDataLoading
-  } = useApp();
+    isDataLoading,
+    connectionError,
+    setIsAuthModalOpen
+  } = useDisplayState();
 
   const [visibleLines, setVisibleLines] = useState({
     focus: true,
@@ -348,18 +352,13 @@ export function Dashboard() {
       };
     });
 
-    // BOLT OPTIMIZATION: Create a lookup map for O(1) lookups during aggregation
-    // This reduces overall complexity from O(History * ChartPoints) to O(History + ChartPoints)
-    // As History (N) grows, this optimization prevents UI lag during Dashboard rendering.
-    const dataPointMap = new Map(dataPoints.map(dp => [dp.key, dp]));
-
     // Aggregate Focus (Net focus time)
     (focusHistory || []).forEach(s => {
       const sDate = new Date(s.start_time || s.timestamp);
       const k = activeTab === "Year" 
         ? `${sDate.getFullYear()}-${String(sDate.getMonth() + 1).padStart(2, '0')}`
         : getLocalDateString(sDate);
-      const dp = dataPointMap.get(k);
+      const dp = dataPoints.find(d => d.key === k);
       if (dp) {
         const dur = s.session_duration || 0;
         const score = s.growth_percentage || 0;
@@ -372,7 +371,7 @@ export function Dashboard() {
       const k = activeTab === "Year" 
         ? h.entry_date.substring(0, 7)
         : h.entry_date;
-      const dp = dataPointMap.get(k);
+      const dp = dataPoints.find(d => d.key === k);
       if (dp) {
         const sleep = h.sleep_hours || 0;
         const hydration = h.hydration || 0;
@@ -391,7 +390,7 @@ export function Dashboard() {
         const k = activeTab === "Year" 
           ? t.date.substring(0, 7)
           : t.date;
-        const dp = dataPointMap.get(k);
+        const dp = dataPoints.find(d => d.key === k);
         if (dp) {
           dp.plannerRaw += 1;
         }
@@ -426,7 +425,22 @@ export function Dashboard() {
     setAiInsight(insight);
   };
 
-  if (isDataLoading) {
+  if (connectionError && user) {
+    return (
+      <div className="flex-1 p-8 md:px-12 pt-4 flex flex-col items-center justify-center">
+        <GlassCard className="p-8 text-center max-w-lg border-red-500/20 bg-red-500/5">
+          <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-red-50 mb-2">Connection Error</h2>
+          <p className="text-red-200/60 text-sm mb-6">{connectionError}</p>
+          <button onClick={() => window.location.reload()} className="px-6 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-200 rounded-lg transition-colors text-sm font-bold tracking-widest uppercase">
+            Retry Connection
+          </button>
+        </GlassCard>
+      </div>
+    );
+  }
+
+  if (isDataLoading && user) {
     return (
       <div className="flex-1 p-8 md:px-12 pt-4 animate-pulse">
         <div className="h-32 bg-white/5 rounded-[32px] mb-8" />
@@ -484,7 +498,7 @@ export function Dashboard() {
       <div className="grid grid-cols-4 gap-6 mb-8 overflow-visible p-4 -m-4">
         {[
       { icon: Clock, label: "FOCUS TIME", value: formatTime(totalNetFocusTime), color: "text-blue-400", glow: "shadow-[0_0_20px_rgba(96,165,250,0.3)]", border: "border-blue-400/20", bg: "bg-blue-400/5", iconBg: "bg-blue-400/10" },
-      { icon: CheckCircle2, label: "TASKS COMPLETED", value: tasksCompleted.toString(), color: "text-purple-500", glow: "shadow-[0_0_20px_rgba(168,85,247,0.3)]", border: "border-purple-500/20", bg: "bg-purple-500/5", iconBg: "bg-purple-500/10" },
+      { icon: CheckCircle2, label: "TASKS COMPLETED", value: (tasksCompleted || 0).toString(), color: "text-purple-500", glow: "shadow-[0_0_20px_rgba(168,85,247,0.3)]", border: "border-purple-500/20", bg: "bg-purple-500/5", iconBg: "bg-purple-500/10" },
       { icon: TrendingUp, label: "Detox", value: `${detoxPercent}%`, color: "text-neon-green", glow: "shadow-[0_0_20px_rgba(57,255,20,0.3)]", border: "border-neon-green/20", bg: "bg-neon-green/5", iconBg: "bg-neon-green/10" },
       { icon: Heart, label: "PHYSICAL FITNESS", value: `${physicalFitness}/200`, color: "text-red-400", glow: "shadow-[0_0_20px_rgba(248,113,113,0.3)]", border: "border-red-400/20", bg: "bg-red-400/5", iconBg: "bg-red-400/10" },
     ].map((metric) => (

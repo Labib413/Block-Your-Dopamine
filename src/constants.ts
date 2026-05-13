@@ -259,6 +259,34 @@ export const HSC_SYLLABUS: Record<string, string[]> = {
   ]
 };
 
+export const SAMPLE_GUEST_STATE = {
+  xp: 150,
+  level: 2,
+  streak: 3,
+  focusTime: 3600, // 1 hour
+  tasksCompleted: 5,
+  detoxPercent: 85,
+  physicalFitness: 60,
+  weeklyRank: "Top 50%",
+  globalRank: "Top 25%",
+  topSkill: "Physics",
+  resources: [],
+  totalNetFocusTime: 3600,
+  dailyTotalFocusTime: 3600,
+  dailyGoalHours: 2.0,
+  dailySessions: 2,
+  currentSessionDuration: 0,
+  hydrationIntake: 2,
+  sleepHours: 7,
+  steps: 5000,
+  consumedCalories: 1500,
+  tasks: [
+    { id: '1', title: 'Complete Physics Chapter 1', completed: true },
+    { id: '2', title: 'Solve Math Problems', completed: false }
+  ],
+  notifications: [],
+};
+
 export const HSC_SUBJECT_NAMES: Record<string, string> = {
   'p1': 'Physics 1st Paper',
   'p2': 'Physics 2nd Paper',

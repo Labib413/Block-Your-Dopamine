@@ -23,7 +23,7 @@ import {
   Loader2
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
-import { cn, formatTime, generateId, sanitizeUrl } from "@/src/lib/utils";
+import { cn, formatTime, generateId } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType, ChapterResource } from "../context/AppContext";
 import { supabase } from "../lib/supabase";
 import { HSC_SUBJECT_NAMES } from "../constants";
@@ -92,11 +92,11 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
   const [newResourceTitle, setNewResourceTitle] = useState("");
   const [newResourceUrl, setNewResourceUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [goalInput, setGoalInput] = useState(dailyGoalHours.toString());
+  const [goalInput, setGoalInput] = useState((dailyGoalHours || 2).toString());
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    setGoalInput(dailyGoalHours.toString());
+    setGoalInput((dailyGoalHours || 2).toString());
   }, [dailyGoalHours]);
 
   const handleUpdateGoal = () => {
@@ -546,7 +546,7 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                             <a 
-                              href={sanitizeUrl(res.url)}
+                              href={res.url} 
                               target="_blank" 
                               rel="noopener noreferrer"
                               className="p-2 hover:text-neon-green transition-colors"

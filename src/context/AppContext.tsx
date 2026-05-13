@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback, useMemo } from "react";
-import { BADGES, HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
+import { BADGES, HSC_SYLLABUS, HSC_SUBJECT_NAMES, SAMPLE_GUEST_STATE } from "../constants";
 import { supabase } from "../lib/supabase";
 import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
 import { logger } from "../lib/logger";
@@ -293,6 +293,10 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   connectionError: string | null;
   isAuthReady: boolean;
   isDataLoading: boolean;
+  isAuthModalOpen: boolean;
+  setIsAuthModalOpen: (open: boolean) => void;
+  isLoggingOut: boolean;
+  setIsLoggingOut: (loggingOut: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -370,20 +374,10 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       
       const chapter = uniqueChapters.find(c => c.id === chapterId);
       
-      // HYDRATION PRIORITY: Check localStorage explicitly if chapter not in state yet
+      // HYDRATION PRIORITY: Check state
       let isActive = true;
       try {
-        const checklistSaved = localStorage.getItem(`byd_chapter_${chapterId}_checklist`);
-        const globalSettings = localStorage.getItem('BYD_Syllabus_Settings');
-        
-        if (checklistSaved) {
-          const parsed = JSON.parse(checklistSaved);
-          if (parsed.is_active !== undefined) isActive = parsed.is_active;
-        } else if (globalSettings) {
-          const parsedGlobal = JSON.parse(globalSettings);
-          const matched = parsedGlobal.find((c: any) => c.id === chapterId);
-          if (matched && matched.is_active !== undefined) isActive = matched.is_active;
-        } else if (chapter) {
+        if (chapter && chapter.is_active !== undefined) {
           isActive = chapter.is_active;
         }
       } catch (e) {
@@ -407,12 +401,6 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       : 0;
 
     // logger.log(`[BYD LOG] Subject: ${s.name}, Active Chapters: ${totalActiveCount}, Tasks: ${completedTasks}/${totalPossibleTasks}, Progress: ${progressValue}%`);
-    
-    try {
-      localStorage.setItem(`BYD_Progress_${subjectId}`, String(progressValue));
-      // Explicitly save the dynamic denominator to prevent refresh flicker
-      localStorage.setItem(`BYD_Denom_${subjectId}`, String(totalActiveCount));
-    } catch (e) {}
       
     return { id: subjectId, name: s.name, progress: progressValue };
   });
@@ -440,320 +428,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const now = new Date();
     const today = getLocalDateString(now);
     
-    // Try to load from localStorage
-    const saved = localStorage.getItem('blockYourDopamineState');
-    const lastFocusData = localStorage.getItem('last_focus_data');
-    
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        
-        // Fallback to last_focus_data if it's newer or if parsed data is missing focus info
-        if (lastFocusData) {
-          try {
-            const focusParsed = JSON.parse(lastFocusData);
-            // Only use if it's from today (to prevent stale data from yesterday)
-            const focusDate = getLocalDateString(new Date(focusParsed.timestamp || 0));
-            if (focusDate === today) {
-              parsed.totalNetFocusTime = focusParsed.totalNetFocusTime ?? parsed.totalNetFocusTime;
-              parsed.dailyTotalFocusTime = focusParsed.dailyTotalFocusTime ?? parsed.dailyTotalFocusTime;
-              parsed.dailySessions = focusParsed.dailySessions ?? parsed.dailySessions;
-              parsed.detoxPercent = focusParsed.detoxPercent ?? parsed.detoxPercent;
-              parsed.lastResetDate = today; // Ensure it doesn't get reset below
-            }
-          } catch (e) {
-            logger.error("Failed to parse last_focus_data", e);
-          }
-        }
-
-        // One-time manual data adjustment: Subtract 2 hours (7200 seconds)
-        const manualAdjustmentFlag = 'manual_adjustment_v2_sub_2h';
-        if (!localStorage.getItem(manualAdjustmentFlag)) {
-          logger.log("Applying one-time manual data adjustment: -2 hours focus time");
-          const twoHoursInSeconds = 7200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime = Math.max(0, parsed.totalNetFocusTime - twoHoursInSeconds);
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime = Math.max(0, parsed.dailyTotalFocusTime - twoHoursInSeconds);
-          }
-          localStorage.setItem(manualAdjustmentFlag, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data adjustment: Add 6h to Net, 6h 10m to Total
-        const manualAdjustmentFlagV3 = 'manual_adjustment_v3_add_6h_6h10m';
-        if (!localStorage.getItem(manualAdjustmentFlagV3)) {
-          logger.log("Applying one-time manual data adjustment: +6h Net, +6h 10m Total");
-          const sixHoursInSeconds = 21600;
-          const sixHoursTenMinsInSeconds = 22200;
-          if (typeof parsed.totalNetFocusTime === 'number') {
-            parsed.totalNetFocusTime += sixHoursInSeconds;
-          }
-          if (typeof parsed.dailyTotalFocusTime === 'number') {
-            parsed.dailyTotalFocusTime += sixHoursTenMinsInSeconds;
-          }
-          localStorage.setItem(manualAdjustmentFlagV3, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // One-time manual data restoration: Set both to 6h 10m (22200 seconds)
-        const manualRestorationFlagV4 = 'manual_restoration_v4_set_6h10m';
-        if (!localStorage.getItem(manualRestorationFlagV4)) {
-          logger.log("Applying one-time manual data restoration: 6h 10m focus time");
-          const sixHoursTenMinsInSeconds = 22200;
-          parsed.totalNetFocusTime = sixHoursTenMinsInSeconds;
-          parsed.dailyTotalFocusTime = sixHoursTenMinsInSeconds;
-          parsed.detoxPercent = 100;
-          localStorage.setItem(manualRestorationFlagV4, 'true');
-          // Update the saved state in localStorage immediately to ensure consistency
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // Check if we need to reset daily stats
-        if (parsed.lastResetDate !== today) {
-          parsed.totalNetFocusTime = 0;
-          parsed.dailyTotalFocusTime = 0;
-          parsed.dailySessions = 0;
-          parsed.tasksCompleted = 0;
-          parsed.physicalFitness = 0;
-          parsed.detoxPercent = 0;
-          parsed.sessionScores = [];
-          
-          // Ghost Clock Reset: Health Metrics
-          parsed.hydrationIntake = 0;
-          parsed.sleepHours = 0;
-          parsed.sleepSessions = 0;
-          parsed.steps = 0;
-          parsed.consumedCalories = 0;
-          parsed.screenTimeHours = 0;
-          parsed.screenTimeMinutes = 0;
-          
-          // Ghost Clock Reset: Planner Auto-Removal
-          if (parsed.tasks) {
-            parsed.tasks = parsed.tasks.filter((task: Task) => {
-              if (!task.date) return true;
-              const taskDate = new Date(task.date);
-              const currentDate = new Date(today);
-              return taskDate >= currentDate;
-            });
-          }
-          
-          parsed.lastResetDate = today;
-        }
-          const isFocusing = parsed.isFocusing || false;
-          const currentSessionId = parsed.currentSessionId || null;
-          const currentSessionDuration = parsed.currentSessionDuration || 0;
-          const isManualExit = false;
-  
-          let initialResources: Resource[] = [];
-          try {
-            const savedResources = localStorage.getItem('byd_study_resources');
-            if (savedResources) {
-              initialResources = JSON.parse(savedResources);
-            }
-          } catch (e) {
-            logger.error("Failed to parse byd_study_resources", e);
-          }
-
-          // Reliable Calculations: Detox = (Net Focus / Total Focus) * 100
-          const parsedNet = parsed.totalNetFocusTime || 0;
-          const parsedTotal = parsed.dailyTotalFocusTime || 0;
-          const calculatedDetox = parsedTotal > 0 ? Math.round((parsedNet / parsedTotal) * 10000) / 100 : 100;
-
-          // Migrate Tasks before sync queue so IDs can be matched
-          const migratedTasks = (parsed.tasks || []).map((t: any) => {
-            if (t.id && !isUUID(t.id)) {
-              return { ...t, id: stringToUUID(t.id), old_id: t.id };
-            }
-            return t;
-          });
-
-          // Migrate Academic Chapters & Hydrate with granular checklist data
-          const defaultChapters = generateDefaultChapters(parsed.user?.id);
-          const migratedChapters = (() => {
-            // Priority Hydration: Try BYD_Syllabus_Settings first as it's the explicit Source of Truth
-            let savedChapters = [];
-            try {
-              const settingsRaw = localStorage.getItem('BYD_Syllabus_Settings');
-              if (settingsRaw) {
-                savedChapters = JSON.parse(settingsRaw);
-              }
-            } catch (e) {}
-
-            if (!savedChapters || savedChapters.length === 0) {
-              savedChapters = (parsed.academicChapters && Array.isArray(parsed.academicChapters)) ? parsed.academicChapters : [];
-            }
-            
-            // Map chapters and optionally hydrate from granular storage
-            const chapters = defaultChapters.map(def => {
-              const existing = savedChapters.find((c: any) => {
-                const oldLiteralId = parsed.user?.id ? `${parsed.user.id}_${def.subject_id}_ch_${def.chapter_name.replace(/\s+/g, '_')}` : `anon_${def.subject_id}_ch_${def.chapter_name.replace(/\s+/g, '_')}`;
-                return c.id === def.id || c.id === oldLiteralId;
-              });
-              
-              let chapter = existing ? { ...existing, chapter_name: def.chapter_name, id: def.id } : def;
-
-              // Granular Hydration: Check for dedicated chapter checklist key
-              try {
-                const granularKey = `byd_chapter_${chapter.id}_checklist`;
-                const savedGranular = localStorage.getItem(granularKey);
-                if (savedGranular) {
-                  const checklist = JSON.parse(savedGranular);
-                  // Only hydrate if it has valid data
-                  if (checklist && typeof checklist === 'object') {
-                    // Merit: this provides a second layer of verification
-                    chapter = {
-                      ...chapter,
-                      read_textbook: checklist.read_textbook ?? chapter.read_textbook,
-                      watch_class: checklist.watch_class ?? chapter.watch_class,
-                      practice_problems: checklist.practice_problems ?? chapter.practice_problems,
-                      make_notes: checklist.make_notes ?? chapter.make_notes,
-                      is_active: checklist.is_active ?? chapter.is_active
-                    };
-                  }
-                }
-              } catch (e) {
-                logger.error(`Error hydrating granular data for ${chapter.id}`, e);
-              }
-
-              return chapter;
-            });
-            
-            return chapters;
-          })();
-
-          const calculatedSubjects = calculateAllSubjectsProgress(migratedChapters, parsed.user?.id);
-
-          return { 
-            ...parsed, 
-            isFocusing, 
-            currentSessionDuration,
-            currentSessionId,
-            isManualExit,
-          streak: parsed.streak || 0,
-          lastStreakDate: parsed.lastStreakDate || null,
-          consecutiveMissedDays: parsed.consecutiveMissedDays || 0,
-          streakSeasonStartDate: parsed.streakSeasonStartDate || today,
-          totalNetFocusTime: parsedNet,
-          dailyTotalFocusTime: parsedTotal,
-          dailyGoalHours: parsed.dailyGoalHours || 2.0,
-          dailySessions: parsed.dailySessions || 0,
-          detoxPercent: calculatedDetox,
-          hydrationIntake: parsed.hydrationIntake || 0,
-          sleepHours: parsed.sleepHours || 0,
-          sleepSessions: parsed.sleepSessions || 0,
-          steps: parsed.steps || 0,
-          consumedCalories: parsed.consumedCalories || 0,
-          screenTimeHours: parsed.screenTimeHours || 0,
-          screenTimeMinutes: parsed.screenTimeMinutes || 0,
-          healthTargets: parsed.healthTargets || {
-            hydration: '8',
-            sleep: '8',
-            footsteps: '10000',
-            calories: '2000'
-          },
-          notificationsEnabled: parsed.notificationsEnabled ?? true,
-          notifications: parsed.notifications || [],
-          equippedBadges: parsed.equippedBadges || [null, null, null],
-          unlockedBadgeIds: parsed.unlockedBadgeIds || [],
-          badgeHealth: parsed.badgeHealth || {},
-          lastActivityTimestamp: parsed.lastActivityTimestamp || new Date().toISOString(),
-          weeklyHistory: parsed.weeklyHistory || [],
-          sessionScores: parsed.sessionScores || [],
-          focusHistory: parsed.focusHistory || [],
-          healthHistory: parsed.healthHistory || [],
-          hasFetchedFocusData: false,
-          latestMood: parsed.latestMood || null,
-          macros: parsed.macros || { protein: 0, carbs: 0, fats: 0 },
-          geminiApiKey: parsed.geminiApiKey || localStorage.getItem('byd_user_gemini_key') || null,
-          syncQueue: (parsed.syncQueue || []).filter((item: any) => {
-            // Purge known problematic IDs that are blocking sync or invalid structures
-            const badId = "wwvk9cypymopag4nz";
-            if (item?.data?.id === badId || item?.where?.id === badId) return false;
-            return item && item.table;
-          }).map((item: any) => {
-            // Migration for sync queue items
-            if (item.table === 'academic_progress' && item.data && item.data.subject_id) {
-              delete item.data.subject_id;
-            }
-            if (item.data && item.data.id && !isUUID(item.data.id)) {
-              if (item.table === 'academic_chapters' && item.data.chapter_name && item.data.subject_id) {
-                const rawId = (parsed.user?.id || 'anon') + '_' + item.data.subject_id + '_ch_' + item.data.chapter_name.replace(/\s+/g, '_');
-                item.data.id = stringToUUID(rawId);
-              } else {
-                // Generic UUID conversion for any other table ID
-                item.data.id = stringToUUID(String(item.data.id));
-              }
-            }
-            // Also check for 'where' clause in delete operations
-            if (item.where && item.where.id && !isUUID(item.where.id)) {
-                item.where.id = stringToUUID(String(item.where.id));
-            }
-            // Migration for guarded_websites
-            if (item.table === 'guarded_websites' && item.data) {
-              if (item.data.isActive !== undefined) {
-                item.data.is_active = item.data.isActive;
-                delete item.data.isActive;
-              }
-              if (item.data.startTime !== undefined) {
-                item.data.start_time = item.data.startTime;
-                delete item.data.startTime;
-              }
-            }
-            return item;
-          }),
-          offlineSyncQueue: (parsed.offlineSyncQueue || []).map((item: any) => {
-            if (item.table === 'academic_progress' && item.data && item.data.subject_id) {
-              delete item.data.subject_id;
-            }
-            if (item.data && item.data.id && !isUUID(item.data.id)) {
-              item.data.id = stringToUUID(String(item.data.id));
-            }
-            if (item.data && item.data.session_id && !isUUID(item.data.session_id)) {
-              item.data.session_id = stringToUUID(String(item.data.session_id));
-            }
-            return item;
-          }),
-          currentSessionStartTime: parsed.currentSessionStartTime || null,
-          isSyncing: false,
-          resources: initialResources.length > 0 ? initialResources : (parsed.resources || []),
-          academicSettings: parsed.academicSettings || { examDate: null, focusSubjectId: null, prepStartDate: null },
-          academicChapters: migratedChapters,
-          academicSubjects: calculatedSubjects,
-          academicRoutines: parsed.academicRoutines || [],
-          tasks: migratedTasks,
-          guardedWebsites: (parsed.guardedWebsites || []).map((site: any) => ({
-            ...site,
-            is_active: site.is_active ?? site.isActive ?? false,
-            start_time: site.start_time ?? site.startTime ?? null
-          })),
-          depexMode: parsed.depexMode || false,
-        };
-      } catch (e) {
-        logger.error("Failed to parse saved state", e);
-      }
-    }
-    
-    let initialFocus = {
-      totalNetFocusTime: 0,
-      dailyTotalFocusTime: 0,
-      dailySessions: 0,
-      detoxPercent: 0
-    };
-
-    let initialResources: Resource[] = [];
-    try {
-      const savedResources = localStorage.getItem('byd_study_resources');
-      if (savedResources) {
-        initialResources = JSON.parse(savedResources);
-      }
-    } catch (e) {
-      console.error("Failed to parse byd_study_resources", e);
-    }
-
     return {
       xp: 0,
       level: 1,
@@ -764,16 +438,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
       focusTime: 0,
       isFocusing: false,
       tasksCompleted: 0,
-      detoxPercent: initialFocus.detoxPercent,
+      detoxPercent: 100,
       physicalFitness: 0,
       weeklyRank: "---",
       globalRank: "---",
-      topSkill: "None",
-      resources: initialResources,
-      totalNetFocusTime: initialFocus.totalNetFocusTime,
-      dailyTotalFocusTime: initialFocus.dailyTotalFocusTime,
+      topSkill: "TBD",
+      resources: [],
+      totalNetFocusTime: 0,
+      dailyTotalFocusTime: 0,
       dailyGoalHours: 2.0,
-      dailySessions: initialFocus.dailySessions,
+      dailySessions: 0,
       lastResetDate: today,
       currentSessionDuration: 0,
       currentSessionId: null,
@@ -783,7 +457,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       sessionTimeLeft: 0,
       sessionDistractionTime: 0,
       isSessionDistracted: false,
-      gender: "Male",
       hydrationIntake: 0,
       sleepHours: 0,
       sleepSessions: 0,
@@ -815,7 +488,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       hasFetchedFocusData: false,
       latestMood: null,
       macros: { protein: 0, carbs: 0, fats: 0 },
-      geminiApiKey: localStorage.getItem('byd_user_gemini_key') || null,
+      geminiApiKey: null,
       syncQueue: [],
       offlineSyncQueue: [],
       currentSessionStartTime: null,
@@ -832,6 +505,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(true);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const addNotification = useCallback((title: string, message: string) => {
     setState(prev => ({
@@ -959,7 +634,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }));
     } catch (error: any) {
       if (!error.isNetworkOrTimeout && !error.message?.toLowerCase().includes("fetch")) {
-        console.error("Sync queue processing failed. Saving to localStorage for retry...", error);
+        console.error("Sync queue processing failed. Saving to queue for retry...", error);
       } else {
         console.warn("Sync queue blocked by network. Retrying later...");
       }
@@ -968,7 +643,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isLockError = error.message?.includes("Lock broken") || error.message?.includes("AbortError") || error.message?.includes("timeout");
       
       if (!isFatalError) {
-        // Save failed items back to queue and localStorage for retry
+        // Save failed items back to queue for retry
         setState(prev => ({ ...prev, syncQueue: [...queue, ...prev.syncQueue] }));
         
         // Retry after 30 seconds (or shorter if it was just a lock error)
@@ -1013,7 +688,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Progress persistence failed", e);
       }
@@ -1044,7 +718,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Settings persistence failed", e);
       }
@@ -1142,44 +815,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
     });
 
-    // Side Effects outside of setState for safety
-    if (finalChapter) {
-      const chapter = finalChapter as AcademicChapter;
-      const subjectId = chapter.subject_id;
-      
-      try {
-        const saved = localStorage.getItem('blockYourDopamineState');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          parsed.academicChapters = finalUpdatedChapters;
-          parsed.academicSubjects = finalUpdatedSubjects;
-          parsed._timestamp = timestamp;
-          localStorage.setItem('blockYourDopamineState', safeStringify(parsed));
-        }
-
-        // SYLLABUS SETTINGS EXPLICIT SAVE (Per Requirement)
-        localStorage.setItem('BYD_Syllabus_Settings', safeStringify(finalUpdatedChapters));
-
-        // Granular checkpoint
-        const checklist = {
-          read_textbook: chapter.read_textbook,
-          watch_class: chapter.watch_class,
-          practice_problems: chapter.practice_problems,
-          make_notes: chapter.make_notes,
-          is_active: chapter.is_active,
-          _timestamp: timestamp
-        };
-        localStorage.setItem(`byd_chapter_${chapter.id}_checklist`, JSON.stringify(checklist));
-
-        if (subjectId) {
-          const activeCount = finalUpdatedChapters.filter(c => c.subject_id === subjectId && c.is_active === true).length;
-          localStorage.setItem(`BYD_Denom_${subjectId}`, String(activeCount));
-        }
-      } catch (e) {
-        logger.error("Persistence failed", e);
-      }
-    }
-
+    // Side Effects outside of setState are now handled by debounced Supabase sync in useEffect hook
     triggerSync();
   }, [triggerSync]);
 
@@ -1214,7 +850,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Immediate persistence for critical study data
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Immediate reset persistence failed", e);
       }
@@ -1254,7 +889,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Immediate persistence
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Resource add persistence failed", e);
       }
@@ -1293,7 +927,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Immediate persistence
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Resource delete persistence failed", e);
       }
@@ -1321,7 +954,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Routine add persistence failed", e);
       }
@@ -1350,7 +982,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Routine update persistence failed", e);
       }
@@ -1373,7 +1004,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const nextState = { ...prev, academicRoutines: updatedRoutines, syncQueue: newSyncQueue };
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         logger.error("Routine delete persistence failed", e);
       }
@@ -1383,19 +1013,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, [triggerSync]);
 
   // Offline sync queue management
-  const OFFLINE_QUEUE_KEY = 'offline_sync_queue';
-  
   const getOfflineQueue = useCallback((): any[] => {
-    try {
-      const saved = localStorage.getItem(OFFLINE_QUEUE_KEY);
-      return saved ? JSON.parse(saved) : [];
-    } catch (e) {
-      return [];
-    }
-  }, []);
+    return state.offlineSyncQueue || [];
+  }, [state.offlineSyncQueue]);
 
   const saveOfflineQueue = useCallback((queue: any[]) => {
-    localStorage.setItem(OFFLINE_QUEUE_KEY, safeStringify(queue));
+     setState(prev => ({ ...prev, offlineSyncQueue: queue }));
   }, []);
 
   const syncOfflineQueue = useCallback(async () => {
@@ -1471,7 +1094,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = state;
         const stateToSave = { ...persistentState, _timestamp: Date.now() };
-        localStorage.setItem('blockYourDopamineState', safeStringify(stateToSave));
       } catch (e) {
         logger.error("Failed to persist state to localStorage:", e);
       }
@@ -1614,59 +1236,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Retry Pending Sessions on Mount
   useEffect(() => {
-    const retryPendingSession = async () => {
-      const pending = localStorage.getItem('pending_session');
-      if (pending && state.user) {
-        try {
-          const sessionData = JSON.parse(pending);
-          
-          // BYD Protocol: Consistency Check
-          // Ensure we are using the CURRENT user's ID to avoid RLS violations
-          const targetUserId = state.user.id;
-          
-          logger.log("Found pending session, retrying upload...", sessionData);
-          
-          // Try both tables for backward compatibility during transition
-          const { error: sessionsError } = await supabase.from('sessions').upsert({
-            user_id: targetUserId,
-            session_id: sessionData.session_id,
-            total_duration: Math.floor(sessionData.total_duration || sessionData.total_session_seconds || 0),
-            net_focus_time: Math.floor(sessionData.net_focus_time || sessionData.net_focus_seconds || 0),
-            distraction_time: Math.floor(sessionData.distraction_time || ((sessionData.total_session_seconds || 0) - (sessionData.net_focus_seconds || 0))),
-            detox_score: parseFloat(sessionData.detox_score || sessionData.growth_percentage || 0),
-            start_time: sessionData.start_time
-          }, { onConflict: 'session_id' });
-
-          if (!sessionsError) {
-            logger.log("Successfully uploaded pending session to 'sessions' table.");
-            localStorage.removeItem('pending_session');
-            return;
-          }
-
-          // Fallback to focus_logs if sessions table fails or doesn't exist yet
-          const { error: logsError } = await supabase.from('focus_logs').upsert({
-            user_id: targetUserId,
-            session_id: sessionData.session_id,
-            session_duration: Math.floor(sessionData.session_duration || sessionData.total_duration || 0),
-            growth_percentage: Math.round(sessionData.growth_percentage || sessionData.detox_score || 0),
-            start_time: sessionData.start_time,
-            is_draft: sessionData.is_draft || false
-          }, { onConflict: 'session_id' });
-
-          if (!logsError) {
-            logger.log("Successfully uploaded pending session to 'focus_logs' table.");
-            localStorage.removeItem('pending_session');
-          } else {
-            logger.error("Failed to upload pending session to both tables:", { sessionsError, logsError });
-          }
-        } catch (e) {
-          logger.error("Error parsing pending session:", e);
-        }
-      }
-    };
-
     if (state.user) {
-      retryPendingSession();
       syncOfflineQueue();
     }
   }, [state.user, syncOfflineQueue]);
@@ -1720,6 +1290,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
         setState(prev => ({ ...prev, user, profile }));
         fetchUserData(user.id);
+      } else {
+        setIsDataLoading(false);
       }
       setIsAuthReady(true);
     });
@@ -1735,7 +1307,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setState(prev => ({ ...prev, user, profile }));
         fetchUserData(user.id);
       } else {
-        setState(prev => ({ ...prev, user: null, profile: null }));
+        setIsDataLoading(false);
+        clearState();
+        localStorage.clear();
+        sessionStorage.clear();
       }
       setIsAuthReady(true);
     });
@@ -1744,7 +1319,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const masterSync = useCallback(async (view?: string) => {
-    if (!state.user || isSyncingRef.current) return;
+    if (!state.user) {
+      setIsDataLoading(false);
+      return;
+    }
+    if (isSyncingRef.current) return;
     const userId = state.user.id;
     const today = getLocalDateString(new Date());
 
@@ -1970,13 +1549,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
             const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
-            try {
-              const checklistRaw = localStorage.getItem(`byd_chapter_${defaultCh.id}_checklist`);
-              if (checklistRaw) {
-                 const parsed = JSON.parse(checklistRaw);
-                 if (parsed._timestamp) localTimestamp = Math.max(localTimestamp, parsed._timestamp);
-              }
-            } catch(e) {}
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
             if (cloudCh) return {
@@ -2001,17 +1573,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next.lastSyncTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
         setTimeout(() => {
-          try {
-            const { currentTime, currentDate, lastSyncTime, ...pState } = next;
-            localStorage.setItem('blockYourDopamineState', safeStringify(pState));
-            localStorage.setItem('last_focus_data', safeStringify({
-              totalNetFocusTime: next.totalNetFocusTime,
-              dailyTotalFocusTime: next.dailyTotalFocusTime,
-              dailySessions: next.dailySessions,
-              detoxPercent: next.detoxPercent,
-              timestamp: Date.now()
-            }));
-          } catch (e) {}
+          // Used to contain local storage saves, now managed by supabase sync
         }, 0);
 
         return next;
@@ -2048,104 +1610,76 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!state.user) return;
     
-    // Real-time listeners for data synchronization across devices
-    const profileChannel = supabase
-      .channel('profile_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'profiles',
-          filter: `id=eq.${state.user.id}`
-        },
-        async (payload) => {
-          logger.log('Profile updated via real-time:', payload);
-          // Refresh profile data and stats immediately
-          const { data } = await supabase.from('profiles').select('*').eq('id', state.user.id).single();
-          if (data) {
-            setState(prev => ({
-              ...prev,
-              xp: data.xp ?? prev.xp,
-              level: data.level ?? prev.level,
-              profile: {
-                ...prev.profile,
-                username: data.username || '',
-                fullName: data.full_name || prev.profile?.fullName || '',
-                avatarUrl: data.avatar_url,
-                institution: data.institution || '',
-                class: data.class || '',
-                subjectGroup: data.subject_group || '',
-                year: data.year || '',
-                gender: data.gender || 'Male'
-              },
-              geminiApiKey: data.gemini_api_key || prev.geminiApiKey,
-              depexMode: data.depex_mode || prev.depexMode,
-              unlockedBadgeIds: data.badges || prev.unlockedBadgeIds,
-              equippedBadges: data.equipped_badges || prev.equippedBadges
-            }));
-          }
-        }
-      )
-      .subscribe();
+    const uId = state.user.id;
+    // Debounce masterSync to prevent multiple quick events from triggering redundant fetches
+    let syncTimeout: NodeJS.Timeout;
+    const triggerDebouncedSync = (reason: string) => {
+        logger.log(`Real-time change detected (${reason}), scheduling sync...`);
+        clearTimeout(syncTimeout);
+        syncTimeout = setTimeout(() => {
+            masterSync();
+        }, 1000);
+    };
 
-    const prefsChannel = supabase
-      .channel('user_prefs_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'user_preferences',
-          filter: `user_id=eq.${state.user.id}`
-        },
-        async (payload) => {
-          logger.log('User preferences updated via real-time:', payload);
-          const { data } = await supabase.from('user_preferences').select('*').eq('user_id', state.user.id).single();
-          if (data) {
-            setState(prev => ({
-              ...prev,
-              dailyGoalHours: data.daily_focus_goal_minutes ? Math.floor(data.daily_focus_goal_minutes / 60) : prev.dailyGoalHours,
-              healthTargets: {
-                hydration: String(data.daily_hydration_goal) || prev.healthTargets.hydration,
-                sleep: String(data.daily_sleep_goal) || prev.healthTargets.sleep,
-                footsteps: String(data.daily_step_goal) || prev.healthTargets.footsteps,
-                calories: String(data.daily_calorie_goal) || prev.healthTargets.calories
-              }
-            }));
-          }
-        }
-      )
-      .subscribe();
-
-    const channel = supabase
-      .channel('focus_logs_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'focus_logs',
-          filter: `user_id=eq.${state.user.id}`
-        },
+    // Generic channel for all relevant tables
+    const realtimeChannel = supabase
+      .channel('master_sync_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `id=eq.${uId}` }, 
         (payload) => {
-          logger.log('New session detected via real-time:', payload);
-          // Re-fetch focus data to ensure accuracy
-          masterSync();
+            // Check payload fields. We could directly update State here or just trigger masterSync
+            logger.log('Profile change:', payload);
+            triggerDebouncedSync('profiles');
         }
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_preferences', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('user_preferences')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'focus_logs', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('focus_logs')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'sessions', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('sessions')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_streaks', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('user_streaks')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'academic_progress', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('academic_progress')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'academic_settings', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('academic_settings')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'academic_chapters', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('academic_chapters')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'academic_routines', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('academic_routines')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'planner_tasks', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('planner_tasks')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'health_logs', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('health_logs')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mood_entries', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('mood_entries')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resources', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('resources')
+      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'guarded_websites', filter: `user_id=eq.${uId}` }, 
+        () => triggerDebouncedSync('guarded_websites')
       )
       .subscribe();
 
     const syncInterval = setInterval(() => {
-      // logger.log("Auto-syncing data in background...");
       masterSync();
     }, 5 * 60 * 1000); // 5 minutes
     
     return () => {
       clearInterval(syncInterval);
-      supabase.removeChannel(channel);
-      supabase.removeChannel(profileChannel);
-      supabase.removeChannel(prefsChannel);
+      clearTimeout(syncTimeout);
+      supabase.removeChannel(realtimeChannel);
     };
   }, [state.user?.id, masterSync]);
 
@@ -2380,50 +1914,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Throttled localStorage save to prevent performance issues during frequent updates
-  const lastSaveTimeRef = useRef<number>(0);
-  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  // Debounced Supabase sync to replace localStorage for user statistics (XP, Level, subject progress, focus time)
+  const statsLastSyncTimeRef = useRef<number>(0);
+  const statsSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
-    const saveToStorage = () => {
+    const syncStatsToSupabase = async () => {
+      if (!state.user) return;
+      const uid = state.user.id;
       try {
-        // Optimization: Don't save transient UI state like currentTime to localStorage
-        // This reduces the payload size and frequency of disk writes
-        const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = state;
-        localStorage.setItem('blockYourDopamineState', safeStringify(persistentState));
-        lastSaveTimeRef.current = Date.now();
+        statsLastSyncTimeRef.current = Date.now();
+        // 1. Sync Profiles (XP, Level)
+        await supabase.from('profiles').upsert({
+           id: uid,
+           xp: state.xp,
+           level: state.level,
+           updated_at: new Date().toISOString()
+        });
+
+        // 2. Sync Streaks
+        await supabase.from('user_streaks').upsert({
+           user_id: uid,
+           current_streak: state.streak,
+           updated_at: new Date().toISOString()
+        });
+        
+        // 3. User Preferences (Focus Time Goals)
+        await supabase.from('user_preferences').upsert({
+           user_id: uid,
+           daily_focus_goal_minutes: Math.round(state.dailyGoalHours * 60),
+           updated_at: new Date().toISOString()
+        });
+        
       } catch (e) {
-        console.error("Failed to save state to localStorage", e);
+        console.error("Failed to sync stats to Supabase", e);
       }
     };
 
     const now = Date.now();
-    // Throttle: Save immediately if it's been more than 10 seconds, otherwise wait
-    if (now - lastSaveTimeRef.current > 10000) {
-      saveToStorage();
+    // Throttle to 500ms
+    if (now - statsLastSyncTimeRef.current > 500) {
+      syncStatsToSupabase();
     } else {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-      saveTimeoutRef.current = setTimeout(saveToStorage, 10000);
+      if (statsSyncTimeoutRef.current) clearTimeout(statsSyncTimeoutRef.current);
+      statsSyncTimeoutRef.current = setTimeout(syncStatsToSupabase, 500);
     }
 
     return () => {
-      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+      if (statsSyncTimeoutRef.current) clearTimeout(statsSyncTimeoutRef.current);
     };
-  }, [state]);
-
-  // Persist Auth Data separately for consistency
-  useEffect(() => {
-    if (state.user || state.profile) {
-      try {
-        localStorage.setItem('blockYourDopamineAuth', safeStringify({ 
-          user: state.user, 
-          profile: state.profile 
-        }));
-      } catch (e) {
-        console.error("Failed to save auth to localStorage", e);
-      }
-    }
-  }, [state.user, state.profile]);
+  }, [state.xp, state.level, state.streak, state.dailyGoalHours, state.user]);
 
   const checkFocusBadges = (history: AppState['weeklyHistory'], currentUnlocked: string[]) => {
     const newUnlocked = new Set(currentUnlocked);
@@ -2745,7 +2285,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     // LocalStorage Backup (Primary)
-    localStorage.setItem('pending_session', safeStringify(fragmentData));
 
     // Supabase Sync (Background Draft)
     try {
@@ -2856,7 +2395,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       // Persistent save BEFORE background sync
       try {
         const { currentTime, currentDate, lastSyncTime, ...persistentState } = newState;
-        localStorage.setItem('blockYourDopamineState', safeStringify(persistentState));
       } catch (e) {}
 
       return newState;
@@ -3006,7 +2544,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const addResource = (resource: Resource) => {
     setState(prev => {
       const newResources = [...prev.resources, resource];
-      localStorage.setItem('byd_study_resources', safeStringify(newResources));
       return { ...prev, resources: newResources };
     });
     
@@ -3029,7 +2566,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateResource = (id: string, updates: Partial<Resource>) => {
     setState(prev => {
       const newResources = prev.resources.map(r => r.id === id ? { ...r, ...updates } : r);
-      localStorage.setItem('byd_study_resources', safeStringify(newResources));
       return { ...prev, resources: newResources };
     });
 
@@ -3046,7 +2582,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const removeResource = (id: string) => {
     setState(prev => {
       const newResources = prev.resources.filter(r => r.id !== id);
-      localStorage.setItem('byd_study_resources', safeStringify(newResources));
       return { ...prev, resources: newResources };
     });
 
@@ -3263,7 +2798,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         console.error("Macros persistence failed", e);
       }
@@ -3320,7 +2854,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         console.error("Task add persistence failed", e);
       }
@@ -3354,7 +2887,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         console.error("Task delete persistence failed", e);
       }
@@ -3383,7 +2915,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       try {
         const { currentTime, currentDate, lastSyncTime, isSyncing, ...persistentState } = nextState;
-        localStorage.setItem('blockYourDopamineState', safeStringify({ ...persistentState, _timestamp: Date.now() }));
       } catch (e) {
         console.error("Task update persistence failed", e);
       }
@@ -3441,40 +2972,101 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // This is now handled by Supabase Auth in AuthModal
   };
 
-  const logout = async () => {
-    // 1. Wipe remote auth session
-    await supabase.auth.signOut();
-    
-    // 2. Wipe all local storage to ensure no sensitive data remains
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // 3. Reset application state entirely
-    setState(prev => ({ 
-      ...prev, 
-      user: null, 
-      profile: null,
+  const clearState = useCallback(() => {
+    const today = getLocalDateString(new Date());
+    const now = new Date();
+    setState({
       xp: 0,
       level: 1,
       streak: 0,
+      lastStreakDate: null,
+      consecutiveMissedDays: 0,
+      streakSeasonStartDate: today,
       focusTime: 0,
-      tasks: [],
-      dailyGoalHours: 2,
+      isFocusing: false,
+      tasksCompleted: 0,
       detoxPercent: 100,
       physicalFitness: 0,
-      daysActive: 1,
-      syncQueue: [],
-      equippedBadges: [null, null, null],
-      unlockedBadgeIds: [],
+      weeklyRank: "---",
+      globalRank: "---",
+      topSkill: "TBD",
+      resources: [],
+      totalNetFocusTime: 0,
+      dailyTotalFocusTime: 0,
+      dailyGoalHours: 2.0,
+      dailySessions: 0,
+      lastResetDate: today,
+      currentSessionDuration: 0,
+      currentSessionId: null,
+      currentSubjectId: null,
+      currentSessionResources: [],
+      isManualExit: false,
+      sessionTimeLeft: 0,
+      sessionDistractionTime: 0,
+      isSessionDistracted: false,
+      hydrationIntake: 0,
+      sleepHours: 0,
+      sleepSessions: 0,
+      steps: 0,
+      consumedCalories: 0,
+      screenTimeHours: 0,
+      screenTimeMinutes: 0,
       healthTargets: {
         hydration: '8',
         sleep: '8',
         footsteps: '10000',
         calories: '2000'
       },
+      tasks: [],
+      notificationsEnabled: true,
+      notifications: [],
+      user: null,
+      profile: null,
+      daysActive: 1,
+      equippedBadges: [null, null, null],
+      unlockedBadgeIds: [],
+      badgeHealth: {},
+      lastActivityTimestamp: now.toISOString(),
+      weeklyHistory: [],
+      sessionScores: [],
+      focusHistory: [],
+      healthHistory: [],
+      isSyncing: false,
+      hasFetchedFocusData: false,
+      latestMood: null,
+      macros: { protein: 0, carbs: 0, fats: 0 },
+      geminiApiKey: null,
+      syncQueue: [],
+      offlineSyncQueue: [],
+      currentSessionStartTime: null,
+      academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
+      academicChapters: generateDefaultChapters(null),
+      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicRoutines: [],
       guardedWebsites: [],
-      macros: { protein: 0, carbs: 0, fats: 0 }
-    }));
+      depexMode: false
+    });
+  }, []);
+
+  const logout = async () => {
+    // 1. Set loading state
+    setIsLoggingOut(true);
+    
+    // 2. Wipe remote auth session
+    await supabase.auth.signOut();
+    
+    // 3. Clear caches
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Unsubscribe from any realtime connections
+    await supabase.removeAllChannels();
+
+    // 4. Reset state
+    clearState();
+    
+    // 5. Force a hard reload
+    window.location.href = '/';
   };
 
   // Memoize context value to prevent unnecessary re-renders of all consumers
@@ -3546,8 +3138,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
     isSupabaseConnected,
     connectionError,
     isAuthReady,
-    isDataLoading
-  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, isDataLoading, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
+    isDataLoading,
+    isAuthModalOpen,
+    setIsAuthModalOpen,
+    isLoggingOut,
+    setIsLoggingOut
+  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, isDataLoading, isAuthModalOpen, isLoggingOut, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
 
   // 3. HARD RESET / RECALCULATION ON MOUNT
   // This ensures that any inconsistent state from hydration or legacy versions is immediately corrected

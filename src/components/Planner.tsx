@@ -74,7 +74,8 @@ export function Planner({ onBack }: PlannerProps) {
   };
 
   const setQuickTime = (hour: number) => {
-    const timeStr = `${hour.toString().padStart(2, '0')}:00`;
+    const safeHour = hour || 0;
+    const timeStr = `${safeHour.toString().padStart(2, '0')}:00`;
     setTime(timeStr);
   };
 
