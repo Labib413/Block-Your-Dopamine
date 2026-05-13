@@ -348,13 +348,18 @@ export function Dashboard() {
       };
     });
 
+    // BOLT OPTIMIZATION: Create a lookup map for O(1) lookups during aggregation
+    // This reduces overall complexity from O(History * ChartPoints) to O(History + ChartPoints)
+    // As History (N) grows, this optimization prevents UI lag during Dashboard rendering.
+    const dataPointMap = new Map(dataPoints.map(dp => [dp.key, dp]));
+
     // Aggregate Focus (Net focus time)
     (focusHistory || []).forEach(s => {
       const sDate = new Date(s.start_time || s.timestamp);
       const k = activeTab === "Year" 
         ? `${sDate.getFullYear()}-${String(sDate.getMonth() + 1).padStart(2, '0')}`
         : getLocalDateString(sDate);
-      const dp = dataPoints.find(d => d.key === k);
+      const dp = dataPointMap.get(k);
       if (dp) {
         const dur = s.session_duration || 0;
         const score = s.growth_percentage || 0;
@@ -367,7 +372,7 @@ export function Dashboard() {
       const k = activeTab === "Year" 
         ? h.entry_date.substring(0, 7)
         : h.entry_date;
-      const dp = dataPoints.find(d => d.key === k);
+      const dp = dataPointMap.get(k);
       if (dp) {
         const sleep = h.sleep_hours || 0;
         const hydration = h.hydration || 0;
@@ -386,7 +391,7 @@ export function Dashboard() {
         const k = activeTab === "Year" 
           ? t.date.substring(0, 7)
           : t.date;
-        const dp = dataPoints.find(d => d.key === k);
+        const dp = dataPointMap.get(k);
         if (dp) {
           dp.plannerRaw += 1;
         }
