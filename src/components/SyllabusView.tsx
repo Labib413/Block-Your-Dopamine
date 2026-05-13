@@ -16,7 +16,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp, AcademicChapter, ChapterResource } from "../context/AppContext";
 import { logger } from "../lib/logger";
-import { cn, generateId, stringToUUID } from "../lib/utils";
+import { cn, generateId, stringToUUID, sanitizeUrl } from "../lib/utils";
 import { HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
 
 interface SyllabusViewProps {
@@ -342,7 +342,7 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                                 </div>
                                 <div className="overflow-hidden">
                                   <p className="text-sm font-bold text-white truncate">{res.title}</p>
-                                  <a href={res.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-white/30 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
+                                  <a href={sanitizeUrl(res.url)} target="_blank" rel="noopener noreferrer" className="text-[10px] text-white/30 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
                                     {res.url}
                                     <ExternalLink className="w-2.5 h-2.5" />
                                   </a>
