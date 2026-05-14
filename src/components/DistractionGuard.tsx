@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "./GlassCard";
 import { useApp, GuardedWebsite } from "../context/AppContext";
-import { cn } from "@/src/lib/utils";
+import { cn, isValidUrl } from "@/src/lib/utils";
 
 export function DistractionGuard() {
   const { 
@@ -57,6 +57,12 @@ export function DistractionGuard() {
     e.preventDefault();
     if (!newSiteName || !newSiteUrl) return;
 
+    // Security: Validate URL to prevent XSS via javascript: or data: schemes
+    if (!isValidUrl(newSiteUrl)) {
+      addNotification("Invalid URL", "Please provide a valid and secure website link.");
+      return;
+    }
+
     const totalMinutes = (parseInt(newDurationHours) || 0) * 60 + (parseInt(newDurationMinutes) || 0);
     if (totalMinutes <= 0) return;
 
@@ -95,7 +101,8 @@ export function DistractionGuard() {
     } else {
       let url = site.url;
       if (!url.startsWith('http')) url = 'https://' + url;
-      window.open(url, '_blank');
+      // Security: Use noopener,noreferrer to prevent reverse tabnabbing
+      window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
 

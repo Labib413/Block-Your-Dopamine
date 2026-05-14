@@ -16,7 +16,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp, AcademicChapter, ChapterResource } from "../context/AppContext";
 import { logger } from "../lib/logger";
-import { cn, generateId, stringToUUID } from "../lib/utils";
+import { cn, generateId, stringToUUID, isValidUrl } from "../lib/utils";
 import { HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
 
 interface SyllabusViewProps {
@@ -31,7 +31,8 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
     academicChapters, 
     updateChapterProgress, 
     addChapterResource, 
-    deleteChapterResource 
+    deleteChapterResource,
+    addNotification
   } = useApp();
 
   const [expandedChapterId, setExpandedChapterId] = useState<string | null>(null);
@@ -118,9 +119,20 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   };
 
   const handleAddResource = (chapterId: string) => {
-    const url = prompt("Enter resource URL (e.g., YouTube link or Google Drive file):");
+    let url = prompt("Enter resource URL (e.g., YouTube link or Google Drive file):");
     if (!url) return;
     
+    // Security: Validate URL to prevent XSS via javascript: or data: schemes
+    if (!isValidUrl(url)) {
+      addNotification("Invalid URL", "Invalid or insecure URL provided.");
+      return;
+    }
+
+    // Normalization: Ensure protocol is present to prevent functional issues
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      url = 'https://' + url;
+    }
+
     const title = prompt("Enter resource title (e.g., 'Physics Lecture' or 'Note PDF'):") || 'Untitled Resource';
     
     const resource: ChapterResource = {

@@ -23,7 +23,7 @@ import {
   Loader2
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
-import { cn, formatTime, generateId } from "@/src/lib/utils";
+import { cn, formatTime, generateId, isValidUrl } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType, ChapterResource } from "../context/AppContext";
 import { supabase } from "../lib/supabase";
 import { HSC_SUBJECT_NAMES } from "../constants";
@@ -44,7 +44,8 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
     academicChapters,
     addResource, 
     removeResource,
-    syncData
+    syncData,
+    addNotification
   } = useApp();
 
   const activeSubjectId = academicSettings.focusSubjectId;
@@ -186,7 +187,11 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
         setIsUploading(false);
       }
     } else if (newResourceUrl) {
-      // Simple URL validation
+      // Security: Validate URL to prevent XSS via javascript: or data: schemes
+      if (!isValidUrl(newResourceUrl)) {
+        addNotification("Invalid URL", "Invalid or insecure URL provided.");
+        return;
+      }
       if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
         finalUrl = 'https://' + finalUrl;
       }
