@@ -29,6 +29,7 @@ import {
   Tooltip,
   CartesianGrid
 } from "recharts";
+import { Skeleton } from "./ui/Skeleton";
 import { cn, formatTime } from "@/src/lib/utils";
 import { DistractionGuard } from "./DistractionGuard";
 import { useDisplayState } from "../hooks/useDisplayState";
@@ -442,18 +443,18 @@ export function Dashboard() {
 
   if (isDataLoading && user) {
     return (
-      <div className="flex-1 p-8 md:px-12 pt-4 animate-pulse">
-        <div className="h-32 bg-white/5 rounded-[32px] mb-8" />
-        <div className="grid grid-cols-12 gap-8 mb-8">
-          <div className="col-span-8 h-48 bg-white/5 rounded-[32px]" />
-          <div className="col-span-4 h-48 bg-white/5 rounded-[32px]" />
+      <div className="flex-1 p-8 md:px-12 pt-4 space-y-8">
+        <Skeleton className="h-32 rounded-[32px]" />
+        <div className="grid grid-cols-12 gap-8">
+          <Skeleton className="col-span-8 h-48 rounded-[32px]" />
+          <Skeleton className="col-span-4 h-48 rounded-[32px]" />
         </div>
-        <div className="grid grid-cols-4 gap-6 mb-8">
-          {[1,2,3,4].map(i => <div key={i} className="h-36 bg-white/5 rounded-[32px]" />)}
+        <div className="grid grid-cols-4 gap-6">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-36 rounded-[32px]" />)}
         </div>
         <div className="grid grid-cols-12 gap-8">
-          <div className="col-span-8 h-96 bg-white/5 rounded-[32px]" />
-          <div className="col-span-4 h-96 bg-white/5 rounded-[32px]" />
+          <Skeleton className="col-span-8 h-96 rounded-[32px]" />
+          <Skeleton className="col-span-4 h-96 rounded-[32px]" />
         </div>
       </div>
     );

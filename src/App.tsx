@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, Outlet } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { queryClient } from "./lib/queryClient";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { Dashboard } from "./components/Dashboard";
@@ -22,8 +23,6 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BadgeShowroom } from "./components/BadgeShowroom";
 import { AuthModal } from "./components/AuthModal";
 import { PublicProfile } from "./components/PublicProfile";
-
-const queryClient = new QueryClient();
 
 function RequireAuthMatch() {
   const { username } = useParams<{ username: string }>();
