@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Bell, ShieldCheck, Flame, Trophy, X, Trash2 } from "lucide-react";
 import { useApp } from "../context/AppContext";
+import { useIsFetching } from "@tanstack/react-query";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
 
@@ -21,6 +22,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
     isSyncing
   } = useApp();
   
+  const isFetching = useIsFetching();
   const honorific = user ? (gender === "Female" ? "Ma'am." : "Sir.") : "Guest.";
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -41,7 +43,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
       <div className="flex-1">
         <h1 className="text-3xl font-sans font-bold tracking-tight flex items-center gap-3">
           {user ? "Welcome back, " : "Welcome, "} <span className="text-neon-green italic">{honorific}</span>
-          {isSyncing && (
+          {(isSyncing || isFetching > 0) && (
             <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-neon-green/10 border border-neon-green/20 animate-in fade-in duration-500">
               <div className="w-1 h-1 rounded-full bg-neon-green animate-pulse" />
               <span className="text-[8px] font-black uppercase tracking-[0.2em] text-neon-green/60">Syncing</span>
