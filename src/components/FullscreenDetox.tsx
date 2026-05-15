@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { cn, formatTime, safeStringify, generateId } from "@/src/lib/utils";
+import { cn, formatTime, safeStringify, generateId, isValidUrl } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType } from "../context/AppContext";
 import { motion, AnimatePresence } from "motion/react";
 import { TrendingUp, X, Cloud, Youtube, FileText, Image as ImageIcon, Maximize, Minimize, Plus, Trash2, BookOpen, Timer, AlertCircle, Globe, ExternalLink, CheckCircle2, Loader2, Upload, ChevronLeft, ChevronRight, Download, ShieldCheck } from "lucide-react";
@@ -474,7 +474,7 @@ const StudyResourcesSidebar = React.memo(({
           </div>
           <button 
             onClick={() => onAddResource()}
-            disabled={!newResource.title || !newResource.url || (newResource.type === 'OTHERS' && !newResource.url.startsWith('http'))}
+            disabled={!newResource.title || !newResource.url || !isValidUrl(newResource.url)}
             className="w-full bg-[#00f0ff] text-black font-bold py-2 rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#00f0ff]/90 hover:shadow-[0_0_15px_rgba(0,240,255,0.4)] transition-all"
           >
             Add Resource
@@ -558,7 +558,8 @@ export const FullscreenDetox = React.memo(() => {
     setSessionTimeLeft,
     setSessionDistractionTime,
     setIsSessionDistracted,
-    saveSessionFragment
+    saveSessionFragment,
+    addNotification
   } = useApp();
   
   const activeSubjectName = currentSubjectId ? HSC_SUBJECT_NAMES[currentSubjectId] : null;
@@ -1163,6 +1164,10 @@ export const FullscreenDetox = React.memo(() => {
     }
 
     if (!newResource.title || !newResource.url) return;
+    if (!isValidUrl(newResource.url)) {
+      addNotification("Invalid URL", "Please provide a valid http or https URL.");
+      return;
+    }
     addResource({
       id: generateId(),
       ...newResource
@@ -1173,7 +1178,7 @@ export const FullscreenDetox = React.memo(() => {
 
   const handleFileUpload = async (file: File) => {
     if (file.type !== 'application/pdf') {
-      alert("Please upload a PDF file.");
+      addNotification("Invalid File", "Please upload a PDF file.");
       return;
     }
 
@@ -1215,7 +1220,7 @@ export const FullscreenDetox = React.memo(() => {
         userMessage = "Error: Supabase RLS Policy violation. Please go to Supabase SQL Editor and run the policy script to allow public uploads to 'Resources' bucket.";
       }
       
-      alert(userMessage);
+      addNotification("Upload Failed", userMessage);
     } finally {
       setIsUploading(false);
     }
@@ -1223,7 +1228,7 @@ export const FullscreenDetox = React.memo(() => {
 
   const handleReupload = async (id: string, file: File) => {
     if (file.type !== 'application/pdf') {
-      alert("Please upload a PDF file.");
+      addNotification("Invalid File", "Please upload a PDF file.");
       return;
     }
 
@@ -1261,7 +1266,7 @@ export const FullscreenDetox = React.memo(() => {
         userMessage = "Error: Supabase RLS Policy violation. Please go to Supabase SQL Editor and run the policy script to allow public uploads to 'Resources' bucket.";
       }
       
-      alert(userMessage);
+      addNotification("Upload Failed", userMessage);
     } finally {
       setIsUploading(false);
     }

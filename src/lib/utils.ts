@@ -22,8 +22,17 @@ export function generateId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
     return crypto.randomUUID();
   }
+
+  // Use cryptographically strong values for fallback if available
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
+    let r;
+    if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+      const array = new Uint8Array(1);
+      crypto.getRandomValues(array);
+      r = array[0] % 16;
+    } else {
+      r = Math.random() * 16 | 0;
+    }
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
@@ -59,4 +68,29 @@ export function safeStringify(obj: any, indent?: number): string {
     }
     return value;
   }, indent);
+}
+
+/**
+ * Validates a URL to ensure it uses safe protocols (http/https).
+ * This helps prevent XSS via javascript: or data: URIs.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  // Trim and check if it starts with common dangerous schemes
+  const trimmedUrl = url.trim().toLowerCase();
+  if (trimmedUrl.startsWith('javascript:') ||
+      trimmedUrl.startsWith('data:') ||
+      trimmedUrl.startsWith('vbscript:')) {
+    return false;
+  }
+
+  try {
+    // If it doesn't have a protocol, we assume it's meant to be https
+    const urlToTest = url.includes('://') ? url : 'https://' + url;
+    const parsed = new URL(urlToTest);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch (e) {
+    return false;
+  }
 }

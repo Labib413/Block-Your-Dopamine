@@ -23,7 +23,7 @@ import {
   Loader2
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
-import { cn, formatTime, generateId } from "@/src/lib/utils";
+import { cn, formatTime, generateId, isValidUrl } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType, ChapterResource } from "../context/AppContext";
 import { supabase } from "../lib/supabase";
 import { HSC_SUBJECT_NAMES } from "../constants";
@@ -44,7 +44,8 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
     academicChapters,
     addResource, 
     removeResource,
-    syncData
+    syncData,
+    addNotification
   } = useApp();
 
   const activeSubjectId = academicSettings.focusSubjectId;
@@ -179,13 +180,17 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
         finalUrl = publicUrl;
       } catch (err: any) {
         console.error("Error uploading to Supabase:", err);
-        alert(`Upload failed: ${err.message || "Unknown error"}. Please ensure the 'Resources' bucket exists and is public.`);
+        addNotification("Upload Failed", `Upload failed: ${err.message || "Unknown error"}. Please ensure the 'Resources' bucket exists and is public.`);
         setIsUploading(false);
         return;
       } finally {
         setIsUploading(false);
       }
     } else if (newResourceUrl) {
+      if (!isValidUrl(newResourceUrl)) {
+        addNotification("Invalid URL", "Please provide a valid http or https URL.");
+        return;
+      }
       // Simple URL validation
       if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
         finalUrl = 'https://' + finalUrl;
