@@ -19,14 +19,52 @@ export function isUUID(str: string): boolean {
 }
 
 export function generateId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
+  if (typeof crypto !== 'undefined') {
+    if (crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback using crypto.getRandomValues for better security than Math.random
+    if (crypto.getRandomValues) {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    }
   }
+  // Ultimate fallback (not cryptographically secure)
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
+}
+
+/**
+ * Validates a URL to ensure it uses safe protocols (http/https).
+ * Used for sanitizing external resource links and user-provided URLs.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  try {
+    const lowerUrl = url.toLowerCase().trim();
+
+    // Explicitly allow safe data:image and blob: URIs which are common for avatars/previews
+    if (lowerUrl.startsWith('data:image/') || lowerUrl.startsWith('blob:')) {
+      return true;
+    }
+
+    // Block dangerous protocols
+    const dangerousProtocols = ['javascript:', 'vbscript:', 'data:'];
+    if (dangerousProtocols.some(proto => lowerUrl.startsWith(proto))) {
+      return false;
+    }
+
+    const parsed = new URL(url.startsWith('http') || url.startsWith('//') ? url : 'https://' + url);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
