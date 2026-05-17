@@ -13,7 +13,7 @@ import {
   PanelLeftOpen
 } from "lucide-react";
 import { useState } from "react";
-import { cn } from "@/src/lib/utils";
+import { cn, isValidUrl } from "@/src/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "../context/AppContext";
 
@@ -144,7 +144,7 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
           title={isMinimized ? "Personal" : undefined}
         >
           <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group-hover:border-neon-green/50 transition-colors shrink-0">
-            {profile?.avatarUrl ? (
+            {profile?.avatarUrl && isValidUrl(profile.avatarUrl) ? (
               <img src={profile.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
             ) : (
               <User className="w-5 h-5 text-white/40 group-hover:text-white" />

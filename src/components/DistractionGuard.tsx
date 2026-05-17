@@ -95,7 +95,8 @@ export function DistractionGuard() {
     } else {
       let url = site.url;
       if (!url.startsWith('http')) url = 'https://' + url;
-      window.open(url, '_blank');
+      // Use noreferrer to prevent tabnabbing vulnerabilities
+      window.open(url, '_blank', 'noreferrer');
     }
   };
 
