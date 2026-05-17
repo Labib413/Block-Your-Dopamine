@@ -356,7 +356,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // ⚡ Bolt Optimization: Use Map for O(1) lookups instead of O(N) .find()
+  const chapterMap = new Map(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,16 +373,12 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
-      try {
-        if (chapter && chapter.is_active !== undefined) {
-          isActive = chapter.is_active;
-        }
-      } catch (e) {
-        if (chapter) isActive = chapter.is_active;
+      if (chapter && chapter.is_active !== undefined) {
+        isActive = chapter.is_active;
       }
 
       if (isActive) {
@@ -1544,13 +1541,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
+          // ⚡ Bolt Optimization: Use Map for O(1) lookups during chapter merge
+          const cloudChapterMap = new Map<string, any>(cloudChapters.map((c: any) => [c.id, c]));
+          const localChapterMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+
           const defaultChapters = generateDefaultChapters(userId);
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChapterMap.get(defaultCh.id);
+            const localCh = localChapterMap.get(defaultCh.id);
+
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
-            if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
+            if (localTimestamp > cloudTimestamp) return (localCh as AcademicChapter) || defaultCh;
             if (cloudCh) return {
               id: cloudCh.id, subject_id: cloudCh.subject_id, chapter_name: cloudCh.chapter_name,
               is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false), is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
@@ -1558,8 +1560,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               watch_class: cloudCh.watch_class ?? (localCh?.watch_class ?? false), practice_problems: cloudCh.practice_problems ?? (localCh?.practice_problems ?? false),
               make_notes: cloudCh.make_notes ?? (localCh?.make_notes ?? false), resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
               _timestamp: cloudCh._timestamp || 0
-            };
-            return localCh || defaultCh;
+            } as AcademicChapter;
+            return (localCh as AcademicChapter) || defaultCh;
           });
           next.academicChapters = mergedChapters;
           next.academicSubjects = calculateAllSubjectsProgress(mergedChapters, userId);
