@@ -60,3 +60,48 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL to prevent XSS via dangerous schemes.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  const trimmed = url.trim();
+  if (!trimmed) return false;
+
+  // Allow relative paths
+  if (trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
+    return true;
+  }
+
+  const normalized = trimmed.toLowerCase();
+
+  // Explicitly block dangerous schemes
+  if (
+    normalized.startsWith('javascript:') ||
+    normalized.startsWith('vbscript:') ||
+    normalized.startsWith('data:text/html')
+  ) {
+    return false;
+  }
+
+  // Allow safe protocols
+  if (
+    normalized.startsWith('http:') ||
+    normalized.startsWith('https:') ||
+    normalized.startsWith('blob:') ||
+    normalized.startsWith('data:image/')
+  ) {
+    return true;
+  }
+
+  // For URLs without protocol (e.g., "google.com"), we allow them
+  // as the app often prepends https:// later, but we ensure no dangerous keywords.
+  try {
+    const urlObj = new URL(trimmed.includes('://') ? trimmed : `https://${trimmed}`);
+    return ['http:', 'https:', 'blob:', 'data:'].includes(urlObj.protocol);
+  } catch (e) {
+    return false;
+  }
+}
