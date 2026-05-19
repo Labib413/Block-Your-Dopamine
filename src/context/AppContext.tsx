@@ -567,33 +567,56 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return acc;
         }, {} as Record<string, any>);
 
-        return Promise.all(Object.values(uniqueItems).map(async (item: any) => {
-          const { table, data, type, id, key } = item;
+        // Group unique items by type and onConflict to enable batching.
+        // We include 'table' in the key to ensure items for different tables are never batched together.
+        const groups: Record<string, any[]> = {};
+        Object.values(uniqueItems).forEach((item: any) => {
+          const groupKey = `${item.table}_${item.type}_${item.onConflict || 'id'}`;
+          if (!groups[groupKey]) groups[groupKey] = [];
+          groups[groupKey].push(item);
+        });
+
+        const groupPromises = Object.values(groups).map(async (groupItems) => {
+          const { type, table, onConflict } = groupItems[0];
           
           try {
-            let sanitizedData = { ...data };
-            if (table === 'sessions') {
-              delete sanitizedData.duration;
-              delete sanitizedData.status;
-            }
-            if (type === 'upsert') {
-              // BYD Sanitization: Remove internal fields before database sync
-              if (table === 'academic_chapters' && sanitizedData._timestamp) {
-                // DO NOT DELETE _timestamp here - we need it in the DB for latest-wins logic
+            if (type === 'upsert' || type === 'insert') {
+              const batchData = groupItems.map(item => {
+                let sanitizedData = { ...item.data };
+                if (table === 'sessions') {
+                  delete sanitizedData.duration;
+                  delete sanitizedData.status;
+                }
+                // BYD Sanitization Note: We preserve _timestamp for academic_chapters
+                // to enable latest-wins logic in the database.
+                return sanitizedData;
+              });
+
+              if (type === 'upsert') {
+                return await supabase.from(table).upsert(batchData, { onConflict: onConflict || 'id' });
+              } else {
+                return await supabase.from(table).insert(batchData);
               }
-              return await supabase.from(table).upsert(sanitizedData, { onConflict: item.onConflict || 'id' });
-            } else if (type === 'insert') {
-              return await supabase.from(table).insert(sanitizedData);
-            } else if (type === 'update') {
-              return await supabase.from(table).update(sanitizedData).eq('id', id);
             } else if (type === 'delete') {
-              return await supabase.from(table).delete().eq('id', id);
+              const ids = groupItems.map(item => item.id).filter(Boolean);
+              if (ids.length > 0) {
+                return await supabase.from(table).delete().in('id', ids);
+              }
+              return { data: null, error: null };
+            } else if (type === 'update') {
+              // Update still requires individual calls as each has its own filter/data
+              const updateResults = await Promise.all(groupItems.map(item =>
+                supabase.from(table).update(item.data).eq('id', item.id)
+              ));
+              return updateResults;
             }
           } catch (err: any) {
-            // Catch individual request errors to prevent Promise.all from failing entirely
             return { error: err };
           }
-        }));
+        });
+
+        const resultsPerGroup = await Promise.all(groupPromises);
+        return resultsPerGroup.flat();
       });
 
       const results = await Promise.all(syncPromises);
