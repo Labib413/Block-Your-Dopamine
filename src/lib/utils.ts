@@ -48,6 +48,48 @@ export function stringToUUID(str: string): string {
   return `${fullHex.slice(0, 8)}-${fullHex.slice(8, 12)}-4${fullHex.slice(13, 16)}-a${fullHex.slice(17, 20)}-${fullHex.slice(20, 32)}`;
 }
 
+/**
+ * Validates a URL against safe protocols to prevent XSS and other attacks.
+ * Supports http, https, data:image/, and blob: protocols.
+ */
+export function isValidUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+
+  const trimmedUrl = url.trim().toLowerCase();
+
+  // Block dangerous schemes
+  if (trimmedUrl.startsWith('javascript:') ||
+      trimmedUrl.startsWith('vbscript:') ||
+      trimmedUrl.startsWith('data:text/html')) {
+    return false;
+  }
+
+  // Allow safe data URIs (images) - whitelist safe image types
+  if (trimmedUrl.startsWith('data:image/jpeg') ||
+      trimmedUrl.startsWith('data:image/png') ||
+      trimmedUrl.startsWith('data:image/gif') ||
+      trimmedUrl.startsWith('data:image/webp')) {
+    return true;
+  }
+
+  // Allow blob and absolute URLs
+  if (trimmedUrl.startsWith('blob:') ||
+      trimmedUrl.startsWith('http://') ||
+      trimmedUrl.startsWith('https://')) {
+    return true;
+  }
+
+  // For other strings, try to parse as URL
+  try {
+    // If it's a domain-only string like "google.com", prepend https://
+    const urlToTest = url.includes('://') ? url : `https://${url}`;
+    const parsed = new URL(urlToTest);
+    return ['http:', 'https:', 'blob:', 'data:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
 export function safeStringify(obj: any, indent?: number): string {
   const cache = new Set();
   return JSON.stringify(obj, (key, value) => {

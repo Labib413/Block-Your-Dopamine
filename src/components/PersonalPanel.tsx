@@ -33,7 +33,7 @@ import {
   RefreshCw,
   Lightbulb
 } from "lucide-react";
-import { cn } from "@/src/lib/utils";
+import { cn, isValidUrl } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
 
 const GlassSelect = ({ 
@@ -328,7 +328,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="absolute inset-0 bg-[#00ff66]/40 blur-md rounded-full animate-pulse" />
-                {profile?.avatarUrl ? (
+                {profile?.avatarUrl && isValidUrl(profile.avatarUrl) ? (
                   <img src={profile.avatarUrl} alt="Avatar" className="w-5 h-5 rounded-full relative z-10 border border-[#00ff66]/30" />
                 ) : (
                   <BookOpen className="w-5 h-5 text-[#00ff66] relative z-10 drop-shadow-[0_0_8px_rgba(0,255,102,0.8)]" />
