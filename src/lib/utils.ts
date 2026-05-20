@@ -19,14 +19,63 @@ export function isUUID(str: string): boolean {
 }
 
 export function generateId() {
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
-    return crypto.randomUUID();
+  if (typeof crypto !== 'undefined') {
+    if (crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    if (crypto.getRandomValues) {
+      // Fallback for environments with getRandomValues but not randomUUID
+      const buf = new Uint8Array(16);
+      crypto.getRandomValues(buf);
+      buf[6] = (buf[6] & 0x0f) | 0x40; // set version to 4
+      buf[8] = (buf[8] & 0x3f) | 0x80; // set variant to 1
+      const hex = Array.from(buf).map(b => b.toString(16).padStart(2, '0')).join('');
+      return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+    }
   }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
     const r = Math.random() * 16 | 0;
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
+}
+
+/**
+ * Validates a URL against safe protocols to prevent XSS and other injection attacks.
+ * Supports http, https, blob, and a whitelist of safe image data URIs.
+ */
+export function isValidUrl(url?: string | null): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+
+  // Explicitly block dangerous schemes
+  const dangerous = ['javascript:', 'vbscript:', 'data:text/html'];
+  if (dangerous.some(scheme => trimmed.toLowerCase().startsWith(scheme))) {
+    return false;
+  }
+
+  // Whitelist safe data URIs for images
+  const safeDataUris = [
+    'data:image/jpeg',
+    'data:image/png',
+    'data:image/gif',
+    'data:image/webp',
+    'data:image/svg+xml'
+  ];
+  if (trimmed.toLowerCase().startsWith('data:')) {
+    return safeDataUris.some(uri => trimmed.toLowerCase().startsWith(uri));
+  }
+
+  try {
+    // Handle domain-only strings by prepending https
+    const urlToParse = (trimmed.startsWith('http') || trimmed.startsWith('blob:'))
+      ? trimmed
+      : `https://${trimmed}`;
+    const parsed = new URL(urlToParse);
+    return ['http:', 'https:', 'blob:'].includes(parsed.protocol);
+  } catch (e) {
+    return false;
+  }
 }
 
 /**
