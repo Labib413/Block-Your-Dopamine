@@ -115,3 +115,17 @@ alter table public.personal_tasks enable row level security;
 create policy "Users can view own detox sessions" on public.detox_sessions for all using (auth.uid() = user_id);
 create policy "Users can view own health logs" on public.health_daily_logs for all using (auth.uid() = user_id);
 create policy "Users can view own personal tasks" on public.personal_tasks for all using (auth.uid() = user_id);
+
+-- 8. Study Resources Table
+create table if not exists public.resources (
+  id uuid default uuid_generate_v4() primary key,
+  user_id uuid references auth.users on delete cascade not null,
+  title text not null,
+  url text not null,
+  type text not null, -- 'YOUTUBE', 'PDF', 'IMAGE', 'OTHERS'
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter publication supabase_realtime add table public.resources;
+alter table public.resources enable row level security;
+create policy "Users can view own resources" on public.resources for all using (auth.uid() = user_id);
