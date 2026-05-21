@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { 
   BarChart, 
   Bar, 
@@ -26,17 +26,10 @@ import {
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
-import { logger } from "../lib/logger";
-import { supabase } from "../lib/supabase";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
-
-interface SessionRecord {
-  id: string;
-  start_time: string;
-  session_duration: number;
-  growth_percentage: number;
-}
+import { useBYDData } from '../hooks/useBYDData';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 export function ReportsView({ onBack }: { onBack: () => void }) {
   const { 
@@ -51,8 +44,10 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     sleepHours,
     consumedCalories
   } = useApp();
-  const [sessions, setSessions] = useState<SessionRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  const { data: focusSessions, isLoading: isSessionsLoading } = useBYDData('focus_sessions');
+  useRealtimeSync('focus_sessions');
+
   const [reportRange, setReportRange] = useState<"Today" | "Last 7 Days" | "Last 30 Days">("Last 7 Days");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -82,13 +77,10 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
   };
 
   useEffect(() => {
-    async function fetchReports() {
+    async function fetchReportsData() {
       if (!user) return;
-      // Only show full loading spinner on initial fetch for this range
-      if (sessions.length === 0) setIsLoading(true);
       
       const now = new Date();
-      // Calculate local start date in Dhaka time
       const dhakaTodayStr = getLocalDateString(now);
       const dhakaToday = new Date(dhakaTodayStr);
       
@@ -103,51 +95,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
         startDateStr = getLocalDateString(d);
       }
 
-      // Supabase query date (ISO format for start_time)
-      const queryStartDate = new Date(dhakaToday);
-      if (reportRange === "Last 7 Days") queryStartDate.setDate(queryStartDate.getDate() - 7);
-      else if (reportRange === "Last 30 Days") queryStartDate.setDate(queryStartDate.getDate() - 30);
-      else queryStartDate.setHours(0, 0, 0, 0); // Today
-
       try {
-        const [logsRes, sessionsRes] = await Promise.all([
-          supabase.from('focus_logs').select('*').eq('user_id', user.id).gte('start_time', queryStartDate.toISOString()).order('start_time', { ascending: false }),
-          supabase.from('sessions').select('*').eq('user_id', user.id).gte('start_time', queryStartDate.toISOString()).order('start_time', { ascending: false })
-        ]);
-
-        if (logsRes.error || sessionsRes.error) {
-          const error = logsRes.error || sessionsRes.error;
-          throw error;
-        }
-
-        const combined = new Map<string, any>();
-        
-        (logsRes.data || []).forEach(log => {
-          if (log.session_id) combined.set(log.session_id, log);
-        });
-        
-        (sessionsRes.data || []).forEach(s => {
-          const mapped = {
-            ...s,
-            session_duration: s.total_duration,
-            growth_percentage: s.detox_score
-          };
-          
-          if (s.session_id) {
-            const existing = combined.get(s.session_id);
-            if (!existing || mapped.session_duration >= (existing.session_duration || 0)) {
-              combined.set(s.session_id, mapped);
-            }
-          } else {
-            combined.set(`legacy_${s.id}`, mapped);
-          }
-        });
-
-        const combinedData = Array.from(combined.values())
-          .sort((a, b) => new Date(b.start_time).getTime() - new Date(a.start_time).getTime());
-
-        setSessions(combinedData);
-
         // Fetch Health Data using local date strings
         const { data: healthData } = await supabase
           .from('health_logs')
@@ -204,35 +152,28 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
 
       } catch (err) {
         logger.error("Error fetching reports:", err);
-      } finally {
-        setIsLoading(false);
       }
     }
 
-    fetchReports();
+    fetchReportsData();
   }, [user, reportRange, weeklyHistory, tasksCompleted, tasks.length]);
+
+  const sessions = focusSessions || [];
+  const isLoading = isSessionsLoading;
 
   const stats = useMemo(() => {
     // Combine local real-time focus time if looking at "Today"
-    let totalSecs = sessions.reduce((acc, s) => acc + (s.session_duration || 0), 0);
-    let totalNetSecs = sessions.reduce((acc, s) => acc + ((s.growth_percentage / 100) * (s.session_duration || 0)), 0);
-
-    // If reportRange is Today and sessions from Supabase are empty, use Context fallback
-    if (reportRange === "Today" && sessions.length === 0 && totalNetFocusTime > 0) {
-      // Use AppContext data for current day if DB hasn't synced yet
-      return { 
-        totalHours: (totalNetFocusTime / 3600).toFixed(1), 
-        avgDepth: Math.round(detoxPercent), 
-        fullTrees: 1 // Approximation
-      };
-    }
+    let totalSecs = sessions.reduce((acc: any, s: any) => acc + (s.duration_minutes * 60 || 0), 0);
+    
+    // Note: Assuming net focus time logic based on is_productive
+    let totalNetSecs = sessions.reduce((acc: any, s: any) => acc + (s.is_productive ? (s.duration_minutes * 60 || 0) : 0), 0);
 
     const totalHours = (totalSecs / 3600).toFixed(1);
     const avgDepth = totalSecs > 0 ? Math.round((totalNetSecs / totalSecs) * 100) : 0;
-    const fullTrees = sessions.filter(s => s.growth_percentage >= 90).length;
+    const fullTrees = sessions.filter((s:any) => s.is_productive).length; // Simplified
 
     return { totalHours, avgDepth, fullTrees };
-  }, [sessions, reportRange, totalNetFocusTime, detoxPercent]);
+  }, [sessions]);
 
   const chartData = useMemo(() => {
     const rangeDays = reportRange === "Today" ? 1 : reportRange === "Last 7 Days" ? 7 : 30;
@@ -240,28 +181,30 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     if (reportRange === "Today") {
       return Array.from({ length: 24 }, (_, i) => {
         const hour = i;
-        const hourSessions = sessions.filter(s => {
-          const d = new Date(s.start_time);
-          // Convert to Dhaka time for hour comparison
+        const hourSessions = sessions.filter((s: any) => {
+          const d = new Date(s.created_at);
           const dhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(d));
           return dhakaHour === hour;
         });
-        const hours = hourSessions.reduce((acc, s) => acc + (s.session_duration || 0), 0) / 3600;
+        const hours = hourSessions.reduce((acc: any, s: any) => acc + (s.duration_minutes || 0), 0) / 60;
         return { name: `${hour}:00`, hours: parseFloat(hours.toFixed(2)) };
       });
     }
 
-    // Fixed Date Grid for Charts (Local Dhaka Time)
-    const dhakaTodayStr = getLocalDateString(new Date());
+    // Helper for date string
+    const getLocalDateString = (date: Date) => date.toISOString().split('T')[0];
+
+    // Fixed Date Grid for Charts
+    const today = new Date();
     const lastDays = Array.from({ length: rangeDays }, (_, i) => {
-      const d = new Date(dhakaTodayStr);
+      const d = new Date(today);
       d.setDate(d.getDate() - (rangeDays - 1 - i));
       return getLocalDateString(d);
     });
 
     return lastDays.map(date => {
-      const daySessions = sessions.filter(s => getLocalDateString(new Date(s.start_time)) === date);
-      const hours = daySessions.reduce((acc, s) => acc + (s.session_duration || 0), 0) / 3600;
+      const daySessions = sessions.filter((s: any) => getLocalDateString(new Date(s.created_at)) === date);
+      const hours = daySessions.reduce((acc: any, s: any) => acc + (s.duration_minutes || 0), 0) / 60;
       return {
         name: rangeDays === 30 
           ? new Date(date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
@@ -484,48 +427,37 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                 </thead>
                 <tbody className="divide-y divide-white/5">
                   {sessions.length > 0 ? (
-                    sessions.map((session) => (
+                    sessions.map((session: any) => (
                       <tr key={session.id} className="hover:bg-white/[0.02] transition-colors group">
                         <td className="px-6 py-4">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium text-white/90">
-                              {new Date(session.start_time).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              {new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                             </span>
                             <span className="text-[10px] text-white/30 font-mono">
-                              {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              {new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                         </td>
                         <td className="px-6 py-4">
-                          <span className="text-sm font-mono text-white/70">{formatDuration(session.session_duration)}</span>
+                          <span className="text-sm font-mono text-white/70">{session.duration_minutes}m</span>
                         </td>
                         <td className="px-6 py-4">
                           <span className={cn(
                             "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
-                            session.growth_percentage >= 90 
+                            session.is_productive 
                               ? "bg-neon-green/10 text-neon-green border border-neon-green/20" 
                               : "bg-red-500/10 text-red-400 border border-red-500/20"
                           )}>
-                            {session.growth_percentage >= 90 ? "Completed" : "Interrupted"}
+                            {session.is_productive ? "Productive" : "Distracted"}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="w-12 h-1.5 bg-white/5 rounded-full overflow-hidden">
-                              <div 
-                                className={cn(
-                                  "h-full rounded-full",
-                                  session.growth_percentage >= 80 ? "bg-neon-green" : session.growth_percentage >= 50 ? "bg-yellow-400" : "bg-red-500"
-                                )}
-                                style={{ width: `${session.growth_percentage}%` }}
-                              />
-                            </div>
-                            <span className="text-xs font-bold text-white/60">{session.growth_percentage}%</span>
-                          </div>
+                        <span className="text-sm font-mono text-white/70">{session.session_type || 'N/A'}</span>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2 text-white/50 group-hover:text-white/80 transition-colors">
-                            <span className="text-xs truncate max-w-[150px]">N/A</span>
+                            <span className="text-xs truncate max-w-[150px]">{session.task_name || 'N/A'}</span>
                             <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                         </td>

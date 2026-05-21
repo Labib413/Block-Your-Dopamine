@@ -1,20 +1,38 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# BYD - Block Your Dopamine
 
-# Run and deploy your AI Studio app
+"Block Your Dopamine" (BYD) is a high-performance productivity dashboard designed for deep work, academic tracking, and digital detox.
 
-This contains everything you need to run your app locally.
+## 🚀 Features
 
-View your app in AI Studio: https://ai.studio/apps/32c39fe0-3899-42d7-a769-18e607d26b2d
+- **Focus Hub**: High-precision focus time tracking with intuitive dashboard visualization.
+- **Academic Hub**: Track progress across subjects and chapters with seamless data synchronization.
+- **Detox Center**: Manage digital distractions and maintain healthy engagement levels.
+- **Performance Analytics**: Visual trends and insights powered by professional-grade charts.
+- **Optimized UI/UX**: Built for speed with optimistic updates, skeleton loaders, and buttery smooth Framer Motion transitions.
 
-## Run Locally
+## 🛠 Tech Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React 18 (Vite), TypeScript, Tailwind CSS.
+- **State & Data**: TanStack Query (Server State), Zustand (UI State), IndexedDB Persistence.
+- **Animation**: Framer Motion.
+- **Backend / DB**: Supabase (PostgreSQL).
+- **Icons**: Lucide React.
+- **Charts**: Recharts.
 
+## 💻 Local Development
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. **Prerequisites**: Ensure you have Node.js and NPM/Yarn installed.
+2. **Installation**:
+   ```bash
+   npm install
+   ```
+3. **Environment Variables**:
+   Create a `.env` file based on `.env.example` and add your database credentials.
+4. **Development**:
+   ```bash
+   npm run dev
+   ```
+
+## 🏗 Architectural Guidelines
+
+- [Detailed architectural rules are documented in `AGENTS.md`]
