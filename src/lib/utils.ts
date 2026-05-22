@@ -60,3 +60,55 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a URL is safe to render or open.
+ * Blocks dangerous protocols like javascript: and ensures only safe ones are used.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  const trimmed = url.trim();
+
+  // Block dangerous schemes
+  if (/^(javascript|vbscript|data:text\/html):/i.test(trimmed)) {
+    return false;
+  }
+
+  // Allow safe data: URIs (images only)
+  if (trimmed.toLowerCase().startsWith('data:')) {
+    return /^data:image\/(png|jpg|jpeg|gif|webp);base64,/i.test(trimmed);
+  }
+
+  try {
+    // Handle both absolute and domain-only URLs
+    const urlObj = new URL(trimmed.includes('://') ? trimmed : 'https://' + trimmed);
+    return ['http:', 'https:', 'blob:'].includes(urlObj.protocol);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new tab, mitigating Reverse Tabnabbing.
+ */
+export function safeOpen(url: string, target = '_blank', features = '') {
+  if (!isValidUrl(url)) return null;
+
+  let finalUrl = url.trim();
+  if (!finalUrl.includes('://') && !finalUrl.startsWith('blob:') && !finalUrl.startsWith('data:')) {
+    finalUrl = 'https://' + finalUrl;
+  }
+
+  // Combine custom features with security defaults
+  const securityFeatures = 'noopener,noreferrer';
+  const finalFeatures = features
+    ? `${features}${features.endsWith(',') ? '' : ','}${securityFeatures}`
+    : securityFeatures;
+
+  const win = window.open(finalUrl, target, finalFeatures);
+  if (win) {
+    win.opener = null;
+  }
+  return win;
+}
