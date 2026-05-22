@@ -23,7 +23,7 @@ import {
   Loader2
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
-import { cn, formatTime, generateId } from "@/src/lib/utils";
+import { cn, formatTime, generateId, isValidUrl } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType, ChapterResource } from "../context/AppContext";
 import { useBYDData } from "../hooks/useBYDData";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
@@ -543,14 +543,16 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
                             </div>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <a 
-                              href={res.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="p-2 hover:text-neon-green transition-colors"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
+                            {isValidUrl(res.url) && (
+                              <a
+                                href={res.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-2 hover:text-neon-green transition-colors"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            )}
                             <button 
                               onClick={() => removeResource(res.id)}
                               className="p-2 hover:text-red-500 transition-colors"

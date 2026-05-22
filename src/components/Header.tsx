@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { Bell, ShieldCheck, Flame, Trophy, X, Trash2 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useIsFetching } from "@tanstack/react-query";
-import { cn } from "@/src/lib/utils";
+import { cn, isValidUrl } from "@/src/lib/utils";
 import { BADGES } from "../constants";
 
 export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: string) => void, onShowBadges?: () => void }) {
@@ -122,7 +122,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
                           {typeof badge.icon !== 'string' && (
                             <div className="absolute inset-0 opacity-10" style={{ backgroundColor: badge.color }} />
                           )}
-                          {typeof badge.icon === 'string' ? (
+                          {typeof badge.icon === 'string' && isValidUrl(badge.icon) ? (
                             <img 
                               src={badge.icon} 
                               alt={badge.title}
