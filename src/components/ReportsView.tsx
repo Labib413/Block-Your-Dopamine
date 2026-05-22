@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   BarChart, 
   Bar, 
@@ -30,6 +30,8 @@ import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { useBYDData } from '../hooks/useBYDData';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { supabase } from "../lib/supabase";
+import { logger } from "../lib/logger";
 
 export function ReportsView({ onBack }: { onBack: () => void }) {
   const { 

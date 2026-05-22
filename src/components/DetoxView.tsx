@@ -81,7 +81,7 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
   const [isUploading, setIsUploading] = useState(false);
 
   // Persistence: Fetch resources from Supabase
-  const { data: dbResources, updateData: upsertResource, deleteData: removeDbResource } = useBYDData('resources');
+  const { data: dbResources, updateData: upsertResource } = useBYDData('resources');
   useRealtimeSync('resources');
   
   const allResources = useMemo(() => {
