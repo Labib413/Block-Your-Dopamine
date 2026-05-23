@@ -355,8 +355,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PRIMARY FIX: Filter out any duplicate chapter IDs and use a Map for O(1) lookups
+  const chapterMap = new Map<string, AcademicChapter>(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +372,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -493,8 +493,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineSyncQueue: [],
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      ...((): Partial<AppState> => {
+        const defaultChapters = generateDefaultChapters(null);
+        return {
+          academicChapters: defaultChapters,
+          academicSubjects: calculateAllSubjectsProgress(defaultChapters, null)
+        };
+      })(),
       academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
