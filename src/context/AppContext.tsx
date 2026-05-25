@@ -356,7 +356,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // Bolt Optimization: Use a Map for O(1) lookups during subject iteration
+  const uniqueChaptersMap = new Map<string, AcademicChapter>(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +373,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = uniqueChaptersMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -493,8 +494,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineSyncQueue: [],
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      ...(() => {
+        const defaultChapters = generateDefaultChapters(null);
+        return {
+          academicChapters: defaultChapters,
+          academicSubjects: calculateAllSubjectsProgress(defaultChapters, null)
+        };
+      })(),
       academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
@@ -560,34 +566,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const syncPromises = Object.entries(updatesByTable).map(async ([table, items]) => {
         // For upserts, we often only care about the latest state for a specific key (e.g., user_id + entry_date)
         // This is a simple optimization: only send the last update for each unique key in the batch
-        const uniqueItems = items.reduce((acc, item) => {
+        const uniqueItemsMap = items.reduce((acc, item) => {
           // Use item.key, or item.id, or a random UUID for inserts, or 'default'
           const key = item.key || item.id || (item.type === 'insert' ? `insert_${generateId()}` : 'default');
           acc[key] = item;
           return acc;
         }, {} as Record<string, any>);
 
-        return Promise.all(Object.values(uniqueItems).map(async (item: any) => {
-          const { table, data, type, id, key } = item;
+        const uniqueItems = Object.values(uniqueItemsMap);
+
+        // Bolt Optimization: Group unique items by type and onConflict for batched execution
+        const groups: Record<string, { type: string, onConflict?: string, items: any[] }> = {};
+        uniqueItems.forEach((item: any) => {
+          const groupKey = `${item.type}_${item.onConflict || 'id'}`;
+          if (!groups[groupKey]) {
+            groups[groupKey] = { type: item.type, onConflict: item.onConflict, items: [] };
+          }
+          groups[groupKey].items.push(item);
+        });
+
+        return Promise.all(Object.values(groups).map(async (group) => {
+          const { type, onConflict, items: groupItems } = group;
           
           try {
-            let sanitizedData = { ...data };
-            if (table === 'sessions') {
-              delete sanitizedData.duration;
-              delete sanitizedData.status;
-            }
-            if (type === 'upsert') {
-              // BYD Sanitization: Remove internal fields before database sync
-              if (table === 'academic_chapters' && sanitizedData._timestamp) {
-                // DO NOT DELETE _timestamp here - we need it in the DB for latest-wins logic
+            const sanitizedDataArray = groupItems.map((item: any) => {
+              let sanitizedData = { ...item.data };
+              if (table === 'sessions') {
+                delete sanitizedData.duration;
+                delete sanitizedData.status;
               }
-              return await supabase.from(table).upsert(sanitizedData, { onConflict: item.onConflict || 'id' });
+              return sanitizedData;
+            });
+
+            if (type === 'upsert') {
+              return await supabase.from(table).upsert(sanitizedDataArray, { onConflict: onConflict || 'id' });
             } else if (type === 'insert') {
-              return await supabase.from(table).insert(sanitizedData);
+              return await supabase.from(table).insert(sanitizedDataArray);
             } else if (type === 'update') {
-              return await supabase.from(table).update(sanitizedData).eq('id', id);
+              // Individual updates required for different data per ID
+              return Promise.all(groupItems.map(async (item: any) =>
+                supabase.from(table).update(item.data).eq('id', item.id)
+              ));
             } else if (type === 'delete') {
-              return await supabase.from(table).delete().eq('id', id);
+              const idsToDelete = groupItems.map((it: any) => it.id).filter(Boolean);
+              if (idsToDelete.length > 0) {
+                return await supabase.from(table).delete().in('id', idsToDelete);
+              }
             }
           } catch (err: any) {
             // Catch individual request errors to prevent Promise.all from failing entirely
@@ -1544,10 +1568,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
+          // Bolt Optimization: Use Maps for O(1) lookups during chapter merge
+          const cloudChaptersMap = new Map<string, any>(cloudChapters.map((c: any) => [c.id, c]));
+          const localChaptersMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+
           const defaultChapters = generateDefaultChapters(userId);
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChaptersMap.get(defaultCh.id);
+            const localCh = localChaptersMap.get(defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;

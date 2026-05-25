@@ -16,7 +16,7 @@ export const useBYDData = (tableName: string) => {
         .from(tableName)
         .select('*')
         .eq('user_id', user.id);
-      
+
       if (error) throw error;
       return data;
     },
@@ -36,7 +36,7 @@ export const useBYDData = (tableName: string) => {
       await queryClient.cancelQueries({ queryKey: [tableName, user?.id] });
       const previousData = queryClient.getQueryData([tableName, user?.id]);
       // ক্লিক করার সাথে সাথে UI আপডেট করে দাও
-      queryClient.setQueryData([tableName, user?.id], (old: any) => 
+      queryClient.setQueryData([tableName, user?.id], (old: any) =>
         old ? old.map((item: any) => item.id === newData.id ? { ...item, ...newData } : item) : [newData]
       );
       return { previousData };
@@ -49,5 +49,34 @@ export const useBYDData = (tableName: string) => {
     },
   });
 
-  return { ...query, updateData: mutation.mutate };
+  // ডাটা ডিলিট করার জন্য
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: [tableName, user?.id] });
+      const previousData = queryClient.getQueryData([tableName, user?.id]);
+      queryClient.setQueryData([tableName, user?.id], (old: any) =>
+        old ? old.filter((item: any) => item.id !== id) : []
+      );
+      return { previousData };
+    },
+    onError: (err, id, context: any) => {
+      queryClient.setQueryData([tableName, user?.id], context.previousData);
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: [tableName, user?.id] });
+    },
+  });
+
+  return {
+    ...query,
+    updateData: mutation.mutate,
+    deleteData: deleteMutation.mutate
+  };
 };
