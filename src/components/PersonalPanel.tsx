@@ -33,7 +33,7 @@ import {
   RefreshCw,
   Lightbulb
 } from "lucide-react";
-import { cn } from "@/src/lib/utils";
+import { cn, safeOpen, isValidUrl } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
 
 const GlassSelect = ({ 
@@ -328,7 +328,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             <div className="flex items-center gap-3">
               <div className="relative">
                 <div className="absolute inset-0 bg-[#00ff66]/40 blur-md rounded-full animate-pulse" />
-                {profile?.avatarUrl ? (
+                {profile?.avatarUrl && isValidUrl(profile.avatarUrl) ? (
                   <img src={profile.avatarUrl} alt="Avatar" className="w-5 h-5 rounded-full relative z-10 border border-[#00ff66]/30" />
                 ) : (
                   <BookOpen className="w-5 h-5 text-[#00ff66] relative z-10 drop-shadow-[0_0_8px_rgba(0,255,102,0.8)]" />
@@ -718,7 +718,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             </ul>
 
             <button 
-              onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScHKHARQjP2x-J5q-jQGtz7vo9WX_-irtmOo_35SY2djnkbQQ/viewform?usp=publish-editor', '_blank')}
+              onClick={() => safeOpen('https://docs.google.com/forms/d/e/1FAIpQLScHKHARQjP2x-J5q-jQGtz7vo9WX_-irtmOo_35SY2djnkbQQ/viewform?usp=publish-editor')}
               className="w-full py-4 rounded-xl bg-neon-green/10 backdrop-blur-md border border-neon-green/20 text-[10px] font-black text-neon-green tracking-[0.2em] hover:bg-neon-green/20 hover:shadow-[0_0_20px_rgba(57,255,20,0.3)] active:scale-[0.98] transition-all relative z-10"
             >
               LAUNCH FEEDBACK FORM
