@@ -60,3 +60,63 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against safe protocols and patterns.
+ * Blocks dangerous schemes like javascript: and vbscript:.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+
+  // Explicitly block dangerous schemes
+  const dangerousSchemes = ['javascript:', 'vbscript:', 'data:text/html'];
+  if (dangerousSchemes.some(scheme => trimmed.toLowerCase().startsWith(scheme))) {
+    return false;
+  }
+
+  // Allow safe image data URIs
+  const safeImageDataRegex = /^data:image\/(jpeg|png|gif|webp);base64,/;
+  if (trimmed.startsWith('data:image/')) {
+    return safeImageDataRegex.test(trimmed);
+  }
+
+  // Allow blob and standard web protocols
+  if (trimmed.startsWith('blob:') || trimmed.startsWith('http:') || trimmed.startsWith('https:')) {
+    return true;
+  }
+
+  // Handle domain-only strings (e.g., google.com)
+  const domainRegex = /^[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,}(:[0-9]{1,5})?(\/.*)?$/i;
+  return domainRegex.test(trimmed);
+}
+
+/**
+ * Opens a URL in a new tab securely, preventing reverse tabnabbing.
+ */
+export function safeOpen(url: string, features?: string) {
+  if (!isValidUrl(url)) {
+    console.error('[Security] Blocked unsafe URL:', url);
+    return null;
+  }
+
+  let finalUrl = url.trim();
+  if (!finalUrl.startsWith('http') && !finalUrl.startsWith('blob:') && !finalUrl.startsWith('data:')) {
+    finalUrl = 'https://' + finalUrl;
+  }
+
+  // Enforce noopener,noreferrer for security
+  const secureFeatures = `noopener,noreferrer${features ? `,${features}` : ''}`;
+  const win = window.open(finalUrl, '_blank', secureFeatures);
+
+  if (win) {
+    // Extra layer of protection: manually nullify opener
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore if browser prevents this
+    }
+  }
+
+  return win;
+}
