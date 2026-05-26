@@ -355,8 +355,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PRIMARY FIX: Use a Map for O(1) lookup and filter out duplicate IDs
+  const chaptersMap = new Map<string, AcademicChapter>(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +372,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chaptersMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -558,39 +558,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
 
       const syncPromises = Object.entries(updatesByTable).map(async ([table, items]) => {
-        // For upserts, we often only care about the latest state for a specific key (e.g., user_id + entry_date)
-        // This is a simple optimization: only send the last update for each unique key in the batch
-        const uniqueItems = items.reduce((acc, item) => {
-          // Use item.key, or item.id, or a random UUID for inserts, or 'default'
-          const key = item.key || item.id || (item.type === 'insert' ? `insert_${generateId()}` : 'default');
-          acc[key] = item;
-          return acc;
-        }, {} as Record<string, any>);
+        // BOLT OPTIMIZATION: Group by type and onConflict to enable batching
+        const operationsByType: Record<string, any> = {};
 
-        return Promise.all(Object.values(uniqueItems).map(async (item: any) => {
-          const { table, data, type, id, key } = item;
+        // 1. DEDUPLICATION: Maintain order-based deduplication per table
+        // This ensures if a record is updated then deleted, the delete wins.
+        const deduplicatedItems: any[] = [];
+        const lastOpIndex = new Map<string, number>();
+
+        items.forEach((item, index) => {
+          const dedupeKey = item.key || item.id || (item.type === 'insert' ? `insert_${generateId()}` : `fallback_${index}`);
+          if (lastOpIndex.has(dedupeKey)) {
+            const prevIndex = lastOpIndex.get(dedupeKey)!;
+            deduplicatedItems[prevIndex] = null; // Mark previous as overridden
+          }
+          lastOpIndex.set(dedupeKey, deduplicatedItems.length);
+          deduplicatedItems.push(item);
+        });
+
+        const activeItems = deduplicatedItems.filter(Boolean);
+
+        // 2. GROUPING: Group active items by type for batching
+        activeItems.forEach(item => {
+          const opKey = `${item.type}_${item.onConflict || 'id'}`;
+          if (!operationsByType[opKey]) operationsByType[opKey] = {
+            type: item.type,
+            onConflict: item.onConflict,
+            items: []
+          };
+          operationsByType[opKey].items.push(item);
+        });
+
+        return Promise.all(Object.values(operationsByType).map(async (op: any) => {
+          const { type, onConflict, items: itemsList } = op;
           
           try {
-            let sanitizedData = { ...data };
-            if (table === 'sessions') {
-              delete sanitizedData.duration;
-              delete sanitizedData.status;
-            }
-            if (type === 'upsert') {
-              // BYD Sanitization: Remove internal fields before database sync
-              if (table === 'academic_chapters' && sanitizedData._timestamp) {
-                // DO NOT DELETE _timestamp here - we need it in the DB for latest-wins logic
+            const getSanitizedData = (item: any) => {
+              let data = { ...item.data };
+              if (table === 'sessions') {
+                delete data.duration;
+                delete data.status;
               }
-              return await supabase.from(table).upsert(sanitizedData, { onConflict: item.onConflict || 'id' });
+              return data;
+            };
+
+            if (type === 'upsert') {
+              return await supabase.from(table).upsert(itemsList.map(getSanitizedData), { onConflict: onConflict || 'id' });
             } else if (type === 'insert') {
-              return await supabase.from(table).insert(sanitizedData);
-            } else if (type === 'update') {
-              return await supabase.from(table).update(sanitizedData).eq('id', id);
-            } else if (type === 'delete') {
-              return await supabase.from(table).delete().eq('id', id);
+              return await supabase.from(table).insert(itemsList.map(getSanitizedData));
+            } else if (type === 'update' || type === 'delete') {
+              // Update and Delete still need to be individual for now
+              return Promise.all(itemsList.map(async (item: any) => {
+                if (type === 'update') {
+                  return await supabase.from(table).update(getSanitizedData(item)).eq('id', item.id);
+                } else {
+                  return await supabase.from(table).delete().eq('id', item.id);
+                }
+              }));
             }
           } catch (err: any) {
-            // Catch individual request errors to prevent Promise.all from failing entirely
             return { error: err };
           }
         }));
@@ -1543,20 +1569,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.academicSettings = { examDate: aS.exam_date || null, focusSubjectId: aS.focus_subject_id || null, prepStartDate: aS.prep_start_date || null };
         }
         if (results.academicChapters?.data) {
-          const cloudChapters = results.academicChapters.data;
+          const cloudChapters = results.academicChapters.data as any[];
           const defaultChapters = generateDefaultChapters(userId);
-          const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
-            let localTimestamp = localCh?._timestamp || 0;
+
+          // BOLT OPTIMIZATION: Use Maps for O(1) lookup during merge (O(N) instead of O(N^2))
+          const cloudMap = new Map<string, any>(cloudChapters.map(c => [c.id, c]));
+          const localMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+
+          const mergedChapters: AcademicChapter[] = defaultChapters.map(defaultCh => {
+            const cloudCh = cloudMap.get(defaultCh.id);
+            const localCh = localMap.get(defaultCh.id);
+
+            const localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
+
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
+
             if (cloudCh) return {
-              id: cloudCh.id, subject_id: cloudCh.subject_id, chapter_name: cloudCh.chapter_name,
-              is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false), is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
-              is_active: cloudCh.is_active ?? (localCh?.is_active ?? true), read_textbook: cloudCh.read_textbook ?? (localCh?.read_textbook ?? false),
-              watch_class: cloudCh.watch_class ?? (localCh?.watch_class ?? false), practice_problems: cloudCh.practice_problems ?? (localCh?.practice_problems ?? false),
-              make_notes: cloudCh.make_notes ?? (localCh?.make_notes ?? false), resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
+              id: cloudCh.id,
+              subject_id: cloudCh.subject_id,
+              chapter_name: cloudCh.chapter_name,
+              is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false),
+              is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
+              is_active: cloudCh.is_active ?? (localCh?.is_active ?? true),
+              read_textbook: cloudCh.read_textbook ?? (localCh?.read_textbook ?? false),
+              watch_class: cloudCh.watch_class ?? (localCh?.watch_class ?? false),
+              practice_problems: cloudCh.practice_problems ?? (localCh?.practice_problems ?? false),
+              make_notes: cloudCh.make_notes ?? (localCh?.make_notes ?? false),
+              resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
               _timestamp: cloudCh._timestamp || 0
             };
             return localCh || defaultCh;
