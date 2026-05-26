@@ -450,7 +450,7 @@ export function Dashboard() {
           <Skeleton className="col-span-4 h-48 rounded-[32px]" />
         </div>
         <div className="grid grid-cols-4 gap-6">
-          {[1,2,3,4].map(i => <Skeleton key={i} className="h-36 rounded-[32px]" />)}
+          {[1,2,3,4].map(i => <div key={i}><Skeleton className="h-36 rounded-[32px]" /></div>)}
         </div>
         <div className="grid grid-cols-12 gap-8">
           <Skeleton className="col-span-8 h-96 rounded-[32px]" />

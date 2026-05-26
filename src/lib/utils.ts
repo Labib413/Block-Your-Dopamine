@@ -30,6 +30,24 @@ export function generateId() {
 }
 
 /**
+ * Validates a URL to ensure it uses a safe protocol.
+ * Prevents XSS via javascript: or vbscript: URIs.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  const cleanUrl = url.trim();
+
+  // Explicitly block dangerous schemes
+  if (/^(javascript|vbscript|data:text\/html):/i.test(cleanUrl)) {
+    return false;
+  }
+
+  // Allow http, https, data:image (including SVG), blob, or relative paths (no colon or starts with /)
+  return /^(https?|data:image\/(?:[\w+-]+)|blob):|^\/|^\.\/|^\.\.\/|^[^:]+$/i.test(cleanUrl);
+}
+
+/**
  * Generates a deterministic UUID-like string from a regular string.
  * This is useful for keeping IDs consistent for the same input.
  */
