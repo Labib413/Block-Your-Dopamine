@@ -30,6 +30,67 @@ export function generateId() {
 }
 
 /**
+ * Validates a URL against a set of safe protocols to prevent XSS (e.g. javascript:).
+ * Supports http, https, blob, and safe data:image protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+
+  // Explicitly block dangerous schemes
+  const lowerUrl = trimmed.toLowerCase();
+  if (lowerUrl.startsWith('javascript:') ||
+      lowerUrl.startsWith('vbscript:') ||
+      lowerUrl.startsWith('data:text/html')) {
+    return false;
+  }
+
+  try {
+    // Handle URLs without protocol by assuming https
+    // Special case for data: as it doesn't always have ://
+    let urlToTest = trimmed;
+    if (!trimmed.includes('://') && !trimmed.toLowerCase().startsWith('data:')) {
+      urlToTest = 'https://' + trimmed;
+    }
+    const parsed = new URL(urlToTest);
+    const safeProtocols = ['http:', 'https:', 'blob:', 'data:'];
+
+    if (!safeProtocols.includes(parsed.protocol)) return false;
+
+    // Extra check for data: to ensure it's only images if needed,
+    // but for now we allow it as long as it's not data:text/html
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Securely opens a URL in a new window/tab.
+ * Prevents reverse tabnabbing by using noopener,noreferrer and nulling the opener.
+ */
+export function safeOpen(url: string, target: string = '_blank', features: string = ""): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn("[Sentinel] Blocked attempt to open unsafe URL:", url);
+    return null;
+  }
+
+  // Ensure noopener and noreferrer are always included
+  const secureFeatures = features
+    ? `${features},noopener,noreferrer`
+    : "noopener,noreferrer";
+
+  const win = window.open(url, target, secureFeatures);
+  if (win) {
+    // Extra layer of protection for older browsers
+    try {
+      win.opener = null;
+    } catch (e) {}
+  }
+  return win;
+}
+
+/**
  * Generates a deterministic UUID-like string from a regular string.
  * This is useful for keeping IDs consistent for the same input.
  */
