@@ -301,13 +301,19 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+/**
+ * PERFORMANCE OPTIMIZATION: Reusing Intl.DateTimeFormat instance.
+ * Creating a new formatter is expensive; module-level constant avoids redundant allocations.
+ */
+const DHAKA_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Dhaka',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
 const getLocalDateString = (date: Date) => {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date); // Returns YYYY-MM-DD
+  return DHAKA_DATE_FORMATTER.format(date); // Returns YYYY-MM-DD
 };
 
 const getYesterdayDateString = () => {
@@ -356,7 +362,12 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  /**
+   * PERFORMANCE OPTIMIZATION: Using a Map for O(1) chapter lookups.
+   * Replaces O(N) array.find() inside the O(M) subject loop, reducing complexity from O(N*M) to O(N+M).
+   */
+  const chaptersMap = new Map(chapters.map(c => [c.id, c]));
+  const uniqueChapters = Array.from(chaptersMap.values()) as AcademicChapter[];
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +383,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chaptersMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -1543,11 +1554,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.academicSettings = { examDate: aS.exam_date || null, focusSubjectId: aS.focus_subject_id || null, prepStartDate: aS.prep_start_date || null };
         }
         if (results.academicChapters?.data) {
-          const cloudChapters = results.academicChapters.data;
+          /**
+           * PERFORMANCE OPTIMIZATION: Map-based merging for cloud and local chapters.
+           * Replaces O(N) .find() calls inside the O(M) syllabus loop with O(1) Map lookups.
+           */
+          const cloudChapters = results.academicChapters.data as any[];
+          const cloudChaptersMap = new Map(cloudChapters.map((c: any) => [c.id, c]));
+          const localChaptersMap = new Map(prev.academicChapters.map(c => [c.id, c as any]));
           const defaultChapters = generateDefaultChapters(userId);
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChaptersMap.get(defaultCh.id) as any;
+            const localCh = localChaptersMap.get(defaultCh.id) as any;
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
@@ -1561,8 +1578,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
             };
             return localCh || defaultCh;
           });
-          next.academicChapters = mergedChapters;
-          next.academicSubjects = calculateAllSubjectsProgress(mergedChapters, userId);
+          next.academicChapters = mergedChapters as AcademicChapter[];
+          next.academicSubjects = calculateAllSubjectsProgress(mergedChapters as AcademicChapter[], userId);
         }
         if (results.academicRoutines?.data) {
           next.academicRoutines = results.academicRoutines.data;
