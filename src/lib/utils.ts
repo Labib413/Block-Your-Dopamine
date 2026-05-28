@@ -60,3 +60,60 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against safe protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  // Clean URL
+  const trimmedUrl = url.trim();
+
+  // Block dangerous protocols
+  const dangerousProtocols = ['javascript:', 'vbscript:', 'data:text/html'];
+  if (dangerousProtocols.some(p => trimmedUrl.toLowerCase().startsWith(p))) {
+    return false;
+  }
+
+  // Allow safe protocols
+  const safeProtocols = ['http:', 'https:', 'blob:', 'data:image/'];
+  if (safeProtocols.some(p => trimmedUrl.toLowerCase().startsWith(p))) {
+    return true;
+  }
+
+  // If it's a domain-like string (e.g., "google.com"), we'll treat it as safe
+  // since the app often prepends https:// later, but we should be careful.
+  // This regex supports domains, localhost, and IP addresses.
+  const domainRegex = /^(([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,24}|localhost|(\d{1,3}\.){3}\d{1,3})(:\d+)?(\/.*)?$/i;
+  if (domainRegex.test(trimmedUrl)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Securely opens a new window with a validated URL and noopener/noreferrer.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open unsafe URL:', url);
+    return null;
+  }
+
+  // Ensure absolute URL
+  const finalUrl = url.startsWith('http') || url.startsWith('blob:') || url.startsWith('data:')
+    ? url
+    : `https://${url}`;
+
+  const finalFeatures = features
+    ? `${features},noopener,noreferrer`
+    : 'noopener,noreferrer';
+
+  const win = window.open(finalUrl, target, finalFeatures);
+  if (win) {
+    win.opener = null;
+  }
+  return win;
+}
