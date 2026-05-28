@@ -40,12 +40,16 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   // 1. Initial Hydration: Load from local state source of truth
   useEffect(() => {
     const defaultNames = HSC_SYLLABUS[subjectId] || [];
+    // Optimization: Create a Map for O(1) lookup during hydration
+    const academicChaptersMap = new Map<string, AcademicChapter>(
+      academicChapters.map(c => [c.id, c])
+    );
     
     const baseChapters = defaultNames.map((name) => {
       const rawId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const cloudData = academicChapters.find(c => c.id === chapterId);
+      const cloudData = academicChaptersMap.get(chapterId);
       
       let chapter = cloudData || {
         id: chapterId,
