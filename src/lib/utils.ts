@@ -60,3 +60,46 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against dangerous URI schemes to prevent XSS.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  // Strip all whitespace characters to prevent bypasses like "java script:"
+  const normalized = url.replace(/\s+/g, '').toLowerCase();
+
+  // Block dangerous schemes
+  if (normalized.startsWith('javascript:') ||
+      normalized.startsWith('vbscript:') ||
+      normalized.startsWith('data:text/html')) {
+    return false;
+  }
+
+  // Allow safe protocols
+  return (
+    normalized.startsWith('http://') ||
+    normalized.startsWith('https://') ||
+    normalized.startsWith('blob:') ||
+    normalized.startsWith('data:image/') ||
+    normalized.startsWith('/') // Relative paths
+  );
+}
+
+/**
+ * Safely opens a URL in a new window/tab, mitigating reverse tabnabbing and URI-based XSS.
+ */
+export function safeOpen(url: string, target: string = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn("Blocked attempt to open an insecure URL:", url);
+    return null;
+  }
+
+  // Ensure noopener,noreferrer are present in features
+  const secureFeatures = `noopener,noreferrer${features ? `,${features}` : ''}`;
+  const win = window.open(url, target, secureFeatures);
+  if (win) {
+    win.opener = null;
+  }
+  return win;
+}
