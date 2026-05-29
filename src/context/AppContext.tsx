@@ -356,7 +356,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // Bolt: Optimized using Map for O(1) lookups during subject progress calculation
+  const chapterMap = new Map(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +373,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -427,6 +428,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => {
     const now = new Date();
     const today = getLocalDateString(now);
+    // Bolt: Optimized initialization by generating default chapters once
+    const defaultChapters = generateDefaultChapters(null);
     
     return {
       xp: 0,
@@ -493,8 +496,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineSyncQueue: [],
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicChapters: defaultChapters,
+      academicSubjects: calculateAllSubjectsProgress(defaultChapters, null),
       academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
@@ -1544,10 +1547,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
+          // Bolt: Optimized using Map lookups to avoid O(N^2) complexity during chapter merging
+          const cloudChapterMap = new Map<string, AcademicChapter>(cloudChapters.map((c: any) => [c.id, c]));
+          const localChapterMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+
           const defaultChapters = generateDefaultChapters(userId);
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChapterMap.get(defaultCh.id);
+            const localCh = localChapterMap.get(defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
@@ -2975,6 +2982,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearState = useCallback(() => {
     const today = getLocalDateString(new Date());
     const now = new Date();
+    // Bolt: Optimized state reset by generating default chapters once
+    const defaultChapters = generateDefaultChapters(null);
     setState({
       xp: 0,
       level: 1,
@@ -3040,8 +3049,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineSyncQueue: [],
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicChapters: defaultChapters,
+      academicSubjects: calculateAllSubjectsProgress(defaultChapters, null),
       academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
