@@ -60,3 +60,60 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against dangerous protocols and ensures it is safe for usage in <img> tags or window.open.
+ * Blocks javascript:, vbscript:, and data:text/html to prevent XSS.
+ */
+export function isValidUrl(url: string | undefined | null): boolean {
+  if (!url) return false;
+
+  // Strip all whitespace characters that might be used for obfuscation (e.g. "java script:")
+  const sanitizedUrl = url.replace(/\s/g, '').toLowerCase();
+
+  // Block dangerous URI schemes
+  if (
+    sanitizedUrl.startsWith('javascript:') ||
+    sanitizedUrl.startsWith('vbscript:') ||
+    sanitizedUrl.includes('data:text/html')
+  ) {
+    return false;
+  }
+
+  // Allow safe protocols and relative paths
+  return (
+    sanitizedUrl.startsWith('http://') ||
+    sanitizedUrl.startsWith('https://') ||
+    sanitizedUrl.startsWith('blob:') ||
+    sanitizedUrl.startsWith('data:image/') ||
+    sanitizedUrl.startsWith('data:application/pdf') ||
+    !sanitizedUrl.includes(':') || // No protocol (likely relative path)
+    sanitizedUrl.startsWith('/') ||
+    sanitizedUrl.startsWith('./') ||
+    sanitizedUrl.startsWith('../')
+  );
+}
+
+/**
+ * A secure wrapper for window.open that prevents tabnabbing and ensures URL safety.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open unsafe URL:', url);
+    return null;
+  }
+
+  // Ensure noopener,noreferrer are present to prevent reverse tabnabbing
+  const secureFeatures = features
+    ? `${features},noopener,noreferrer`
+    : 'noopener,noreferrer';
+
+  const win = window.open(url, target, secureFeatures);
+
+  // Extra layer of protection: Reset opener
+  if (win) {
+    win.opener = null;
+  }
+
+  return win;
+}
