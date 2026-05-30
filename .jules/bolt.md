@@ -1,0 +1,3 @@
+## 2025-05-14 - Map-based lookup optimization in AppContext
+**Learning:** Nested `.find()` calls on arrays of ~90-100 chapters (standard for HSC syllabus) within frequently triggered state update functions (like `calculateAllSubjectsProgress` and `masterSync`) create O(N²) bottlenecks. Using a `Map` for O(1) lookups significantly improves performance, especially during initialization and cloud synchronization.
+**Action:** Prefer `Map` over `Array.find()` for lookups in core context logic that handles syllabus data. Ensure `Map` constructors are explicitly typed to avoid `unknown` type errors in TypeScript.
