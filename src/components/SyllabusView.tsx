@@ -40,12 +40,14 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   // 1. Initial Hydration: Load from local state source of truth
   useEffect(() => {
     const defaultNames = HSC_SYLLABUS[subjectId] || [];
+    // PERFORMANCE FIX: Use a Map for O(1) lookups instead of nested .find() in a loop
+    const chapterMap = new Map<string, AcademicChapter>(academicChapters.map(c => [c.id, c]));
     
     const baseChapters = defaultNames.map((name) => {
       const rawId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const cloudData = academicChapters.find(c => c.id === chapterId);
+      const cloudData = chapterMap.get(chapterId);
       
       let chapter = cloudData || {
         id: chapterId,
