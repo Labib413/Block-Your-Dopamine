@@ -60,3 +60,75 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols.
+ * Prevents javascript: and other dangerous protocol injection.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+
+  // Clean whitespace
+  const cleanUrl = url.trim();
+
+  // Allow relative paths
+  if (cleanUrl.startsWith('/') || cleanUrl.startsWith('./') || cleanUrl.startsWith('../')) {
+    return true;
+  }
+
+  // Whitelist safe protocols
+  const safeProtocols = [
+    'http:',
+    'https:',
+    'mailto:',
+    'tel:',
+    'blob:'
+  ];
+
+  // For data: URIs, we only allow specific mime types
+  const safeDataMimeTypes = [
+    'data:image/',
+    'data:application/pdf'
+  ];
+
+  try {
+    const parsed = new URL(cleanUrl);
+    const protocol = parsed.protocol.toLowerCase();
+
+    if (protocol === 'data:') {
+      return safeDataMimeTypes.some(mime => cleanUrl.toLowerCase().startsWith(mime));
+    }
+
+    return safeProtocols.some(proto => protocol === proto.toLowerCase());
+  } catch (e) {
+    const lowerUrl = cleanUrl.toLowerCase();
+
+    // Explicitly block dangerous schemes
+    if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('vbscript:') || lowerUrl.startsWith('data:text/html')) {
+      return false;
+    }
+
+    return [...safeProtocols, ...safeDataMimeTypes].some(proto => lowerUrl.startsWith(proto));
+  }
+}
+
+/**
+ * Secure wrapper for window.open to prevent reverse tabnabbing and XSS.
+ */
+export function safeOpen(url: string | null | undefined, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Blocked opening invalid/dangerous URL:', url);
+    return null;
+  }
+
+  // Enforce noopener,noreferrer for security
+  const secureFeatures = features
+    ? `${features},noopener,noreferrer`
+    : 'noopener,noreferrer';
+
+  const win = window.open(url!, target, secureFeatures);
+  if (win) {
+    win.opener = null;
+  }
+  return win;
+}
