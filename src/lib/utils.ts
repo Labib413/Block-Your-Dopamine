@@ -60,3 +60,59 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols.
+ * Prevents javascript: URI-based XSS attacks.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+
+  // Allow relative paths
+  if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+
+    if (safeProtocols.includes(parsed.protocol)) {
+      return true;
+    }
+
+    // Strictly validate data URIs for images or PDFs
+    if (parsed.protocol === 'data:') {
+      return url.startsWith('data:image/') || url.startsWith('data:application/pdf');
+    }
+
+    return false;
+  } catch (e) {
+    // If it's not a valid URL but we didn't catch it as relative, it's unsafe
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab.
+ * Mitigates "Reverse Tabnabbing" by setting noopener/noreferrer and clearing window.opener.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Blocked opening invalid/unsafe URL:', url);
+    return null;
+  }
+
+  // Force noopener,noreferrer for security
+  const baseFeatures = 'noopener,noreferrer';
+  const combinedFeatures = features ? `${baseFeatures},${features}` : baseFeatures;
+
+  const win = window.open(url, target, combinedFeatures);
+
+  if (win) {
+    // Extra precaution to sever the window relationship
+    win.opener = null;
+  }
+
+  return win;
+}
