@@ -355,8 +355,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PRIMARY FIX: Deduplicate and use Map for O(1) lookups instead of O(N) linear search
+  const chapterMap = new Map<string, AcademicChapter>(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +372,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -734,8 +734,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const timestamp = Date.now();
 
     setState(prev => {
-      // 1. Find existing or generate from defaults if missing
-      const existing = prev.academicChapters.find(c => c.id === chapter_id);
+      // 1. Use Map for O(1) lookup and update/insert
+      const chapterMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+      const existing = chapterMap.get(chapter_id);
       
       const newChapter = existing ? { ...existing, ...updates, _timestamp: timestamp } : {
         id: chapter_id,
@@ -754,17 +755,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       } as AcademicChapter;
 
       finalChapter = newChapter;
+      chapterMap.set(chapter_id, newChapter);
 
-      const updatedChapters = prev.academicChapters.map(c => 
-        c.id === chapter_id ? newChapter : c
-      );
-      
-      if (!prev.academicChapters.some(c => c.id === chapter_id)) {
-        updatedChapters.push(newChapter);
-      }
-
-      // Deduplicate
-      const uniqueChapters = Array.from(new Map(updatedChapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+      const uniqueChapters = Array.from(chapterMap.values());
       finalUpdatedChapters = uniqueChapters;
 
       const updatedSubjects = calculateAllSubjectsProgress(uniqueChapters, prev.user?.id);
@@ -1545,9 +1538,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
           const defaultChapters = generateDefaultChapters(userId);
+
+          // Use Maps for O(1) lookups during merge
+          const cloudChapterMap = new Map<string, any>(cloudChapters.map((c: any) => [c.id, c]));
+          const localChapterMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChapterMap.get(defaultCh.id);
+            const localCh = localChapterMap.get(defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
