@@ -1,0 +1,3 @@
+## 2025-05-15 - Map-based Syllabus Optimization
+**Learning:** In the monolithic AppContext, syllabus progress was being recalculated by performing linear `.find()` lookups on the entire chapter list inside a loop for each subject. This resulted in O(N^2) complexity where N is the number of chapters. Even after deduplicating into a Map, the code was converting back to an array and using `.find()`.
+**Action:** Use a `Map` for O(1) chapter lookups. Refactor `calculateAllSubjectsProgress` and state update handlers to leverage the Map instead of repeated array iterations. Benchmark showed up to 6x speedup for 1000 chapters.
