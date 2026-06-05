@@ -60,3 +60,62 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL to prevent XSS and other injection attacks.
+ * Rejects javascript: URIs and only allows specific protocols.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+
+  // Allow relative paths
+  if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(url.startsWith('http') || url.includes(':') ? url : `https://${url}`);
+
+    // Explicitly reject dangerous protocols
+    if (parsed.protocol === 'javascript:') return false;
+
+    // Whitelist safe protocols
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    if (!allowedProtocols.includes(parsed.protocol)) return false;
+
+    // Extra validation for data: URIs to ensure they are only images or PDFs
+    if (parsed.protocol === 'data:') {
+      return url.startsWith('data:image/') || url.startsWith('data:application/pdf');
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Opens a URL in a new window securely.
+ * Prevents reverse tabnabbing and validates the URL.
+ *
+ * Note: We set win.opener = null manually to allow the window handle to be returned.
+ * If we use 'noopener' in the features string, window.open returns null.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open invalid or dangerous URL:', url);
+    return null;
+  }
+
+  // Use a targeted window name if provided to allow window reuse.
+  const win = window.open(url, target, features);
+  if (win) {
+    // Prevent reverse tabnabbing
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if the window was closed immediately
+    }
+  }
+  return win;
+}
