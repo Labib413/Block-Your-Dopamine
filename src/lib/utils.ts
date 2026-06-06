@@ -30,6 +30,74 @@ export function generateId() {
 }
 
 /**
+ * Validates a URL to prevent XSS and other malicious links.
+ * Allows http, https, mailto, tel, blob, and data:image/ protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Prevent javascript: protocol
+  if (trimmedUrl.toLowerCase().startsWith('javascript:')) {
+    return false;
+  }
+
+  // Allow relative paths
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(trimmedUrl);
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+
+    if (allowedProtocols.includes(parsed.protocol)) {
+      return true;
+    }
+
+    // Specifically allow data:image/ URIs for avatars and badges
+    if (parsed.protocol === 'data:' && trimmedUrl.toLowerCase().startsWith('data:image/')) {
+      return true;
+    }
+
+    return false;
+  } catch (e) {
+    // If it's not a valid absolute URL (e.g. "google.com"),
+    // ensure it doesn't contain a colon (which might indicate a protocol)
+    // or starts with // (protocol-relative)
+    return !trimmedUrl.includes(':') || trimmedUrl.startsWith('//');
+  }
+}
+
+/**
+ * A secure wrapper for window.open to prevent reverse tabnabbing.
+ * Validates the URL before opening and ensures window.opener is nullified.
+ */
+export function safeOpen(url: string | null | undefined, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error(`Blocked attempt to open insecure URL: ${url}`);
+    return null;
+  }
+
+  // We omit 'noopener' from the features string because it prevents some browsers
+  // from returning the window proxy (needed for tracking if the window is closed).
+  // Instead, we manually set win.opener = null below.
+  const win = window.open(url!, target, features);
+
+  if (win) {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // In some environments or if cross-origin, this might fail,
+      // but 'noopener' in features is the standard fallback if win handle isn't needed.
+    }
+  }
+
+  return win;
+}
+
+/**
  * Generates a deterministic UUID-like string from a regular string.
  * This is useful for keeping IDs consistent for the same input.
  */
