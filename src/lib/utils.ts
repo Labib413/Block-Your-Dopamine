@@ -60,3 +60,65 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL to prevent XSS (javascript:) and ensures it follows safe protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Allow relative paths
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    const parsed = new URL(trimmedUrl);
+    const protocol = parsed.protocol.toLowerCase();
+
+    // Whitelist safe protocols
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+    if (safeProtocols.includes(protocol)) return true;
+
+    // Specifically handle data: URIs for images or PDFs
+    if (protocol === 'data:') {
+      return trimmedUrl.startsWith('data:image/') || trimmedUrl.startsWith('data:application/pdf');
+    }
+
+    return false;
+  } catch (e) {
+    // If URL parsing fails, it might be a domain name or malformed string
+    const lowerUrl = trimmedUrl.toLowerCase();
+    if (lowerUrl.includes('javascript:')) return false;
+
+    // If it doesn't contain a protocol at all (no ":"), it might be a domain name
+    if (!trimmedUrl.includes(':')) return true;
+
+    return false;
+  }
+}
+
+/**
+ * Securely opens a URL in a new tab/window.
+ * Mitigates reverse tabnabbing while allowing access to the window handle.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Blocked attempt to open an invalid or unsafe URL:', url);
+    return null;
+  }
+
+  // We omit 'noopener' from features to ensure a window handle is returned.
+  // Instead, we manually set win.opener = null for security.
+  const win = window.open(url, target, features);
+  if (win) {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if the browser blocks this
+    }
+  }
+  return win;
+}
