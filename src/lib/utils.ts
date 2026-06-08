@@ -60,3 +60,62 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a URL is safe to open.
+ * Rejects javascript: URIs and only allows a whitelist of protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Allow relative paths
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const parsed = new URL(trimmedUrl, base);
+    const protocol = parsed.protocol.toLowerCase();
+
+    // Whitelist safe protocols
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+    if (safeProtocols.includes(protocol)) return true;
+
+    // Special handling for data URIs - only allow images and PDFs
+    if (protocol === 'data:') {
+      return trimmedUrl.startsWith('data:image/') || trimmedUrl.startsWith('data:application/pdf');
+    }
+
+    return false;
+  } catch (e) {
+    // If it's not a valid URL format but doesn't have a dangerous protocol prefix,
+    // we still reject it to be safe, unless it's a simple fragment/relative path
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab.
+ * Mitigates reverse tabnabbing and URI-based XSS.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open unsafe URL:', url);
+    return null;
+  }
+
+  // If features is undefined, omit it to allow "open in new tab" behavior.
+  // Otherwise, ensure noopener is omitted from features to allow returning the window handle,
+  // then manually set opener to null for security.
+  const win = features !== undefined
+    ? window.open(url, target, features)
+    : window.open(url, target);
+
+  if (win) {
+    win.opener = null;
+  }
+  return win;
+}
