@@ -60,3 +60,58 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of protocols and patterns.
+ * Prevents javascript: and other dangerous protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url || !url.trim()) return false;
+
+  try {
+    // Handle relative URLs
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const parsed = new URL(url, base);
+
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+    if (allowedProtocols.includes(parsed.protocol)) {
+      return true;
+    }
+
+    // Special handling for data: URLs (only allow images and PDFs)
+    if (parsed.protocol === 'data:') {
+      const allowedMimeTypes = ['data:image/', 'data:application/pdf'];
+      return allowedMimeTypes.some(mime => url.startsWith(mime));
+    }
+
+    return false;
+  } catch (e) {
+    // If URL parsing fails but it's a relative path, it might be valid for the app
+    return url.startsWith('/') || url.startsWith('./') || url.startsWith('../');
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab.
+ * Prevents reverse tabnabbing and validates the URL.
+ */
+export function safeOpen(url: string | null | undefined, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Blocked attempt to open invalid or unsafe URL:', url);
+    return null;
+  }
+
+  // Only pass features if defined to avoid breaking default browser behavior
+  const win = features
+    ? window.open(url!, target, features)
+    : window.open(url!, target);
+
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors in environments where win.opener is restricted
+    }
+  }
+  return win;
+}
