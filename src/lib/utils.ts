@@ -60,3 +60,66 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols and rejects javascript: URIs.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Whitelist safe protocols
+  const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+
+  // Handle relative paths (starting with / or ./)
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    // Determine base for URL parsing
+    let base = 'http://localhost';
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      base = window.location.origin;
+    }
+
+    const parsedUrl = new URL(trimmedUrl, base);
+
+    // Explicitly reject javascript: URIs
+    if (parsedUrl.protocol === 'javascript:') return false;
+
+    // Allow data: URIs only for images and PDFs
+    if (parsedUrl.protocol === 'data:') {
+      return trimmedUrl.startsWith('data:image/') || trimmedUrl.startsWith('data:application/pdf');
+    }
+
+    return safeProtocols.includes(parsedUrl.protocol);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab, preventing reverse tabnabbing and validating the URL.
+ */
+export function safeOpen(url: string, target: string = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error(`Blocked attempt to open invalid or insecure URL: ${url}`);
+    return null;
+  }
+
+  // If features is undefined, we don't pass it to window.open to allow default browser behavior
+  const win = features !== undefined
+    ? window.open(url, target, features)
+    : window.open(url, target);
+
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if win.opener cannot be set (rare cases)
+    }
+  }
+  return win;
+}
