@@ -1,0 +1,3 @@
+## 2025-06-11 - Eliminating Map-to-Array Anti-Pattern in State Sync
+**Learning:** The codebase frequently used a pattern where data was deduplicated using a Map but immediately converted back to an Array (`Array.from(new Map(...).values())`) only to be searched linearly using `.find()` inside another loop. This results in $O(N^2)$ complexity for what should be $O(N)$ operations.
+**Action:** When deduplicating for the purpose of lookup, keep the data as a `Map` and use `.get()` for $O(1)$ lookups. Only convert back to an array at the very end of the computation if a list is required for the final state.
