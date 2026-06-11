@@ -60,3 +60,64 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a URL is safe for navigation or embedding.
+ * Prevents javascript: XSS and other common URI-based vulnerabilities.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || !url.trim()) return false;
+
+  try {
+    // Check for relative paths
+    if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+      return true;
+    }
+
+    const parsed = new URL(url.includes(':') ? url : `https://${url}`);
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+
+    if (allowedProtocols.includes(parsed.protocol)) {
+      return true;
+    }
+
+    // Special handling for data URIs (only allow images and PDFs)
+    if (parsed.protocol === 'data:') {
+      return url.startsWith('data:image/') || url.startsWith('data:application/pdf');
+    }
+
+    return false;
+  } catch {
+    // If URL parsing fails, it might be a simple hostname without protocol
+    // or a malformed string. We whitelist common patterns.
+    const simpleHostnameRegex = /^[a-z0-9]+([\-\.]{1}[a-z0-9]+)*\.[a-z]{2,63}(:[0-9]{1,5})?(\/.*)?$/i;
+    return simpleHostnameRegex.test(url);
+  }
+}
+
+/**
+ * Securely opens a URL in a new tab or window.
+ * Prevents reverse tabnabbing by setting opener to null.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error(`Blocked attempt to open insecure URL: ${url}`);
+    return null;
+  }
+
+  // Ensure target is safe
+  const safeTarget = target === '_blank' ? '_blank' : target;
+
+  // Use noopener,noreferrer for all external links
+  const defaultFeatures = 'noopener,noreferrer';
+  const finalFeatures = features ? `${features},${defaultFeatures}` : defaultFeatures;
+
+  const win = window.open(url, safeTarget, finalFeatures);
+
+  // Extra precaution for older browsers
+  if (win) {
+    win.opener = null;
+  }
+
+  return win;
+}
