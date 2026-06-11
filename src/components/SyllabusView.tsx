@@ -41,11 +41,14 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   useEffect(() => {
     const defaultNames = HSC_SYLLABUS[subjectId] || [];
     
+    // BOLT OPTIMIZATION: Use Map for O(1) lookup during hydration
+    const chapterMap = new Map<string, AcademicChapter>(academicChapters.map(c => [c.id, c]));
+
     const baseChapters = defaultNames.map((name) => {
       const rawId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const cloudData = academicChapters.find(c => c.id === chapterId);
+      const cloudData = chapterMap.get(chapterId);
       
       let chapter = cloudData || {
         id: chapterId,
