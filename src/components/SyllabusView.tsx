@@ -41,11 +41,14 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   useEffect(() => {
     const defaultNames = HSC_SYLLABUS[subjectId] || [];
     
+    // PERFORMANCE OPTIMIZATION: Use Map for O(1) chapter lookups
+    const chapterMap = new Map<string, AcademicChapter>(academicChapters.map(c => [c.id, c]));
+
     const baseChapters = defaultNames.map((name) => {
       const rawId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const cloudData = academicChapters.find(c => c.id === chapterId);
+      const cloudData = chapterMap.get(chapterId);
       
       let chapter = cloudData || {
         id: chapterId,
@@ -68,7 +71,9 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   }, [subjectId, academicChapters, user?.id]);
 
   const subject = useMemo(() => {
-    const cloudSubject = academicSubjects.find(s => s.id === subjectId);
+    // PERFORMANCE OPTIMIZATION: Use Map for O(1) subject lookups
+    const subjectMap = new Map(academicSubjects.map(s => [s.id, s]));
+    const cloudSubject = subjectMap.get(subjectId);
     if (cloudSubject) return cloudSubject;
     
     return { 
