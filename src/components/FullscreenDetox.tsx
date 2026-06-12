@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { cn, formatTime, safeStringify, generateId } from "@/src/lib/utils";
+import { cn, formatTime, safeStringify, generateId, isValidUrl, safeOpen } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType } from "../context/AppContext";
 import { motion, AnimatePresence } from "motion/react";
 import { TrendingUp, X, Cloud, Youtube, FileText, Image as ImageIcon, Maximize, Minimize, Plus, Trash2, BookOpen, Timer, AlertCircle, Globe, ExternalLink, CheckCircle2, Loader2, Upload, ChevronLeft, ChevronRight, Download, ShieldCheck } from "lucide-react";
@@ -38,7 +38,7 @@ const PDFViewer = React.memo(({ url, title, onReupload }: { url: string; title: 
         
         <div className="flex flex-col gap-3 w-full max-w-xs">
           <button 
-            onClick={() => window.open(url, '_blank')}
+            onClick={() => safeOpen(url, '_blank')}
             className="w-full px-8 py-4 bg-neon-green text-black font-bold rounded-2xl hover:bg-neon-green/80 transition-all flex items-center justify-center gap-2 shadow-[0_0_30px_rgba(57,255,20,0.3)]"
           >
             <ExternalLink className="w-5 h-5" />
@@ -1154,6 +1154,10 @@ export const FullscreenDetox = React.memo(() => {
 
   const handleAddResource = (customRes?: any) => {
     if (customRes) {
+      if (customRes.url && !isValidUrl(customRes.url)) {
+        alert("Invalid or insecure URL in resource.");
+        return;
+      }
       addResource({
         id: generateId(),
         ...customRes
@@ -1163,6 +1167,10 @@ export const FullscreenDetox = React.memo(() => {
     }
 
     if (!newResource.title || !newResource.url) return;
+    if (!isValidUrl(newResource.url)) {
+      alert("Invalid or insecure URL. Please enter a valid link.");
+      return;
+    }
     addResource({
       id: generateId(),
       ...newResource
@@ -1336,7 +1344,7 @@ export const FullscreenDetox = React.memo(() => {
     if (!isIframeSafe(latestRes.url)) {
       const currentWin = externalWindowsRef.current[latestRes.id];
       if (!currentWin || currentWin.closed) {
-        const win = window.open(latestRes.url, `byd_resource_${latestRes.id}`, 'width=1000,height=800');
+        const win = safeOpen(latestRes.url, `byd_resource_${latestRes.id}`, 'width=1000,height=800');
         if (win) {
           setExternalWindows(prev => ({ ...prev, [latestRes.id]: win }));
         }

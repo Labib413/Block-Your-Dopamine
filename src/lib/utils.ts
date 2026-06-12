@@ -60,3 +60,65 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL to prevent XSS (javascript: URIs) and ensure it's a safe protocol.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Block javascript: URIs
+  if (trimmedUrl.toLowerCase().startsWith('javascript:')) {
+    return false;
+  }
+
+  // Allow relative paths
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    // If it doesn't have a protocol, try parsing as https if it looks like a domain
+    const urlToParse = trimmedUrl.includes(':') ? trimmedUrl : `https://${trimmedUrl}`;
+    const parsed = new URL(urlToParse);
+
+    // Whitelist safe protocols
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    if (!safeProtocols.includes(parsed.protocol)) {
+      return false;
+    }
+
+    // For data: URIs, ensure they are images or PDFs (minimal set)
+    if (parsed.protocol === 'data:') {
+      return trimmedUrl.startsWith('data:image/') || trimmedUrl.startsWith('data:application/pdf');
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Securely opens a URL in a new window/tab.
+ * Prevents reverse tabnabbing by setting opener to null.
+ * Validates the URL to prevent XSS.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Sentinel: Blocked attempt to open invalid or insecure URL:', url);
+    return null;
+  }
+
+  const win = window.open(url, target, features);
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors in cross-origin environments
+    }
+  }
+  return win;
+}
