@@ -33,7 +33,7 @@ import {
   RefreshCw,
   Lightbulb
 } from "lucide-react";
-import { cn } from "@/src/lib/utils";
+import { cn, safeOpen } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
 
 const GlassSelect = ({ 
@@ -718,7 +718,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             </ul>
 
             <button 
-              onClick={() => window.open('https://docs.google.com/forms/d/e/1FAIpQLScHKHARQjP2x-J5q-jQGtz7vo9WX_-irtmOo_35SY2djnkbQQ/viewform?usp=publish-editor', '_blank')}
+              onClick={() => safeOpen('https://docs.google.com/forms/d/e/1FAIpQLScHKHARQjP2x-J5q-jQGtz7vo9WX_-irtmOo_35SY2djnkbQQ/viewform?usp=publish-editor', '_blank')}
               className="w-full py-4 rounded-xl bg-neon-green/10 backdrop-blur-md border border-neon-green/20 text-[10px] font-black text-neon-green tracking-[0.2em] hover:bg-neon-green/20 hover:shadow-[0_0_20px_rgba(57,255,20,0.3)] active:scale-[0.98] transition-all relative z-10"
             >
               LAUNCH FEEDBACK FORM
