@@ -60,3 +60,76 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a string is a safe URL to prevent URI-based XSS.
+ * Supports http, https, mailto, tel, blob, and data URIs (restricted).
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Allow relative paths
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    // If it doesn't have a protocol, try as a hostname first for validation
+    let urlToTest = trimmedUrl;
+    if (!trimmedUrl.includes(':')) {
+      urlToTest = 'https://' + trimmedUrl;
+    }
+
+    const parsed = new URL(urlToTest);
+    const protocol = parsed.protocol.toLowerCase();
+
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    if (!allowedProtocols.includes(protocol)) return false;
+
+    // Strict validation for data: URIs
+    if (protocol === 'data:') {
+      return trimmedUrl.startsWith('data:image/') || trimmedUrl.startsWith('data:application/pdf');
+    }
+
+    // Basic hostname validation if it's http/https
+    if (protocol === 'http:' || protocol === 'https:') {
+      if (!parsed.hostname || parsed.hostname.length > 253) return false;
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab while preventing reverse tabnabbing.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error("Blocked opening invalid/unsafe URL:", url);
+    return null;
+  }
+
+  // Ensure noopener and noreferrer are always present for external targets
+  let finalFeatures = features || "";
+  if (target === '_blank') {
+    if (!finalFeatures.includes('noopener')) {
+      finalFeatures = finalFeatures ? `${finalFeatures},noopener` : 'noopener';
+    }
+    if (!finalFeatures.includes('noreferrer')) {
+      finalFeatures = `${finalFeatures},noreferrer`;
+    }
+  }
+
+  const win = window.open(url, target, finalFeatures);
+  if (win) {
+    // Extra precaution for older browsers
+    try {
+      win.opener = null;
+    } catch (e) {}
+  }
+  return win;
+}
