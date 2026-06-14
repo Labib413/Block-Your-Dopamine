@@ -42,8 +42,10 @@ export function CustomizeSyllabusView({ onBack }: CustomizeSyllabusViewProps) {
       { id: 'ict', name: 'ICT' },
     ];
     
+    const cloudMap = new Map<string, any>(academicSubjects.map(s => [s.id, s]));
+
     return defaultSubjects.map(ds => {
-      const cloud = academicSubjects.find(s => s.id === ds.id);
+      const cloud = cloudMap.get(ds.id);
       return {
         ...ds,
         progress: cloud ? cloud.progress : 0
@@ -54,12 +56,14 @@ export function CustomizeSyllabusView({ onBack }: CustomizeSyllabusViewProps) {
   const chaptersForSelected = useMemo(() => {
     if (!selectedSubjectId) return [];
     
+    const chapterMap = new Map<string, AcademicChapter>(academicChapters.map(c => [c.id, c]));
     const syllabusNames = HSC_SYLLABUS[selectedSubjectId] || [];
+
     return syllabusNames.map(name => {
       const rawId = `${user?.id || 'anon'}_${selectedSubjectId}_ch_${name.replace(/\s+/g, '_')}`;
       // CRITICAL FIX: Must use stringToUUID to match consistency with the rest of the app
       const chapterId = stringToUUID(rawId);
-      const existing = academicChapters.find(c => c.id === chapterId);
+      const existing = chapterMap.get(chapterId);
       
       return existing || {
         id: chapterId,
