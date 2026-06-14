@@ -60,3 +60,73 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a URL is safe to open or embed.
+ * Blocks javascript: protocols and enforces a whitelist of allowed schemes.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Explicitly block javascript: protocol
+  if (trimmedUrl.toLowerCase().startsWith('javascript:')) return false;
+
+  // Whitelist of allowed protocols
+  const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+
+  try {
+    // Check for relative paths
+    if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+      return true;
+    }
+
+    // Handle hostname-only strings by optionally prepending https://
+    let urlToTest = trimmedUrl;
+    if (!trimmedUrl.includes(':')) {
+      urlToTest = 'https://' + trimmedUrl;
+    }
+
+    // Fallback for environment-awareness (node/tsx testing)
+    const base = (typeof window !== 'undefined' && window.location) ? window.location.origin : 'http://localhost';
+    const parsed = new URL(urlToTest, base);
+
+    if (!allowedProtocols.includes(parsed.protocol)) return false;
+
+    // Strict validation for data: URIs
+    if (parsed.protocol === 'data:') {
+      return trimmedUrl.startsWith('data:image/') || trimmedUrl.startsWith('data:application/pdf');
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab, mitigating reverse tabnabbing.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('[Sentinel] Blocked attempt to open invalid or unsafe URL:', url);
+    return null;
+  }
+
+  // Sentinel: Mitigate reverse tabnabbing by adding noopener to features
+  let finalFeatures = features || '';
+  if (target === '_blank' && !finalFeatures.includes('noopener')) {
+    finalFeatures = finalFeatures ? `${finalFeatures},noopener` : 'noopener';
+  }
+
+  const win = window.open(url, target, finalFeatures);
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors in environments where win.opener is immutable
+    }
+  }
+  return win;
+}
