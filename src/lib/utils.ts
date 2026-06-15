@@ -60,3 +60,69 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a string is a valid URL and uses an allowed protocol.
+ * Mitigates XSS via javascript: URIs.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const lowerUrl = url.toLowerCase().trim();
+  // Early rejection of common XSS vectors
+  if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('data:')) return false;
+
+  try {
+    // Check for a protocol (e.g., http:, mailto:, etc.)
+    // We only allow http and https
+    if (/^[a-z][a-z0-9+.-]*:/i.test(url)) {
+      // If it has a protocol but doesn't have ://, it might be something like mailto:
+      // However, google.com:8080 also matches this regex.
+      // We check if it's followed by //
+      if (!url.includes('://')) {
+        // If no ://, check if it's just a hostname with a port
+        if (url.includes(':')) {
+          const parts = url.split(':');
+          const port = parts[parts.length - 1];
+          if (!/^\d+$/.test(port)) {
+            // Not a port, likely another protocol
+            const parsed = new URL(url);
+            return ['http:', 'https:'].includes(parsed.protocol);
+          }
+        }
+      } else {
+        const parsed = new URL(url);
+        return ['http:', 'https:'].includes(parsed.protocol);
+      }
+    }
+
+    // Try parsing as https
+    const parsed = new URL('https://' + url);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab.
+ * Mitigates Reverse Tabnabbing by setting opener to null.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open invalid or insecure URL:', url);
+    return null;
+  }
+
+  // Ensure 'noopener' is present for _blank targets
+  let finalFeatures = features;
+  if (target === '_blank' && !features.includes('noopener')) {
+    finalFeatures = features ? `${features},noopener` : 'noopener';
+  }
+
+  const win = window.open(url, target, finalFeatures);
+  if (win && target === '_blank') {
+    win.opener = null;
+  }
+  return win;
+}
