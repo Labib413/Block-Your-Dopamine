@@ -33,7 +33,7 @@ import {
   RefreshCw,
   Lightbulb
 } from "lucide-react";
-import { cn } from "@/src/lib/utils";
+import { cn, safeOpen } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
 
 const GlassSelect = ({ 
