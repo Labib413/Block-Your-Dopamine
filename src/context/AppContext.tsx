@@ -355,8 +355,12 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PERFORMANCE OPTIMIZATION: Use a Map for O(1) lookups instead of O(N) array finds
+  // This also naturally deduplicates chapters by ID.
+  const chapterMap = new Map<string, AcademicChapter>();
+  for (const c of chapters) {
+    chapterMap.set(c.id, c);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +376,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -1545,18 +1549,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
           const defaultChapters = generateDefaultChapters(userId);
+
+          // PERFORMANCE OPTIMIZATION: Use Maps for O(1) lookups during merge instead of O(N) array finds
+          const cloudMap = new Map<string, any>();
+          for (const c of cloudChapters) {
+            cloudMap.set(c.id, c);
+          }
+          const localMap = new Map<string, AcademicChapter>();
+          for (const c of prev.academicChapters) {
+            localMap.set(c.id, c);
+          }
+
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudMap.get(defaultCh.id);
+            const localCh = localMap.get(defaultCh.id);
+
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
+
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
+
             if (cloudCh) return {
-              id: cloudCh.id, subject_id: cloudCh.subject_id, chapter_name: cloudCh.chapter_name,
-              is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false), is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
-              is_active: cloudCh.is_active ?? (localCh?.is_active ?? true), read_textbook: cloudCh.read_textbook ?? (localCh?.read_textbook ?? false),
-              watch_class: cloudCh.watch_class ?? (localCh?.watch_class ?? false), practice_problems: cloudCh.practice_problems ?? (localCh?.practice_problems ?? false),
-              make_notes: cloudCh.make_notes ?? (localCh?.make_notes ?? false), resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
+              id: cloudCh.id,
+              subject_id: cloudCh.subject_id,
+              chapter_name: cloudCh.chapter_name,
+              is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false),
+              is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
+              is_active: cloudCh.is_active ?? (localCh?.is_active ?? true),
+              read_textbook: cloudCh.read_textbook ?? (localCh?.read_textbook ?? false),
+              watch_class: cloudCh.watch_class ?? (localCh?.watch_class ?? false),
+              practice_problems: cloudCh.practice_problems ?? (localCh?.practice_problems ?? false),
+              make_notes: cloudCh.make_notes ?? (localCh?.make_notes ?? false),
+              resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
               _timestamp: cloudCh._timestamp || 0
             };
             return localCh || defaultCh;
