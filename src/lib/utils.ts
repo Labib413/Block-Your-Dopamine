@@ -60,3 +60,85 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols.
+ * Prevents XSS attacks via javascript: or other dangerous URIs.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string' || !url.trim()) return false;
+
+  const trimmedUrl = url.trim();
+  const lowerUrl = trimmedUrl.toLowerCase();
+
+  // Explicitly reject javascript: protocol
+  if (lowerUrl.startsWith('javascript:')) return false;
+
+  try {
+    // Check if it has a protocol
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmedUrl)) {
+      const parsed = new URL(trimmedUrl);
+      const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+
+      if (!safeProtocols.includes(parsed.protocol)) return false;
+
+      // For data: URIs, only allow common safe mime types (images, pdf)
+      if (parsed.protocol === 'data:') {
+        return lowerUrl.startsWith('data:image/') || lowerUrl.startsWith('data:application/pdf');
+      }
+
+      return true;
+    }
+
+    // Allow relative paths and common hostname formats (e.g., google.com)
+    return trimmedUrl.startsWith('/') ||
+           trimmedUrl.startsWith('./') ||
+           trimmedUrl.startsWith('../') ||
+           /^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}/i.test(trimmedUrl);
+  } catch (e) {
+    // If URL parsing fails but it doesn't look like a protocol,
+    // it might be a partial hostname which is fine as we often prepend https://
+    return !trimmedUrl.includes(':');
+  }
+}
+
+/**
+ * A secure wrapper for window.open that prevents Reverse Tabnabbing
+ * and validates the URL to prevent XSS.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Sentinel: Blocked opening potentially unsafe URL:', url);
+    return null;
+  }
+
+  // Prepend https:// if it looks like a hostname without a protocol
+  let finalUrl = url;
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url) && !url.startsWith('/')) {
+    finalUrl = 'https://' + url;
+  }
+
+  // Prevent Reverse Tabnabbing by ensuring noopener/noreferrer for _blank
+  let finalFeatures = features;
+  if (target === '_blank') {
+    if (!finalFeatures) {
+      finalFeatures = 'noopener,noreferrer';
+    } else {
+      if (!finalFeatures.includes('noopener')) finalFeatures += (finalFeatures ? ',' : '') + 'noopener';
+      if (!finalFeatures.includes('noreferrer')) finalFeatures += (finalFeatures ? ',' : '') + 'noreferrer';
+    }
+  }
+
+  const win = window.open(finalUrl, target, finalFeatures);
+
+  // Extra layer of protection for browsers that support it
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore
+    }
+  }
+
+  return win;
+}
