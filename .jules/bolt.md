@@ -1,0 +1,3 @@
+## 2025-05-22 - [Map-based Lookup Optimization]
+**Learning:** In React applications with large structural datasets (like an academic syllabus with hundreds of chapters), repeated `Array.find()` operations inside nested loops (O(N²)) can significantly impact performance during state re-calculations and synchronization. Converting these arrays to `Map` objects for O(1) lookups provides a measurable performance boost.
+**Action:** Always prefer `Map` for lookups by ID when dealing with lists that exceed ~100 items, especially when the lookup happens inside another loop or a high-frequency render path.
