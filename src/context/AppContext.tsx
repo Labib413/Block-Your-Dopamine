@@ -355,8 +355,9 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PERFORMANCE OPTIMIZATION: Use Map-based lookups (O(1)) instead of array searches (O(N))
+  // This reduces the complexity of progress calculation from O(Subjects * Chapters) to O(Chapters)
+  const chapterMap = new Map<string, AcademicChapter>(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +373,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -427,6 +428,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => {
     const now = new Date();
     const today = getLocalDateString(now);
+    const initialChapters = generateDefaultChapters(null);
     
     return {
       xp: 0,
@@ -493,8 +495,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineSyncQueue: [],
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicChapters: initialChapters,
+      academicSubjects: calculateAllSubjectsProgress(initialChapters, null),
       academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
@@ -567,30 +569,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return acc;
         }, {} as Record<string, any>);
 
-        return Promise.all(Object.values(uniqueItems).map(async (item: any) => {
-          const { table, data, type, id, key } = item;
+        // PERFORMANCE OPTIMIZATION: Batch operations by type and onConflict
+        // This significantly reduces the number of network requests (e.g., from N to 1 per table/type)
+        const itemsToProcess = Object.values(uniqueItems);
+        const batchGroups: Record<string, any[]> = {};
+
+        itemsToProcess.forEach((item: any) => {
+          const groupKey = `${item.type}_${item.onConflict || 'id'}`;
+          if (!batchGroups[groupKey]) batchGroups[groupKey] = [];
+          batchGroups[groupKey].push(item);
+        });
+
+        return Promise.all(Object.values(batchGroups).map(async (group: any[]) => {
+          const { type, onConflict } = group[0];
           
           try {
-            let sanitizedData = { ...data };
-            if (table === 'sessions') {
-              delete sanitizedData.duration;
-              delete sanitizedData.status;
-            }
-            if (type === 'upsert') {
-              // BYD Sanitization: Remove internal fields before database sync
-              if (table === 'academic_chapters' && sanitizedData._timestamp) {
-                // DO NOT DELETE _timestamp here - we need it in the DB for latest-wins logic
+            if (type === 'upsert' || type === 'insert') {
+              const dataBatch = group.map(item => {
+                let sanitizedData = { ...item.data };
+                if (table === 'sessions') {
+                  delete sanitizedData.duration;
+                  delete sanitizedData.status;
+                }
+                return sanitizedData;
+              });
+
+              if (type === 'upsert') {
+                return await supabase.from(table).upsert(dataBatch, { onConflict: onConflict || 'id' });
+              } else {
+                return await supabase.from(table).insert(dataBatch);
               }
-              return await supabase.from(table).upsert(sanitizedData, { onConflict: item.onConflict || 'id' });
-            } else if (type === 'insert') {
-              return await supabase.from(table).insert(sanitizedData);
-            } else if (type === 'update') {
-              return await supabase.from(table).update(sanitizedData).eq('id', id);
             } else if (type === 'delete') {
-              return await supabase.from(table).delete().eq('id', id);
+              const ids = group.map(i => i.id).filter(Boolean);
+              if (ids.length === 0) return { error: null };
+              return await supabase.from(table).delete().in('id', ids);
+            } else {
+              // Fallback for 'update' which usually requires individual calls per ID/data pair
+              const results = await Promise.all(group.map(item =>
+                supabase.from(table).update(item.data).eq('id', item.id)
+              ));
+              return results;
             }
           } catch (err: any) {
-            // Catch individual request errors to prevent Promise.all from failing entirely
             return { error: err };
           }
         }));
@@ -2975,6 +2995,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const clearState = useCallback(() => {
     const today = getLocalDateString(new Date());
     const now = new Date();
+    const initialChapters = generateDefaultChapters(null);
     setState({
       xp: 0,
       level: 1,
@@ -3040,8 +3061,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       offlineSyncQueue: [],
       currentSessionStartTime: null,
       academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicChapters: initialChapters,
+      academicSubjects: calculateAllSubjectsProgress(initialChapters, null),
       academicRoutines: [],
       guardedWebsites: [],
       depexMode: false
