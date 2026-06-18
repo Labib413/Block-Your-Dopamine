@@ -301,13 +301,15 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const DHAKA_DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Dhaka',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
 const getLocalDateString = (date: Date) => {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Asia/Dhaka',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit'
-  }).format(date); // Returns YYYY-MM-DD
+  return DHAKA_DATE_FORMATTER.format(date); // Returns YYYY-MM-DD
 };
 
 const getYesterdayDateString = () => {
@@ -356,7 +358,8 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PERFORMANCE: We use a Map for O(1) lookups during the progress calculation loop
+  const chapterMap = new Map(chapters.map(c => [c.id, c]));
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +375,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
