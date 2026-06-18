@@ -60,3 +60,25 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates URLs against safe protocols (http/https).
+ * Blocks dangerous schemes like javascript: or data:
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  const lowerUrl = url.toLowerCase().trim();
+  if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('data:') || lowerUrl.startsWith('vbscript:')) {
+    return false;
+  }
+
+  try {
+    // Handle cases where protocol might be missing
+    const urlToTest = (url.includes('://') || url.startsWith('//')) ? url : `https://${url}`;
+    const parsed = new URL(urlToTest);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch (e) {
+    return false;
+  }
+}
