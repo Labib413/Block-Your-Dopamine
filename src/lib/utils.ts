@@ -60,3 +60,14 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+  try {
+    const urlToTest = /^[a-z]+:/i.test(url) ? url : 'https://' + url;
+    const parsed = new URL(urlToTest);
+    return ['http:', 'https:'].includes(parsed.protocol);
+  } catch (e) {
+    return false;
+  }
+}

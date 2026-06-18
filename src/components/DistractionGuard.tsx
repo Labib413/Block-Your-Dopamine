@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "./GlassCard";
 import { useApp, GuardedWebsite } from "../context/AppContext";
-import { cn } from "@/src/lib/utils";
+import { cn, isValidUrl } from "@/src/lib/utils";
 
 export function DistractionGuard() {
   const { 
@@ -94,8 +94,21 @@ export function DistractionGuard() {
       setDeniedSite(site);
     } else {
       let url = site.url;
-      if (!url.startsWith('http')) url = 'https://' + url;
-      window.open(url, '_blank');
+      // ✅ SECURITY: Validate URL before any modifications
+      if (!isValidUrl(url)) {
+        // Attempt to fix common missing protocol if it still doesn't validate
+        if (!url.startsWith('http')) {
+          url = 'https://' + url;
+        }
+      }
+
+      // ✅ SECURITY: Final validation before opening to prevent javascript: or other unsafe protocols
+      if (isValidUrl(url)) {
+        // ✅ SECURITY: Use noopener,noreferrer to prevent tabnabbing vulnerabilities
+        window.open(url, '_blank', 'noopener,noreferrer');
+      } else {
+        addNotification("Security Alert", "Blocked attempt to open an unsafe URL.");
+      }
     }
   };
 
