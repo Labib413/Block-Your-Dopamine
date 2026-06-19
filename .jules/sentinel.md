@@ -1,0 +1,4 @@
+## 2026-06-11 - Secure URL Handling and Protocol Detection
+**Vulnerability:** Reverse Tabnabbing and Potential XSS via dangerous URI schemes (`javascript:`, `data:`).
+**Learning:** Naive URL validation using regex like `/^[a-z][a-z0-9+.-]*:/i` to detect protocols can incorrectly flag `hostname:port` patterns (e.g., `localhost:3000`) as unknown protocols, leading to broken links if they are rejected instead of being treated as hostnames.
+**Prevention:** Use a multi-stage validation approach: blacklist known dangerous protocols, whitelist allowed protocols, and specifically check if a suspected protocol is actually a numeric port before deciding whether to prepend a default protocol (like `https://`) or reject the input. Always use a secure wrapper for `window.open` that sets `noopener` and clears `window.opener`.

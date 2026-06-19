@@ -16,7 +16,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp, AcademicChapter, ChapterResource } from "../context/AppContext";
 import { logger } from "../lib/logger";
-import { cn, generateId, stringToUUID } from "../lib/utils";
+import { cn, generateId, stringToUUID, isValidUrl } from "../lib/utils";
 import { HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
 
 interface SyllabusViewProps {
@@ -118,8 +118,14 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   };
 
   const handleAddResource = (chapterId: string) => {
-    const url = prompt("Enter resource URL (e.g., YouTube link or Google Drive file):");
-    if (!url) return;
+    const rawUrl = prompt("Enter resource URL (e.g., YouTube link or Google Drive file):");
+    if (!rawUrl) return;
+
+    const url = isValidUrl(rawUrl);
+    if (!url) {
+      alert("Security Error: Invalid or dangerous URL detected. Blocked by BYD Protocol.");
+      return;
+    }
     
     const title = prompt("Enter resource title (e.g., 'Physics Lecture' or 'Note PDF'):") || 'Untitled Resource';
     
