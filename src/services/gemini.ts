@@ -22,7 +22,7 @@ const FALLBACK_INSIGHTS = [
 ];
 
 function getGenAI(apiKey?: string | null) {
-  const finalApiKey = apiKey || process.env.GEMINI_API_KEY;
+  const finalApiKey = apiKey || import.meta.env.VITE_GEMINI_API_KEY;
   if (!finalApiKey) {
     throw new Error("GEMINI_API_KEY is not defined");
   }

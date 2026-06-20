@@ -60,3 +60,90 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols and patterns.
+ * Prevents dangerous protocols like 'javascript:' and 'data:'.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+  const cleanUrl = url.trim();
+
+  // Block dangerous protocols explicitly
+  if (/^(javascript|data|vbscript):/i.test(cleanUrl)) {
+    return false;
+  }
+
+  // Allow relative paths
+  if (/^(\/|\.\/|\.\.\/)/.test(cleanUrl)) {
+    return true;
+  }
+
+  // Allow safe protocols (whitelist)
+  if (/^(https?|mailto|tel|blob):/i.test(cleanUrl)) {
+    return true;
+  }
+
+  // Handle strings without protocol (e.g., google.com) or hostname:port (e.g., localhost:3000)
+  const protocolMatch = cleanUrl.match(/^([a-z0-9.-]+):/i);
+  if (protocolMatch) {
+    const afterColon = cleanUrl.slice(protocolMatch[0].length);
+    const isPort = /^\d+($|\/)/.test(afterColon);
+
+    // If it looks like a port, treat it as a valid hostname:port pattern
+    if (isPort) {
+      return !/\s/.test(cleanUrl);
+    }
+    // Otherwise, it's an unrecognized protocol (already checked whitelist)
+    return false;
+  }
+
+  // No colon at all, likely a hostname like "google.com"
+  return cleanUrl.length > 0 && !/\s/.test(cleanUrl);
+}
+
+/**
+ * Securely opens a URL in a new window/tab.
+ * Prevents reverse tabnabbing and validates the URL for security.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Security Blocked: Attempted to open an invalid or dangerous URL:', url);
+    return null;
+  }
+
+  let finalUrl = url.trim();
+
+  // Prepend https:// if no protocol is present and it's not relative
+  const hasProtocol = /^[a-z]+:/i.test(finalUrl);
+  const isRelative = /^(\/|\.\/|\.\.\/)/.test(finalUrl);
+
+  if (!hasProtocol && !isRelative) {
+    finalUrl = 'https://' + finalUrl;
+  }
+
+  // Security: always include noopener for _blank targets to prevent reverse tabnabbing
+  let finalFeatures = features;
+  if (target === '_blank') {
+    if (!finalFeatures.includes('noopener')) {
+      finalFeatures = finalFeatures ? `${finalFeatures},noopener` : 'noopener';
+    }
+    if (!finalFeatures.includes('noreferrer')) {
+       // Optional but recommended for extra privacy/security
+       // finalFeatures = `${finalFeatures},noreferrer`;
+    }
+  }
+
+  const win = window.open(finalUrl, target, finalFeatures);
+
+  // Defense in depth: explicitly nullify opener if possible
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Expected to fail in some cross-origin scenarios or if already null
+    }
+  }
+
+  return win;
+}
