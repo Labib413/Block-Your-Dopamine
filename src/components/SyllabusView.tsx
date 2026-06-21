@@ -41,11 +41,17 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   useEffect(() => {
     const defaultNames = HSC_SYLLABUS[subjectId] || [];
     
+    // Optimization: Convert academicChapters to a Map for O(1) lookups
+    const chapterMap = new Map<string, AcademicChapter>();
+    for (const c of academicChapters) {
+      chapterMap.set(c.id, c);
+    }
+
     const baseChapters = defaultNames.map((name) => {
       const rawId = `${user?.id || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const cloudData = academicChapters.find(c => c.id === chapterId);
+      const cloudData = chapterMap.get(chapterId);
       
       let chapter = cloudData || {
         id: chapterId,
@@ -68,6 +74,8 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   }, [subjectId, academicChapters, user?.id]);
 
   const subject = useMemo(() => {
+    // Optimization: Small datasets can still benefit from early exit or Map,
+    // but here academicSubjects is small (~10 items), .find() is acceptable.
     const cloudSubject = academicSubjects.find(s => s.id === subjectId);
     if (cloudSubject) return cloudSubject;
     
@@ -81,6 +89,7 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
   const chapters = localChapters;
 
   const handleToggle = (chapterId: string, field: keyof AcademicChapter) => {
+    // localChapters is already filtered for the current subject, usually ~10-15 items.
     const chapter = chapters.find(c => c.id === chapterId);
     if (!chapter) return;
 
