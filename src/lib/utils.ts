@@ -60,3 +60,73 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a URL is safe to use.
+ * Blocks javascript: and data: URIs to prevent XSS.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+  const trimmedUrl = url.trim();
+
+  // Block dangerous protocols
+  const lowerUrl = trimmedUrl.toLowerCase();
+  if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('data:')) {
+    return false;
+  }
+
+  // Allow relative paths and blobs
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../') || trimmedUrl.startsWith('blob:')) {
+    return true;
+  }
+
+  // If it has a protocol, check it
+  if (/^[a-z]+:/i.test(trimmedUrl)) {
+    try {
+      const parsed = new URL(trimmedUrl);
+      const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+      return allowedProtocols.includes(parsed.protocol);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // If no protocol, it's likely a hostname/path we'll prepend https:// to
+  return /^[\w\.-]+(:\d+)?(\/.*)?$/i.test(trimmedUrl);
+}
+
+/**
+ * Securely opens a URL in a new window/tab.
+ * Prevents reverse tabnabbing by setting opener to null.
+ */
+export function safeOpen(url: string, target = '_blank', features?: string): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open invalid/unsafe URL:', url);
+    return null;
+  }
+
+  let finalUrl = url;
+  if (!/^[a-z]+:/i.test(url) && !url.startsWith('/')) {
+    finalUrl = 'https://' + url;
+  }
+
+  // For security, always include noopener in features if target is _blank
+  let finalFeatures = features;
+  if (target === '_blank') {
+    if (!finalFeatures) {
+      finalFeatures = 'noopener';
+    } else if (!finalFeatures.includes('noopener')) {
+      finalFeatures += ',noopener';
+    }
+  }
+
+  const win = window.open(finalUrl, target, finalFeatures);
+  if (win) {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if window is already closed or cross-origin prevents setting opener
+    }
+  }
+  return win;
+}
