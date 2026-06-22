@@ -60,3 +60,74 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a string is a valid URL and uses a safe protocol.
+ * Prevents XSS via javascript: or data: URIs.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+
+  try {
+    const lowerUrl = url.toLowerCase().trim();
+
+    // Block dangerous protocols explicitly
+    if (lowerUrl.startsWith('javascript:') || lowerUrl.startsWith('data:') || lowerUrl.startsWith('vbscript:')) {
+      return false;
+    }
+
+    // Relative paths are considered safe within the application
+    if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+      return true;
+    }
+
+    // Try to parse the URL
+    // Handle cases where user might enter "google.com" instead of "https://google.com"
+    const urlToParse = (url.includes('://') || url.startsWith('mailto:') || url.startsWith('tel:'))
+      ? url
+      : `https://${url}`;
+
+    const parsed = new URL(urlToParse);
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+    return safeProtocols.includes(parsed.protocol);
+  } catch (e) {
+    // If it's not a valid URL but doesn't have a dangerous protocol,
+    // it might be a domain-like string which we prepended https:// to
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new tab/window.
+ * Prevents reverse tabnabbing and validates the URL protocol.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Security Block: Attempted to open an invalid or dangerous URL:', url);
+    return null;
+  }
+
+  // Ensure noopener is present for external links to prevent reverse tabnabbing
+  let finalFeatures = features;
+  if (target === '_blank') {
+    if (!finalFeatures.includes('noopener')) {
+      finalFeatures = finalFeatures ? `${finalFeatures},noopener` : 'noopener';
+    }
+    if (!finalFeatures.includes('noreferrer')) {
+      finalFeatures = `${finalFeatures},noreferrer`;
+    }
+  }
+
+  const win = window.open(url, target, finalFeatures);
+
+  // Extra layer of protection for older browsers
+  if (win && target === '_blank') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if browser blocks access
+    }
+  }
+
+  return win;
+}

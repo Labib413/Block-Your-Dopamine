@@ -16,7 +16,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp, AcademicChapter, ChapterResource } from "../context/AppContext";
 import { logger } from "../lib/logger";
-import { cn, generateId, stringToUUID } from "../lib/utils";
+import { cn, generateId, stringToUUID, isValidUrl } from "../lib/utils";
 import { HSC_SYLLABUS, HSC_SUBJECT_NAMES } from "../constants";
 
 interface SyllabusViewProps {
@@ -121,6 +121,12 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
     const url = prompt("Enter resource URL (e.g., YouTube link or Google Drive file):");
     if (!url) return;
     
+    // Security: Validate URL to prevent XSS via javascript: or other dangerous protocols
+    if (!isValidUrl(url)) {
+      alert("Invalid or dangerous URL provided. Please enter a valid HTTP/HTTPS link.");
+      return;
+    }
+
     const title = prompt("Enter resource title (e.g., 'Physics Lecture' or 'Note PDF'):") || 'Untitled Resource';
     
     const resource: ChapterResource = {
