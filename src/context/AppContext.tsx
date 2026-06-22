@@ -356,7 +356,11 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // BOLT OPTIMIZATION: Use a Map for O(1) lookups instead of O(N) .find() in the loop
+  const chaptersMap = new Map<string, AcademicChapter>();
+  for (const c of chapters) {
+    chaptersMap.set(c.id, c);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -368,11 +372,11 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     // THE MASTER CALCULATION LOOP:
     // We iterate over the official syllabus to ensure the denominator is structural, 
     // but we check the state for each chapter to see if it's been deactivated or completed.
-    officialNames.forEach(name => {
+    for (const name of officialNames) {
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chaptersMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -393,7 +397,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
           if (chapter.make_notes) completedTasks++;
         }
       }
-    });
+    }
 
     const totalPossibleTasks = totalActiveCount * 4;
     const progressValue = totalPossibleTasks > 0 
@@ -1545,9 +1549,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
           const defaultChapters = generateDefaultChapters(userId);
+
+          // BOLT OPTIMIZATION: Use Maps for O(1) lookups during merge
+          const cloudChaptersMap = new Map<string, any>();
+          for (const c of cloudChapters) {
+            cloudChaptersMap.set(c.id, c);
+          }
+
+          const localChaptersMap = new Map<string, AcademicChapter>();
+          for (const c of prev.academicChapters) {
+            localChaptersMap.set(c.id, c);
+          }
+
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChaptersMap.get(defaultCh.id);
+            const localCh = localChaptersMap.get(defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
