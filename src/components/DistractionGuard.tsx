@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "./GlassCard";
 import { useApp, GuardedWebsite } from "../context/AppContext";
-import { cn } from "@/src/lib/utils";
+import { cn, isValidUrl, safeOpen } from "@/src/lib/utils";
 
 export function DistractionGuard() {
   const { 
@@ -57,6 +57,12 @@ export function DistractionGuard() {
     e.preventDefault();
     if (!newSiteName || !newSiteUrl) return;
 
+    // Security: Validate URL to prevent dangerous protocols
+    if (!isValidUrl(newSiteUrl)) {
+      addNotification("Invalid URL", "Please enter a valid website address.");
+      return;
+    }
+
     const totalMinutes = (parseInt(newDurationHours) || 0) * 60 + (parseInt(newDurationMinutes) || 0);
     if (totalMinutes <= 0) return;
 
@@ -94,8 +100,10 @@ export function DistractionGuard() {
       setDeniedSite(site);
     } else {
       let url = site.url;
-      if (!url.startsWith('http')) url = 'https://' + url;
-      window.open(url, '_blank');
+      if (!url.startsWith('http') && !url.startsWith('/')) url = 'https://' + url;
+
+      // Security: Use safeOpen to prevent reverse tabnabbing and validate URL
+      safeOpen(url, '_blank');
     }
   };
 
