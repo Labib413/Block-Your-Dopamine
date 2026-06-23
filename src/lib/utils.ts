@@ -60,3 +60,67 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against common security risks.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  const trimmedUrl = url.trim().toLowerCase();
+
+  // Blacklist dangerous URI schemes
+  if (trimmedUrl.startsWith('javascript:') ||
+      trimmedUrl.startsWith('data:') ||
+      trimmedUrl.startsWith('vbscript:')) {
+    return false;
+  }
+
+  // Whitelist safe URI schemes and relative paths
+  if (trimmedUrl.startsWith('http://') ||
+      trimmedUrl.startsWith('https://') ||
+      trimmedUrl.startsWith('mailto:') ||
+      trimmedUrl.startsWith('tel:') ||
+      trimmedUrl.startsWith('blob:') ||
+      trimmedUrl.startsWith('/') ||
+      trimmedUrl.startsWith('./') ||
+      trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  // Check for domain-like strings (e.g. google.com) by attempting to parse with https:// prefix
+  try {
+    new URL('https://' + url);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Securely opens a URL in a new window to prevent reverse tabnabbing.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open invalid URL:', url);
+    return null;
+  }
+
+  // Ensure noopener is always present for security against reverse tabnabbing
+  const secureFeatures = features
+    ? (features.includes('noopener') ? features : `${features},noopener`)
+    : 'noopener';
+
+  const win = window.open(url, target, secureFeatures);
+
+  if (win) {
+    // Defense-in-depth: Manually nullify the opener reference
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if browser prevents setting opener
+    }
+  }
+
+  return win;
+}
