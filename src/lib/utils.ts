@@ -60,3 +60,75 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL for security.
+ * Prevents javascript:, data:, and vbscript: protocols to mitigate XSS.
+ * Also ensures basic URL structure.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+
+  const dangerousProtocols = ['javascript:', 'data:', 'vbscript:'];
+  const lowerUrl = url.toLowerCase().trim();
+
+  // Blacklist dangerous protocols
+  if (dangerousProtocols.some(p => lowerUrl.startsWith(p))) {
+    return false;
+  }
+
+  // Support relative paths
+  if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    // Determine if it's likely a protocol or just a domain:port
+    let hasProtocol = url.includes(':');
+    if (hasProtocol) {
+      const firstColon = url.indexOf(':');
+      const contentBeforeColon = url.substring(0, firstColon);
+      const contentAfterColon = url.substring(firstColon + 1).split('/')[0];
+
+      // If content after colon is numeric, it's probably a port (e.g. localhost:3000)
+      if (/^\d+$/.test(contentAfterColon) && !['mailto', 'tel'].includes(contentBeforeColon)) {
+        hasProtocol = false;
+      }
+    }
+
+    const parsed = new URL(hasProtocol ? url : `https://${url}`);
+    return ['http:', 'https:', 'mailto:', 'tel:', 'blob:'].includes(parsed.protocol);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window.
+ * Validates the URL and prevents reverse tabnabbing (target="_blank" vulnerability).
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('Blocked attempt to open insecure URL:', url);
+    return null;
+  }
+
+  // Ensure noopener is included to prevent reverse tabnabbing
+  let finalFeatures = features;
+  if (!features.includes('noopener')) {
+    finalFeatures = features ? `${features},noopener` : 'noopener';
+  }
+
+  const win = window.open(url, target, finalFeatures);
+
+  // Explicitly nullify opener as a secondary defense layer
+  if (win) {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if window is already closed or in complex cross-origin scenarios
+    }
+  }
+
+  return win;
+}
