@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { GlassCard } from "./GlassCard";
 import { useApp, GuardedWebsite } from "../context/AppContext";
-import { cn } from "@/src/lib/utils";
+import { cn, safeOpen } from "@/src/lib/utils";
 
 export function DistractionGuard() {
   const { 
@@ -94,8 +94,8 @@ export function DistractionGuard() {
       setDeniedSite(site);
     } else {
       let url = site.url;
-      if (!url.startsWith('http')) url = 'https://' + url;
-      window.open(url, '_blank');
+      if (!url.startsWith('http') && !url.startsWith('/')) url = 'https://' + url;
+      safeOpen(url, '_blank');
     }
   };
 
