@@ -60,3 +60,74 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL to prevent XSS via javascript: URIs and other dangerous protocols.
+ * Allows safe protocols (http, https, mailto, tel, blob) and relative paths.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+
+  const trimmedUrl = url.trim();
+
+  // Explicitly block javascript: and other dangerous protocols
+  // This regex matches a protocol (alphabetic followed by colon)
+  // but NOT a hostname:port pattern (e.g., localhost:3000)
+  const protocolMatch = trimmedUrl.match(/^[a-z]+:(?!\d+)/i);
+  if (protocolMatch) {
+    const protocol = protocolMatch[0].toLowerCase();
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+
+    // If it's a known dangerous protocol, block it
+    if (!safeProtocols.includes(protocol)) return false;
+
+    // For non-http/https safe protocols, we can stop here
+    if (protocol !== 'http:' && protocol !== 'https:') return true;
+  }
+
+  // Allow relative paths
+  if (trimmedUrl.startsWith('/') || trimmedUrl.startsWith('./') || trimmedUrl.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    // Basic domain/protocol check for http/https URLs
+    const urlObj = new URL(trimmedUrl.startsWith('http') ? trimmedUrl : 'https://' + trimmedUrl);
+    // Ensure it has a valid hostname (or is localhost)
+    return !!(urlObj.protocol && (urlObj.hostname.includes('.') || urlObj.hostname === 'localhost'));
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Secure wrapper for window.open that prevents Reverse Tabnabbing.
+ * Automatically validates URL and appends 'noopener' to features.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('🛡️ Sentinel: Blocked navigation to unsafe URL:', url);
+    return null;
+  }
+
+  // Use a secure set of features, especially for non-self targets
+  let finalFeatures = features;
+  if (target !== '_self') {
+    if (!finalFeatures.includes('noopener')) {
+      finalFeatures = finalFeatures ? `${finalFeatures},noopener` : 'noopener';
+    }
+  }
+
+  const win = window.open(url, target, finalFeatures);
+
+  // Defense in depth: explicitly nullify opener for non-self targets
+  if (win && target !== '_self') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if window is already restricted
+    }
+  }
+
+  return win;
+}
