@@ -55,11 +55,18 @@ export function CustomizeSyllabusView({ onBack }: CustomizeSyllabusViewProps) {
     if (!selectedSubjectId) return [];
     
     const syllabusNames = HSC_SYLLABUS[selectedSubjectId] || [];
+
+    // Optimization: Build a Map for O(1) lookup during mapping
+    const chapterMap = new Map<string, AcademicChapter>();
+    for (const c of academicChapters) {
+      chapterMap.set(c.id, c);
+    }
+
     return syllabusNames.map(name => {
       const rawId = `${user?.id || 'anon'}_${selectedSubjectId}_ch_${name.replace(/\s+/g, '_')}`;
       // CRITICAL FIX: Must use stringToUUID to match consistency with the rest of the app
       const chapterId = stringToUUID(rawId);
-      const existing = academicChapters.find(c => c.id === chapterId);
+      const existing = chapterMap.get(chapterId);
       
       return existing || {
         id: chapterId,
