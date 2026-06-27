@@ -60,3 +60,70 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of protocols and basic structural requirements.
+ * Prevents javascript: and other dangerous protocols.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  // Allow relative paths
+  if (url.startsWith('/') || url.startsWith('./') || url.startsWith('../')) {
+    return true;
+  }
+
+  try {
+    // Detect protocol using regex to avoid misidentifying 'localhost:3000' as a protocol
+    const protocolMatch = url.match(/^[a-z0-9+.-]+:(?!\d+)/i);
+    const protocol = protocolMatch ? protocolMatch[0].toLowerCase() : null;
+
+    // If no protocol, we'll treat it as https if it looks like it could be a domain
+    const urlToParse = protocol ? url : 'https://' + url;
+    const parsed = new URL(urlToParse);
+
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+    if (!allowedProtocols.includes(parsed.protocol)) {
+      return false;
+    }
+
+    // Additional check for web protocols to ensure a valid hostname
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+      // Must have a dot in hostname OR be localhost
+      return parsed.hostname.length > 0 && (parsed.hostname.includes('.') || parsed.hostname === 'localhost');
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab, preventing reverse tabnabbing
+ * and validating the URL before opening.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Blocked opening invalid or unsafe URL:', url);
+    return null;
+  }
+
+  // Add noopener for security against reverse tabnabbing if target is not _self
+  const finalFeatures = target !== '_self'
+    ? (features ? `${features},noopener` : 'noopener')
+    : features;
+
+  const win = window.open(url, target, finalFeatures);
+
+  // Ensure opener is null for extra protection
+  if (win && target !== '_self') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if win is cross-origin or already closed
+    }
+  }
+
+  return win;
+}
