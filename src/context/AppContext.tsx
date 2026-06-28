@@ -355,8 +355,11 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PRIMARY FIX: Use Map for O(1) lookups and filter out any duplicate chapter IDs to prevent "ghost" data
+  const chaptersMap = new Map<string, AcademicChapter>();
+  for (const c of chapters) {
+    chaptersMap.set(c.id, c);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +375,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chaptersMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
@@ -1545,9 +1548,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
           const defaultChapters = generateDefaultChapters(userId);
+
+          // Optimization: Use Maps for O(1) lookups during merge
+          const cloudChaptersMap = new Map<string, any>();
+          for (const c of cloudChapters) {
+            cloudChaptersMap.set(c.id, c);
+          }
+
+          const localChaptersMap = new Map<string, AcademicChapter>();
+          for (const c of prev.academicChapters) {
+            localChaptersMap.set(c.id, c);
+          }
+
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudChaptersMap.get(defaultCh.id);
+            const localCh = localChaptersMap.get(defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
