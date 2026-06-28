@@ -356,7 +356,11 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // PERFORMANCE OPTIMIZATION: Use Map for O(1) lookups instead of O(N) array search
+  const chaptersMap = new Map<string, AcademicChapter>();
+  for (const c of chapters) {
+    chaptersMap.set(c.id, c);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -368,20 +372,16 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     // THE MASTER CALCULATION LOOP:
     // We iterate over the official syllabus to ensure the denominator is structural, 
     // but we check the state for each chapter to see if it's been deactivated or completed.
-    officialNames.forEach(name => {
+    for (const name of officialNames) {
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chaptersMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
-      try {
-        if (chapter && chapter.is_active !== undefined) {
-          isActive = chapter.is_active;
-        }
-      } catch (e) {
-        if (chapter) isActive = chapter.is_active;
+      if (chapter && chapter.is_active !== undefined) {
+        isActive = chapter.is_active;
       }
 
       if (isActive) {
@@ -393,7 +393,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
           if (chapter.make_notes) completedTasks++;
         }
       }
-    });
+    }
 
     const totalPossibleTasks = totalActiveCount * 4;
     const progressValue = totalPossibleTasks > 0 
@@ -1543,11 +1543,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.academicSettings = { examDate: aS.exam_date || null, focusSubjectId: aS.focus_subject_id || null, prepStartDate: aS.prep_start_date || null };
         }
         if (results.academicChapters?.data) {
-          const cloudChapters = results.academicChapters.data;
+          const cloudChaptersData = results.academicChapters.data as any[];
           const defaultChapters = generateDefaultChapters(userId);
+
+          // PERFORMANCE OPTIMIZATION: Use Maps for O(1) lookups during merge
+          const cloudMap = new Map<string, any>();
+          for (const c of cloudChaptersData) {
+            cloudMap.set(c.id, c);
+          }
+
+          const localMap = new Map<string, AcademicChapter>();
+          for (const c of prev.academicChapters) {
+            localMap.set(c.id, c);
+          }
+
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            const cloudCh = cloudMap.get(defaultCh.id);
+            const localCh = localMap.get(defaultCh.id);
             let localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
