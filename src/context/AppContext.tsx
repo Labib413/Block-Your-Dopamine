@@ -355,8 +355,12 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // OPTIMIZATION: Use Map for O(1) lookups and build it efficiently using for...of to avoid intermediate arrays.
+  // This also handles deduplication (last one wins) as required to prevent "ghost" data.
+  const chapterMap = new Map<string, AcademicChapter>();
+  for (const chapter of chapters) {
+    chapterMap.set(chapter.id, chapter);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -372,7 +376,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
