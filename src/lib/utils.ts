@@ -60,3 +60,65 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols.
+ * Prevents javascript: and other dangerous protocols.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  const trimmed = url.trim();
+  // Block common XSS vectors
+  if (trimmed.toLowerCase().startsWith('javascript:')) return false;
+  // Block protocol-relative URLs that might point to malicious sites
+  if (trimmed.startsWith('//')) return false;
+
+  try {
+    const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost';
+    const parsed = new URL(trimmed, base);
+
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:'];
+    if (!safeProtocols.includes(parsed.protocol)) return false;
+
+    // For web protocols, ensure we have a valid hostname
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      if (!parsed.hostname || (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost')) {
+        return false;
+      }
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Securely opens a URL in a new window/tab.
+ * Prevents reverse tabnabbing and validates the URL.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('[Security] Blocked attempt to open invalid or unsafe URL:', url);
+    return null;
+  }
+
+  // Ensure noopener is present for any target that is not _self
+  let secureFeatures = features;
+  if (target !== '_self' && !features.includes('noopener')) {
+    secureFeatures = features ? `${features},noopener` : 'noopener';
+  }
+
+  const win = window.open(url, target, secureFeatures);
+
+  // Extra layer of protection for reverse tabnabbing
+  if (win && target !== '_self') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Some browsers might restrict this
+    }
+  }
+
+  return win;
+}
