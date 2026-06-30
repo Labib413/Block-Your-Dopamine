@@ -1,0 +1,3 @@
+## 2026-06-30 - O(N^2) Bottleneck in Progress Calculation
+**Learning:** The `calculateAllSubjectsProgress` function in `AppContext.tsx` used a linear search (`.find()`) inside a mapping loop over the HSC syllabus dataset. This created an O(N*M) bottleneck, where N is the number of chapters in state and M is the number of official syllabus entries. As the syllabus grows or with many subjects, this significantly impacts UI responsiveness during state updates.
+**Action:** Consistently replace linear array searches with Map-based lookups when iterating over the HSC syllabus dataset to ensure O(1) retrieval and O(N+M) total complexity.
