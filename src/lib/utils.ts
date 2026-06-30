@@ -60,3 +60,64 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL for safety.
+ * Blocks javascript: protocols and ensures basic sanity.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+
+  // Explicitly block javascript: and data: (unless it's a safe image type)
+  const lowerUrl = trimmed.toLowerCase();
+  if (lowerUrl.startsWith('javascript:')) return false;
+  if (lowerUrl.startsWith('data:') && !lowerUrl.startsWith('data:image/')) return false;
+
+  try {
+    // Attempt to parse as an absolute URL
+    const parsed = new URL(trimmed);
+    const validProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    if (!validProtocols.includes(parsed.protocol)) return false;
+
+    // For web protocols, ensure there's a hostname and it's not protocol-relative nonsense
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+       return parsed.hostname.length > 0 && (parsed.hostname.includes('.') || parsed.hostname === 'localhost');
+    }
+    return true;
+  } catch (e) {
+    // Fallback: Check if it's a relative path or a domain-only string that will be
+    // prepended with https:// by the caller
+    return (
+      trimmed.startsWith('/') ||
+      trimmed.startsWith('./') ||
+      trimmed.startsWith('../') ||
+      /^[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/.test(trimmed) // e.g. "google.com"
+    );
+  }
+}
+
+/**
+ * Opens a URL securely, neutralizing reverse tabnabbing.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    return null;
+  }
+
+  // Ensure noopener is present for any target that isn't _self
+  const isSelf = target === '_self';
+  const safeFeatures = isSelf ? features : (features ? `${features},noopener` : 'noopener');
+
+  const win = window.open(url, target, safeFeatures);
+
+  if (win && !isSelf) {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Cross-origin might prevent direct access to opener, but noopener feature handles it
+    }
+  }
+
+  return win;
+}
