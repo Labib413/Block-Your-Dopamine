@@ -1,0 +1,3 @@
+## 2025-05-22 - O(N^2) Lookup Anti-pattern in Syllabus Logic
+**Learning:** Linear searches using `.find()` inside mapping functions for academic chapters constitute a recurring O(N^2) performance bottleneck, especially when the official syllabus is iterated over for each subject. A particularly inefficient pattern was observed where a Map was created for deduplication but immediately converted back to an array for linear searching.
+**Action:** Consistently use Maps for O(1) lookups when iterating over the HSC syllabus dataset or merging cloud/local state. Avoid the 'Map-to-Array-to-find' anti-pattern.
