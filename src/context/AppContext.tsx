@@ -355,8 +355,13 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     { id: 'ict', name: 'ICT' },
   ];
 
-  // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // BOLT: Replace O(N^2) linear search with O(N) Map lookup.
+  // Using Map for O(1) lookups during subject progress calculation significantly improves performance
+  // when navigating academic subjects.
+  const chapterMap = new Map<string, AcademicChapter>();
+  for (const chapter of chapters) {
+    chapterMap.set(chapter.id, chapter);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -368,20 +373,16 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     // THE MASTER CALCULATION LOOP:
     // We iterate over the official syllabus to ensure the denominator is structural, 
     // but we check the state for each chapter to see if it's been deactivated or completed.
-    officialNames.forEach(name => {
+    for (const name of officialNames) {
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
-      try {
-        if (chapter && chapter.is_active !== undefined) {
-          isActive = chapter.is_active;
-        }
-      } catch (e) {
-        if (chapter) isActive = chapter.is_active;
+      if (chapter && chapter.is_active !== undefined) {
+        isActive = chapter.is_active;
       }
 
       if (isActive) {
@@ -393,14 +394,12 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
           if (chapter.make_notes) completedTasks++;
         }
       }
-    });
+    }
 
     const totalPossibleTasks = totalActiveCount * 4;
     const progressValue = totalPossibleTasks > 0 
       ? Math.round((completedTasks / totalPossibleTasks) * 100) 
       : 0;
-
-    // logger.log(`[BYD LOG] Subject: ${s.name}, Active Chapters: ${totalActiveCount}, Tasks: ${completedTasks}/${totalPossibleTasks}, Progress: ${progressValue}%`);
       
     return { id: subjectId, name: s.name, progress: progressValue };
   });
@@ -1545,12 +1544,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.academicChapters?.data) {
           const cloudChapters = results.academicChapters.data;
           const defaultChapters = generateDefaultChapters(userId);
+
+          // BOLT: Optimize merging with Map-based O(1) lookups instead of nested .find()
+          const cloudMap = new Map<string, any>();
+          for (const c of cloudChapters) {
+            cloudMap.set(c.id, c);
+          }
+
+          const localMap = new Map<string, AcademicChapter>();
+          for (const c of prev.academicChapters) {
+            localMap.set(c.id, c);
+          }
+
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
-            let localTimestamp = localCh?._timestamp || 0;
+            const cloudCh = cloudMap.get(defaultCh.id);
+            const localCh = localMap.get(defaultCh.id);
+
+            const localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
+
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
+
             if (cloudCh) return {
               id: cloudCh.id, subject_id: cloudCh.subject_id, chapter_name: cloudCh.chapter_name,
               is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false), is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
