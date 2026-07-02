@@ -60,3 +60,59 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL for security and format.
+ * Prevents javascript: XSS and ensures valid protocols.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+
+  if (trimmed.toLowerCase().startsWith('javascript:')) return false;
+
+  try {
+    const parsed = new URL(trimmed);
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    if (!allowedProtocols.includes(parsed.protocol)) return false;
+
+    // Restrict data: URLs to safe image types
+    if (parsed.protocol === 'data:') {
+      return /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,/.test(trimmed);
+    }
+
+    // Ensure http/https URLs have a valid hostname
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+      return parsed.hostname.length > 0 && (parsed.hostname.includes('.') || parsed.hostname === 'localhost');
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Secure wrapper for window.open that prevents reverse tabnabbing (target="_blank" vulnerability)
+ * and validates the URL before opening.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('[Sentinel] Blocked unsafe or invalid URL:', url);
+    return null;
+  }
+
+  // Security: Always add noopener,noreferrer for target="_blank"
+  const finalFeatures = target === '_self'
+    ? features
+    : `${features}${features ? ',' : ''}noopener,noreferrer`;
+
+  const win = window.open(url, target, finalFeatures);
+
+  // Extra layer of protection for older browsers
+  if (win && target !== '_self') {
+    win.opener = null;
+  }
+
+  return win;
+}
