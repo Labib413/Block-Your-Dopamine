@@ -60,3 +60,72 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a whitelist of safe protocols and basic format.
+ * Prevents javascript: injection and other protocol-based attacks.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+
+  // Explicitly block javascript: protocol
+  if (trimmed.toLowerCase().startsWith('javascript:')) return false;
+
+  try {
+    // If it's a relative URL or missing protocol, try prepending https for validation
+    const testUrl = trimmed.includes('://') ? trimmed : `https://${trimmed}`;
+    const parsed = new URL(testUrl);
+
+    // Whitelist safe protocols
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    if (!safeProtocols.includes(parsed.protocol.toLowerCase())) return false;
+
+    // For web protocols, ensure there is a valid-looking host
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      if (!parsed.hostname || (!parsed.hostname.includes('.') && parsed.hostname !== 'localhost')) {
+        return false;
+      }
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab, preventing reverse tabnabbing
+ * and validating the URL before navigation.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error('[Sentinel] Blocked attempt to open unsafe URL:', url);
+    return null;
+  }
+
+  // Ensure absolute URL
+  let finalUrl = url.trim();
+  if (!finalUrl.includes('://') && !finalUrl.startsWith('mailto:') && !finalUrl.startsWith('tel:')) {
+    finalUrl = `https://${finalUrl}`;
+  }
+
+  // Security features: noopener and noreferrer are critical for cross-origin security
+  const securityFeatures = 'noopener,noreferrer';
+  const finalFeatures = target !== '_self'
+    ? (features ? `${features},${securityFeatures}` : securityFeatures)
+    : features;
+
+  const win = window.open(finalUrl, target, finalFeatures);
+
+  // Explicitly break the opener connection for added security
+  if (win && target !== '_self') {
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Ignore errors if win is cross-origin
+    }
+  }
+
+  return win;
+}
