@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { cn, formatTime, safeStringify, generateId } from "@/src/lib/utils";
+import { cn, formatTime, safeStringify, generateId, isValidUrl } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType } from "../context/AppContext";
 import { motion, AnimatePresence } from "motion/react";
 import { TrendingUp, X, Cloud, Youtube, FileText, Image as ImageIcon, Maximize, Minimize, Plus, Trash2, BookOpen, Timer, AlertCircle, Globe, ExternalLink, CheckCircle2, Loader2, Upload, ChevronLeft, ChevronRight, Download, ShieldCheck } from "lucide-react";
@@ -1154,6 +1154,12 @@ export const FullscreenDetox = React.memo(() => {
 
   const handleAddResource = (customRes?: any) => {
     if (customRes) {
+      // Security: Validate URL to prevent XSS (javascript: etc.)
+      if (!isValidUrl(customRes.url)) {
+        alert("Invalid or unsafe URL provided.");
+        return;
+      }
+
       addResource({
         id: generateId(),
         ...customRes
@@ -1163,6 +1169,13 @@ export const FullscreenDetox = React.memo(() => {
     }
 
     if (!newResource.title || !newResource.url) return;
+
+    // Security: Validate URL to prevent XSS (javascript: etc.)
+    if (!isValidUrl(newResource.url)) {
+      alert("Invalid or unsafe URL provided.");
+      return;
+    }
+
     addResource({
       id: generateId(),
       ...newResource

@@ -60,3 +60,74 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates if a URL is safe to use in the application.
+ * Whitelists common protocols and blocks dangerous ones like 'javascript:'.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+  const trimmed = url.trim();
+
+  // Explicitly block javascript: protocol
+  if (trimmed.toLowerCase().startsWith('javascript:')) {
+    return false;
+  }
+
+  try {
+    // Try parsing as an absolute URL
+    const parsed = new URL(trimmed);
+    const safeProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+    return safeProtocols.includes(parsed.protocol);
+  } catch (e) {
+    // Handle relative paths or domain-only strings
+    if (trimmed.startsWith('/') || trimmed.startsWith('./') || trimmed.startsWith('../')) {
+      return true;
+    }
+
+    // Check for domain-like strings (e.g., "google.com")
+    // This allows users to enter "google.com" instead of "https://google.com"
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]*\.[a-zA-Z0-9-.]+[a-zA-Z0-9/._-]*$/;
+    if (domainRegex.test(trimmed)) {
+      return true;
+    }
+
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab, preventing reverse tabnabbing.
+ * Automatically adds https:// to domain-only strings.
+ */
+export function safeOpen(url: string, target = '_blank', features = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.warn('Blocked opening of unsafe URL:', url);
+    return null;
+  }
+
+  let finalUrl = url.trim();
+  // Add https:// if it looks like a domain without a protocol
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(finalUrl) &&
+      !finalUrl.startsWith('mailto:') &&
+      !finalUrl.startsWith('tel:') &&
+      !finalUrl.startsWith('/') &&
+      !finalUrl.startsWith('.')) {
+    finalUrl = 'https://' + finalUrl;
+  }
+
+  const relFeatures = target !== '_self' ? 'noopener,noreferrer' : '';
+  const combinedFeatures = [features, relFeatures].filter(Boolean).join(',');
+
+  const win = window.open(finalUrl, target, combinedFeatures);
+  if (win && target !== '_self') {
+    // Defense in depth: explicitly clear the opener
+    try {
+      win.opener = null;
+    } catch (e) {
+      // Some browsers might throw or ignore
+    }
+  }
+
+  return win;
+}
