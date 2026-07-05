@@ -60,3 +60,71 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL to prevent XSS (javascript:) and other malicious protocols.
+ */
+export function isValidUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const trimmed = url.trim();
+
+  // Explicitly block javascript: protocol
+  if (trimmed.toLowerCase().startsWith('javascript:')) {
+    return false;
+  }
+
+  try {
+    // Check if the URL has a protocol. If not, assume https for validation.
+    // This regex checks for a protocol-like start (e.g., http://, mailto:, etc.)
+    let urlToParse = trimmed;
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      urlToParse = `https://${trimmed}`;
+    }
+
+    const parsed = new URL(urlToParse);
+    const allowedProtocols = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+
+    if (!allowedProtocols.includes(parsed.protocol.toLowerCase())) {
+      return false;
+    }
+
+    // Additional check for web protocols to ensure they have a valid hostname
+    if (['http:', 'https:'].includes(parsed.protocol.toLowerCase())) {
+      // Must have at least one dot in hostname or be localhost
+      return parsed.hostname === 'localhost' || parsed.hostname.includes('.');
+    }
+
+    return true;
+  } catch (e) {
+    // If URL parsing fails, it might be an invalid URL
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new tab with security best practices.
+ * Prevents reverse tabnabbing and validates the URL.
+ */
+export function safeOpen(url: string | null | undefined, target = '_blank', features = ''): Window | null {
+  if (!url || !isValidUrl(url)) {
+    console.error('Blocked attempt to open invalid or unsafe URL:', url);
+    return null;
+  }
+
+  let finalUrl = url.trim();
+  if (!finalUrl.startsWith('http') && !finalUrl.startsWith('mailto:') && !finalUrl.startsWith('tel:') && !finalUrl.startsWith('blob:') && !finalUrl.startsWith('data:')) {
+    finalUrl = `https://${finalUrl}`;
+  }
+
+  // Security features to prevent reverse tabnabbing
+  const securityFeatures = target === '_self' ? features : `noopener,noreferrer${features ? `,${features}` : ''}`;
+
+  const win = window.open(finalUrl, target, securityFeatures);
+
+  // For extra security in older browsers
+  if (win && target !== '_self') {
+    win.opener = null;
+  }
+
+  return win;
+}
