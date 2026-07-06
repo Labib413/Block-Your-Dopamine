@@ -23,7 +23,7 @@ import {
   Loader2
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
-import { cn, formatTime, generateId } from "@/src/lib/utils";
+import { cn, formatTime, generateId, isValidUrl } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType, ChapterResource } from "../context/AppContext";
 import { useBYDData } from "../hooks/useBYDData";
 import { useRealtimeSync } from "../hooks/useRealtimeSync";
@@ -184,8 +184,12 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
         setIsUploading(false);
       }
     } else if (newResourceUrl) {
-      // Simple URL validation
-      if (!finalUrl.startsWith('http://') && !finalUrl.startsWith('https://')) {
+      if (!isValidUrl(newResourceUrl)) {
+        alert("Invalid URL. Please provide a valid link.");
+        return;
+      }
+      // Protocol is handled by isValidUrl and final session data
+      if (!finalUrl.startsWith('http') && !finalUrl.includes('://')) {
         finalUrl = 'https://' + finalUrl;
       }
     } else {
