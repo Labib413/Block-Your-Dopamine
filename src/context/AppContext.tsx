@@ -356,7 +356,11 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
   ];
 
   // PRIMARY FIX: Filter out any duplicate chapter IDs to prevent "ghost" data
-  const uniqueChapters = Array.from(new Map(chapters.map(c => [c.id, c])).values()) as AcademicChapter[];
+  // Bolt Optimization: Use Map for O(1) lookups during progress calculation
+  const chapterMap = new Map<string, AcademicChapter>();
+  for (const c of chapters) {
+    chapterMap.set(c.id, c);
+  }
 
   const updatedSubjects = subjects.map(s => {
     const subjectId = s.id;
@@ -368,20 +372,16 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
     // THE MASTER CALCULATION LOOP:
     // We iterate over the official syllabus to ensure the denominator is structural, 
     // but we check the state for each chapter to see if it's been deactivated or completed.
-    officialNames.forEach(name => {
+    for (const name of officialNames) {
       const rawId = `${userId || 'anon'}_${subjectId}_ch_${name.replace(/\s+/g, '_')}`;
       const chapterId = stringToUUID(rawId);
       
-      const chapter = uniqueChapters.find(c => c.id === chapterId);
+      const chapter = chapterMap.get(chapterId);
       
       // HYDRATION PRIORITY: Check state
       let isActive = true;
-      try {
-        if (chapter && chapter.is_active !== undefined) {
-          isActive = chapter.is_active;
-        }
-      } catch (e) {
-        if (chapter) isActive = chapter.is_active;
+      if (chapter && chapter.is_active !== undefined) {
+        isActive = chapter.is_active;
       }
 
       if (isActive) {
@@ -393,7 +393,7 @@ const calculateAllSubjectsProgress = (chapters: AcademicChapter[], userId: strin
           if (chapter.make_notes) completedTasks++;
         }
       }
-    });
+    }
 
     const totalPossibleTasks = totalActiveCount * 4;
     const progressValue = totalPossibleTasks > 0 
@@ -1543,14 +1543,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.academicSettings = { examDate: aS.exam_date || null, focusSubjectId: aS.focus_subject_id || null, prepStartDate: aS.prep_start_date || null };
         }
         if (results.academicChapters?.data) {
-          const cloudChapters = results.academicChapters.data;
+          // Bolt Optimization: Replace O(N^2) chapter merging with O(N) using Maps
+          const cloudChapters = results.academicChapters.data as AcademicChapter[];
+          const cloudMap = new Map<string, AcademicChapter>(cloudChapters.map(c => [c.id, c]));
+          const localMap = new Map<string, AcademicChapter>(prev.academicChapters.map(c => [c.id, c]));
+
           const defaultChapters = generateDefaultChapters(userId);
           const mergedChapters = defaultChapters.map(defaultCh => {
-            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
-            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
-            let localTimestamp = localCh?._timestamp || 0;
+            const cloudCh = cloudMap.get(defaultCh.id);
+            const localCh = localMap.get(defaultCh.id);
+            const localTimestamp = localCh?._timestamp || 0;
             const cloudTimestamp = cloudCh?._timestamp || 0;
+
             if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
+
             if (cloudCh) return {
               id: cloudCh.id, subject_id: cloudCh.subject_id, chapter_name: cloudCh.chapter_name,
               is_weak: cloudCh.is_weak ?? (localCh?.is_weak ?? false), is_important: cloudCh.is_important ?? (localCh?.is_important ?? false),
@@ -1558,7 +1564,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
               watch_class: cloudCh.watch_class ?? (localCh?.watch_class ?? false), practice_problems: cloudCh.practice_problems ?? (localCh?.practice_problems ?? false),
               make_notes: cloudCh.make_notes ?? (localCh?.make_notes ?? false), resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
               _timestamp: cloudCh._timestamp || 0
-            };
+            } as AcademicChapter;
             return localCh || defaultCh;
           });
           next.academicChapters = mergedChapters;
