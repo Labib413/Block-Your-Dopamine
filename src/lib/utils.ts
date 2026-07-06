@@ -60,3 +60,58 @@ export function safeStringify(obj: any, indent?: number): string {
     return value;
   }, indent);
 }
+
+/**
+ * Validates a URL against a safe protocol whitelist.
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url) return false;
+
+  try {
+    // Regex to check for existing protocols
+    const protocolRegex = /^[a-z][a-z0-9+.-]*:/i;
+    const finalUrl = protocolRegex.test(url) ? url : 'https://' + url;
+
+    const parsed = new URL(finalUrl);
+    const whitelist = ['http:', 'https:', 'mailto:', 'tel:', 'blob:', 'data:'];
+
+    if (!whitelist.includes(parsed.protocol)) return false;
+
+    // For web protocols, ensure there's a hostname with at least one dot or it's localhost
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+      return parsed.hostname.includes('.') || parsed.hostname === 'localhost';
+    }
+
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Securely opens a URL in a new tab or window.
+ * Prevents reverse tabnabbing and ensures basic URL validation.
+ */
+export function safeOpen(
+  url: string | null | undefined,
+  name: string = '_blank',
+  features: string = ''
+): Window | null {
+  if (!url || !isValidUrl(url)) return null;
+
+  const protocolRegex = /^[a-z][a-z0-9+.-]*:/i;
+  const finalUrl = protocolRegex.test(url) ? url : 'https://' + url;
+
+  // Enforce security features
+  const secureFeatures = features
+    ? `${features},noopener,noreferrer`
+    : 'noopener,noreferrer';
+
+  const win = window.open(finalUrl, name, secureFeatures);
+
+  if (win) {
+    win.opener = null;
+  }
+
+  return win;
+}
