@@ -1,0 +1,4 @@
+## 2025-05-15 - Reverse Tabnabbing and XSS Protection
+**Vulnerability:** External links opened via `window.open` or `target="_blank"` without `noopener,noreferrer` could allow the destination page to manipulate the original application window (Reverse Tabnabbing). Additionally, user-provided URLs were not validated, allowing `javascript:` URI injection.
+**Learning:** React components often use `window.open` for custom popup windows (like focused resource views) which bypasses standard link security if not carefully wrapped. Centralized URL validation is more effective than individual regex checks.
+**Prevention:** Use a secure wrapper like `safeOpen` that enforces a whitelist-based `isValidUrl` check and sets `win.opener = null` with `noopener,noreferrer` features. Always auto-prefix missing protocols with `https://` before validation.

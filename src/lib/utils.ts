@@ -54,9 +54,53 @@ export function safeStringify(obj: any, indent?: number): string {
     if (typeof value === 'object' && value !== null) {
       if (cache.has(value)) return;
       // Skip Window objects and other circular DOM references
-      if (value instanceof Window || (value.constructor && value.constructor.name === 'Window')) return;
+      if (typeof Window !== 'undefined' && (value instanceof Window || (value.constructor && value.constructor.name === 'Window'))) return;
       cache.add(value);
     }
     return value;
   }, indent);
+}
+
+/**
+ * Validates a URL against a whitelist of protocols and ensures it is well-formed.
+ * Whitelist: http, https, mailto, tel, blob, data
+ */
+export function isValidUrl(url: string): boolean {
+  if (!url || typeof url !== 'string') return false;
+
+  // Basic protocol check
+  const protocolRegex = /^(https?|mailto|tel|blob|data):/i;
+  if (!protocolRegex.test(url)) return false;
+
+  try {
+    const parsed = new URL(url);
+    // For web protocols, ensure we have a hostname
+    if (['http:', 'https:'].includes(parsed.protocol)) {
+      return parsed.hostname.length > 0 && (parsed.hostname.includes('.') || parsed.hostname === 'localhost');
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Safely opens a URL in a new window/tab, preventing reverse tabnabbing.
+ * Enforces isValidUrl check and sets opener to null.
+ */
+export function safeOpen(url: string, name: string = '_blank', features: string = ''): Window | null {
+  if (!isValidUrl(url)) {
+    console.error(`Blocked attempt to open invalid or unsafe URL: ${url}`);
+    return null;
+  }
+
+  // Combine features with security defaults
+  const securityFeatures = 'noopener,noreferrer';
+  const finalFeatures = features ? `${features},${securityFeatures}` : securityFeatures;
+
+  const win = window.open(url, name, finalFeatures);
+  if (win) {
+    win.opener = null;
+  }
+  return win;
 }
