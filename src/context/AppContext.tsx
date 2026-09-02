@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode, useCallback, useMemo } from "react";
 import { BADGES, HSC_SYLLABUS, HSC_SUBJECT_NAMES, SAMPLE_GUEST_STATE } from "../constants";
-import { supabase } from "../lib/supabase";
+import { supabase, localUser } from "../lib/supabase";
+import { 
+  auth as firebaseAuth, 
+  onAuthStateChanged as onFirebaseAuthStateChanged, 
+  syncItemToFirestore, 
+  signOutFirebase 
+} from "../lib/firebase";
 import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
 import { logger } from "../lib/logger";
 export interface User {
@@ -533,17 +539,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const syncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isSyncingRef = useRef(false);
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Sync Queue Processor with Debounce & Error Recovery
   const processSyncQueue = useCallback(async () => {
-    if (!state.user || !state.syncQueue || state.syncQueue.length === 0) return;
+    const currentState = stateRef.current;
+    if (!currentState.user || !currentState.syncQueue || currentState.syncQueue.length === 0) return;
     if (isSyncingRef.current) {
       logger.log("Sync already in progress, skipping...");
       return;
     }
 
     isSyncingRef.current = true;
-    const queue = [...state.syncQueue].filter(item => item && item.table);
+    const queue = [...currentState.syncQueue].filter(item => item && item.table);
     // Clear queue locally first (Optimistic)
     setState(prev => ({ ...prev, syncQueue: [] }));
 
@@ -581,13 +592,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
               if (table === 'academic_chapters' && sanitizedData._timestamp) {
                 // DO NOT DELETE _timestamp here - we need it in the DB for latest-wins logic
               }
-              return await supabase.from(table).upsert(sanitizedData, { onConflict: item.onConflict || 'id' });
+              const res = await supabase.from(table).upsert(sanitizedData, { onConflict: item.onConflict || 'id' });
+              if (currentState.user?.id) {
+                syncItemToFirestore(currentState.user.id, table, sanitizedData, 'upsert');
+              }
+              return res;
             } else if (type === 'insert') {
-              return await supabase.from(table).insert(sanitizedData);
+              const res = await supabase.from(table).insert(sanitizedData);
+              if (currentState.user?.id) {
+                syncItemToFirestore(currentState.user.id, table, sanitizedData, 'upsert');
+              }
+              return res;
             } else if (type === 'update') {
-              return await supabase.from(table).update(sanitizedData).eq('id', id);
+              const res = await supabase.from(table).update(sanitizedData).eq('id', id);
+              if (currentState.user?.id) {
+                syncItemToFirestore(currentState.user.id, table, sanitizedData, 'upsert');
+              }
+              return res;
             } else if (type === 'delete') {
-              return await supabase.from(table).delete().eq('id', id);
+              const res = await supabase.from(table).delete().eq('id', id);
+              if (currentState.user?.id) {
+                syncItemToFirestore(currentState.user.id, table, { id }, 'delete');
+              }
+              return res;
             }
           } catch (err: any) {
             // Catch individual request errors to prevent Promise.all from failing entirely
@@ -656,7 +683,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       isSyncingRef.current = false;
     }
-  }, [state.user, state.syncQueue]);
+  }, []);
 
   // Debounced Sync Trigger
   const triggerSync = useCallback(() => {
@@ -1243,46 +1270,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Auth & Sync
   useEffect(() => {
-    // Test Supabase connection
+    // Supabase disconnected / offline mode connection check
     const testConnection = async () => {
-      try {
-        const url = import.meta.env.VITE_SUPABASE_URL || 'undefined';
-        logger.log("Testing Supabase connection to:", url);
-        
-        if (url === 'undefined' || !url) {
-          setIsSupabaseConnected(false);
-          setConnectionError("Supabase URL is missing. Please set VITE_SUPABASE_URL in Settings.");
-          return;
-        }
-
-        const { error, status } = await supabase.from('focus_logs').select('id').limit(1);
-        
-        if (error) {
-          setIsSupabaseConnected(false);
-          
-          if (error.message.includes('Failed to fetch')) {
-            setConnectionError("Network Error: Failed to fetch. This usually means the Supabase URL is incorrect, the project is paused, or your internet is unstable.");
-            logger.error("CRITICAL: Supabase 'Failed to fetch' detected. Possible causes:\n1. Incorrect VITE_SUPABASE_URL\n2. Supabase project is paused\n3. Network/CORS block\n4. Database is currently restarting");
-          } else {
-            setConnectionError(error.message);
-          }
-          logger.error("Supabase Connection Test Error:", error);
-        } else {
-          setIsSupabaseConnected(true);
-          setConnectionError(null);
-          logger.log("Supabase connection verified successfully. Status:", status);
-        }
-      } catch (err: any) {
-        setIsSupabaseConnected(false);
-        setConnectionError(err.message || "Unknown connection error");
-        logger.error("Supabase Connection Test Exception:", err);
-      }
+      setIsSupabaseConnected(null);
+      setConnectionError(null);
     };
     testConnection();
 
     // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
+      if (session?.user) {
         const user = session.user as unknown as User;
         const profile = { 
           fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
@@ -1294,11 +1291,43 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsDataLoading(false);
       }
       setIsAuthReady(true);
+    });
+
+    // Listen for Firebase auth changes
+    const unregisterFirebase = onFirebaseAuthStateChanged(firebaseAuth, (fbUser) => {
+      if (fbUser) {
+        const user: User = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          uniqueId: fbUser.uid,
+          daysActive: 1,
+          lastActiveDate: new Date().toISOString(),
+          user_metadata: {
+            full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+            avatar_url: fbUser.photoURL || undefined,
+          },
+        };
+        const profile = { 
+          fullName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+          avatarUrl: fbUser.photoURL || undefined 
+        };
+        setState(prev => ({ ...prev, user, profile }));
+        fetchUserData(user.id);
+        setIsAuthReady(true);
+      } else {
+        supabase.auth.getSession().then(({ data: { session } }: any) => {
+          if (!session?.user) {
+            setState(prev => ({ ...prev, user: null, profile: null }));
+            setIsDataLoading(false);
+          }
+          setIsAuthReady(true);
+        });
+      }
     });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) {
+      if (session?.user) {
         const user = session.user as unknown as User;
         const profile = { 
           fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
@@ -1306,30 +1335,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
         };
         setState(prev => ({ ...prev, user, profile }));
         fetchUserData(user.id);
-      } else {
+      } else if (!firebaseAuth.currentUser) {
         setIsDataLoading(false);
         clearState();
-        localStorage.clear();
-        sessionStorage.clear();
       }
       setIsAuthReady(true);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      unregisterFirebase();
+    };
   }, []);
 
   const masterSync = useCallback(async (view?: string) => {
-    if (!state.user) {
+    const currentUser = stateRef.current.user;
+    if (!currentUser) {
       setIsDataLoading(false);
       return;
     }
     if (isSyncingRef.current) return;
-    const userId = state.user.id;
+    const userId = currentUser.id;
     const today = getLocalDateString(new Date());
 
     try {
       isSyncingRef.current = true;
-      if (state.syncQueue && state.syncQueue.length > 0) await processSyncQueue();
+      if (stateRef.current.syncQueue && stateRef.current.syncQueue.length > 0) {
+        await processSyncQueue();
+      }
 
       const isAcademicTabTrigger = view === 'Academic';
       if (isAcademicTabTrigger) {
@@ -1589,7 +1622,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       isSyncingRef.current = false;
       setIsDataLoading(false);
     }
-  }, [state.user?.id, state.academicChapters, state.syncQueue, processSyncQueue]);
+  }, []);
 
   const syncData = masterSync;
   const fetchUserData = masterSync;
@@ -3053,20 +3086,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsLoggingOut(true);
     
     // 2. Wipe remote auth session
-    await supabase.auth.signOut();
+    await signOutFirebase().catch(() => {});
+    await supabase.auth.signOut().catch(() => {});
     
     // 3. Clear caches
     localStorage.clear();
     sessionStorage.clear();
     
     // Unsubscribe from any realtime connections
-    await supabase.removeAllChannels();
+    await supabase.removeAllChannels().catch(() => {});
 
     // 4. Reset state
     clearState();
     
-    // 5. Force a hard reload
-    window.location.href = '/';
+    // 5. Force redirect to public dashboard
+    window.location.href = '/public/dashboard';
   };
 
   // Memoize context value to prevent unnecessary re-renders of all consumers

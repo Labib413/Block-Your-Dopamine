@@ -21,6 +21,10 @@ export function useSupabaseFetch<T>(
   }));
 
   const isMounted = useRef(true);
+  const fetchFnRef = useRef(fetchFn);
+  useEffect(() => {
+    fetchFnRef.current = fetchFn;
+  }, [fetchFn]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -28,11 +32,9 @@ export function useSupabaseFetch<T>(
   }, []);
 
   const refetch = useCallback(async () => {
-    if (!state.data) {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
-    }
+    setState(prev => prev.data ? prev : ({ ...prev, isLoading: true, error: null }));
     try {
-      const data = await fetchFn();
+      const data = await fetchFnRef.current();
       if (isMounted.current) {
         memoryCache.set(cacheKey, data);
         setState({ data, isLoading: false, error: null });
@@ -42,7 +44,7 @@ export function useSupabaseFetch<T>(
         setState(prev => ({ ...prev, isLoading: false, error: error as Error }));
       }
     }
-  }, [cacheKey, fetchFn, state.data]);
+  }, [cacheKey]);
 
   useEffect(() => {
     refetch();

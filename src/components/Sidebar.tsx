@@ -4,13 +4,13 @@ import {
   Calendar, 
   User, 
   HeartPulse, 
-  ShieldAlert, 
+  TrendingUp, 
   Activity, 
   BarChart3,
   Flame,
-  TrendingUp,
   PanelLeftClose,
-  PanelLeftOpen
+  PanelLeftOpen,
+  ChevronRight
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/src/lib/utils";
@@ -34,9 +34,9 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
   return (
     <motion.aside 
       initial={false}
-      animate={{ width: isMinimized ? 80 : 256 }}
+      animate={{ width: isMinimized ? 88 : 280 }}
       transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-      className="h-screen bg-black/40 backdrop-blur-2xl border-r border-white/10 flex flex-col sticky top-0 overflow-hidden shrink-0"
+      className="h-screen bg-[#090909] border-r border-white/[0.06] flex flex-col sticky top-0 overflow-hidden shrink-0 z-50 shadow-2xl shadow-black"
     >
       <div className={cn(
         "flex-1 overflow-y-auto scrollbar-hide transition-all duration-300", 
@@ -46,12 +46,12 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
         <motion.div 
           layout
           className={cn(
-            "flex mb-8", 
-            isMinimized ? "flex-col items-center gap-5" : "items-center justify-between"
+            "flex mb-10", 
+            isMinimized ? "flex-col items-center gap-6" : "items-center justify-between"
           )}
         >
-          <motion.div layout className="flex items-center gap-3">
-            <motion.div layout className="w-9 h-9 bg-neon-green rounded-lg flex items-center justify-center shadow-[0_0_15px_rgba(57,255,20,0.5)] shrink-0">
+          <motion.div layout className="flex items-center gap-4">
+            <motion.div layout className="w-10 h-10 bg-[#39FF14] rounded-[14px] flex items-center justify-center shadow-[0_0_20px_rgba(57,255,20,0.3)] shrink-0">
               <Flame className="text-black w-5 h-5" fill="currentColor" />
             </motion.div>
             <AnimatePresence initial={false}>
@@ -63,12 +63,12 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
                   transition={{ duration: 0.2 }}
                   className="flex flex-col overflow-hidden whitespace-nowrap"
                 >
-                  <span className="text-xl font-sans font-bold tracking-wide drop-shadow-[0_0_8px_rgba(57,255,20,0.4)]">
-                    <span className="text-neon-green">B</span>
+                  <span className="text-xl font-['Gelasio',serif] font-bold tracking-wide drop-shadow-md leading-none mb-1">
+                    <span className="text-[#39FF14]">B</span>
                     <span className="text-white">Y</span>
-                    <span className="text-neon-green">D</span>
+                    <span className="text-[#39FF14]">D</span>
                   </span>
-                  <span className="text-[7px] font-bold text-white/40 uppercase tracking-widest leading-none mt-0.5">
+                  <span className="text-[7px] font-sans font-bold text-white/40 uppercase tracking-[0.2em] leading-none">
                     Block Your Dopamine
                   </span>
                 </motion.div>
@@ -80,42 +80,43 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
             layout
             onClick={() => setIsMinimized(!isMinimized)}
             className={cn(
-              "z-50 w-8 h-8 flex items-center justify-center rounded-full bg-gradient-to-b from-white/10 to-white/5 border border-white/10 text-white hover:text-neon-green hover:border-neon-green/50 hover:shadow-[0_0_12px_rgba(57,255,20,0.3)] transition-colors duration-300 shrink-0",
-              !isMinimized && "-mr-3"
+              "z-50 w-8 h-8 flex items-center justify-center rounded-full bg-[#121212] border border-white/[0.08] text-white/50 hover:text-white hover:bg-white/[0.04] transition-all duration-300 shrink-0",
+              !isMinimized && "-mr-2"
             )}
             title={isMinimized ? "Expand Sidebar" : "Collapse Sidebar"}
           >
-            {isMinimized ? <PanelLeftOpen className="w-4 h-4" strokeWidth={2.5} /> : <PanelLeftClose className="w-4 h-4" strokeWidth={2.5} />}
+            {isMinimized ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
           </motion.button>
         </motion.div>
 
-        <nav className="space-y-1">
+        <nav className="space-y-1.5">
           {menuItems.map((item) => (
             <div key={item.label}>
               <button
                 onClick={() => onNavigate(item.label)}
                 className={cn(
-                  "w-full flex items-center rounded-xl transition-colors duration-200 group",
-                  isMinimized ? "justify-center p-3" : "justify-between px-4 py-3",
+                  "w-full flex items-center transition-all duration-200 group relative",
+                  isMinimized ? "justify-center p-3 rounded-2xl" : "justify-between px-4 py-3 rounded-2xl",
                   currentView === item.label 
-                    ? "bg-neon-green/10 text-neon-green" 
-                    : "text-white/60 hover:text-white hover:bg-white/5"
+                    ? "bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14]" 
+                    : "border border-transparent text-white/50 hover:text-white hover:bg-white/[0.04]"
                 )}
                 title={isMinimized ? item.label : undefined}
               >
                 <div className="flex items-center">
                   <item.icon className={cn(
-                    "w-5 h-5 transition-transform duration-200 group-hover:scale-110 shrink-0",
-                    currentView === item.label ? "text-neon-green" : "text-white/40 group-hover:text-white"
+                    "w-5 h-5 transition-transform duration-300 shrink-0",
+                    currentView === item.label ? "text-[#39FF14]" : "text-white/40 group-hover:text-white",
+                    "group-hover:scale-110"
                   )} />
                   <AnimatePresence initial={false}>
                     {!isMinimized && (
                       <motion.span 
                         initial={{ opacity: 0, width: 0, marginLeft: 0 }}
-                        animate={{ opacity: 1, width: "auto", marginLeft: 12 }}
+                        animate={{ opacity: 1, width: "auto", marginLeft: 14 }}
                         exit={{ opacity: 0, width: 0, marginLeft: 0 }}
                         transition={{ duration: 0.2 }}
-                        className="text-sm font-medium whitespace-nowrap overflow-hidden"
+                        className="text-[14px] font-semibold whitespace-nowrap overflow-hidden"
                       >
                         {item.label}
                       </motion.span>
@@ -129,42 +130,61 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
       </div>
 
       <div className={cn(
-        "mt-auto border-t border-white/5 transition-all duration-300", 
+        "mt-auto border-t border-white/[0.04] bg-[#0a0a0a] transition-all duration-300", 
         isMinimized ? "p-4" : "p-6"
       )}>
         <button
           onClick={() => onNavigate("Personal")}
           className={cn(
-            "w-full flex items-center rounded-xl transition-colors duration-200 group",
-            isMinimized ? "justify-center p-2" : "px-4 py-3",
+            "w-full flex items-center transition-all duration-200 group relative overflow-hidden",
+            isMinimized ? "justify-center p-0 rounded-full" : "justify-between p-3 -mx-3 rounded-[20px]",
             currentView === "Personal" 
-              ? "bg-neon-green/10 text-neon-green" 
-              : "text-white/60 hover:text-white hover:bg-white/5"
+              ? "bg-[#39FF14]/5 ring-1 ring-[#39FF14]/20" 
+              : "hover:bg-white/[0.04]"
           )}
           title={isMinimized ? "Personal" : undefined}
         >
-          <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden group-hover:border-neon-green/50 transition-colors shrink-0">
-            {profile?.avatarUrl ? (
-              <img src={profile.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
-            ) : (
-              <User className="w-5 h-5 text-white/40 group-hover:text-white" />
-            )}
+          <div className="flex items-center gap-3">
+            <div className={cn(
+              "rounded-full bg-[#121212] border border-white/[0.08] flex items-center justify-center overflow-hidden transition-colors shrink-0",
+              isMinimized ? "w-10 h-10" : "w-11 h-11",
+              currentView === "Personal" ? "border-[#39FF14]/50 shadow-[0_0_12px_rgba(57,255,20,0.2)]" : "group-hover:border-white/20"
+            )}>
+              {profile?.avatarUrl ? (
+                <img src={profile.avatarUrl} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <User className="w-5 h-5 text-white/40 group-hover:text-white" />
+              )}
+            </div>
+            
+            <AnimatePresence initial={false}>
+              {!isMinimized && (
+                <motion.div 
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="flex flex-col items-start overflow-hidden whitespace-nowrap"
+                >
+                  <span className="text-[14px] font-bold text-white truncate max-w-[120px] leading-tight mb-0.5">
+                    {user ? profile?.fullName : "Personal"}
+                  </span>
+                  <span className="text-[11px] text-white/40 font-medium tracking-wide">
+                    {user ? "View Profile" : "User Panel"}
+                  </span>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+          
           <AnimatePresence initial={false}>
             {!isMinimized && (
-              <motion.div 
-                initial={{ opacity: 0, width: 0, marginLeft: 0 }}
-                animate={{ opacity: 1, width: "auto", marginLeft: 12 }}
-                exit={{ opacity: 0, width: 0, marginLeft: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex flex-col items-start overflow-hidden whitespace-nowrap"
+              <motion.div
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
               >
-                <span className="text-sm font-bold text-white truncate max-w-[120px]">
-                  {user ? profile?.fullName : "Personal"}
-                </span>
-                <span className="text-[10px] text-white/40 font-medium uppercase tracking-wider">
-                  {user ? "View Profile" : "User Panel"}
-                </span>
+                <ChevronRight className="w-4 h-4 text-white/30 group-hover:text-white/70 transition-colors" />
               </motion.div>
             )}
           </AnimatePresence>

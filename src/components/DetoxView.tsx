@@ -25,8 +25,6 @@ import {
 import { GlassCard } from "./GlassCard";
 import { cn, formatTime, generateId } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType, ChapterResource } from "../context/AppContext";
-import { useBYDData } from "../hooks/useBYDData";
-import { useRealtimeSync } from "../hooks/useRealtimeSync";
 import { supabase } from "../lib/supabase";
 import { HSC_SUBJECT_NAMES } from "../constants";
 
@@ -51,6 +49,23 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
 
   const activeSubjectId = academicSettings.focusSubjectId;
   const activeSubjectName = activeSubjectId ? HSC_SUBJECT_NAMES[activeSubjectId] : null;
+
+  // Aggregate resources for the active subject
+  const subjectResources = useMemo(() => {
+    if (!activeSubjectId) return [];
+    const chapters = academicChapters.filter(c => c.subject_id === activeSubjectId);
+    return chapters.flatMap(c => c.resources || []);
+  }, [activeSubjectId, academicChapters]);
+
+  // Combine global resources and subject-specific resources
+  const allResources = useMemo(() => {
+    const formattedSubjectRes = subjectResources.map(r => ({
+      ...r,
+      type: (r.url.includes('youtube.com') || r.url.includes('youtu.be')) ? 'YOUTUBE' : 'OTHERS'
+    } as Resource));
+    
+    return [...resources, ...formattedSubjectRes];
+  }, [resources, subjectResources]);
 
   const getLocalDateString = (date: Date) => {
     const offset = date.getTimezoneOffset();
@@ -80,22 +95,9 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
   const [goalInput, setGoalInput] = useState((dailyGoalHours || 2).toString());
   const [isUploading, setIsUploading] = useState(false);
 
-  // Persistence: Fetch resources from Supabase
-  const { data: dbResources, updateData: upsertResource, deleteData: removeDbResource } = useBYDData('resources');
-  useRealtimeSync('resources');
-  
-  const allResources = useMemo(() => {
-    const subjectResources = !activeSubjectId 
-        ? [] 
-        : academicChapters.filter(c => c.subject_id === activeSubjectId).flatMap(c => c.resources || []);
-
-    const formattedSubjectRes = subjectResources.map(r => ({
-      ...r,
-      type: (r.url.includes('youtube.com') || r.url.includes('youtu.be')) ? 'YOUTUBE' : 'OTHERS'
-    } as Resource));
-    
-    return [...(dbResources || []), ...formattedSubjectRes];
-  }, [dbResources, activeSubjectId, academicChapters]);
+  useEffect(() => {
+    setGoalInput((dailyGoalHours || 2).toString());
+  }, [dailyGoalHours]);
 
   const handleUpdateGoal = () => {
     const str = goalInput.toLowerCase().trim();
@@ -198,7 +200,7 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
       title: newResourceTitle,
       url: finalUrl
     };
-    upsertResource(newResource);
+    addResource(newResource);
     setNewResourceTitle("");
     setNewResourceUrl("");
     setSelectedFile(null);

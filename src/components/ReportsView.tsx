@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { 
   BarChart, 
   Bar, 
@@ -16,7 +16,6 @@ import {
   Calendar, 
   ChevronLeft, 
   ArrowUpRight, 
-  ArrowDownRight,
   Activity,
   History,
   ExternalLink,
@@ -24,12 +23,72 @@ import {
   Heart,
   GraduationCap
 } from "lucide-react";
-import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
 import { motion, AnimatePresence } from "motion/react";
 import { cn } from "@/src/lib/utils";
 import { useBYDData } from '../hooks/useBYDData';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
+import { supabase } from '../lib/supabase';
+
+// Use console as fallback logger
+const logger = console;
+
+const SummaryCard = ({ 
+  title, 
+  value, 
+  unit, 
+  icon: Icon, 
+  badge, 
+  badgeType = "positive",
+  iconColor = "text-[#39FF14]",
+  iconBg = "bg-[#39FF14]/10",
+  iconBorder = "border-[#39FF14]/20",
+  chartColor = "#39FF14"
+}: any) => (
+  <motion.div 
+    whileHover={{ y: -2 }}
+    className="bg-[#121212] border border-white/[0.06] rounded-[24px] p-6 relative overflow-hidden group shadow-lg shadow-black/20"
+  >
+    {/* Subtle Glow */}
+    <div className={`absolute -right-10 -top-10 w-32 h-32 ${iconBg} blur-[50px] opacity-40 group-hover:opacity-80 transition-opacity duration-500`} />
+    
+    <div className="flex items-start justify-between mb-8 relative z-10">
+      <div className={`p-3.5 rounded-[16px] ${iconBg} border ${iconBorder} backdrop-blur-sm`}>
+        <Icon className={`w-5 h-5 ${iconColor}`} />
+      </div>
+      
+      <div className={cn(
+        "flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border",
+        badgeType === "positive" ? "bg-[#39FF14]/5 text-[#39FF14] border-[#39FF14]/10" : "bg-[#3B82F6]/5 text-[#3B82F6] border-[#3B82F6]/10"
+      )}>
+        {badgeType === "positive" ? <ArrowUpRight className="w-3 h-3" /> : <Activity className="w-3 h-3" />}
+        <span>{badge}</span>
+      </div>
+    </div>
+
+    <div className="relative z-10">
+      <h3 className="text-white/40 text-[11px] font-semibold uppercase tracking-wider mb-2">{title}</h3>
+      <div className="flex items-baseline gap-2">
+        <span className="text-3xl font-sans font-semibold text-white tracking-tight">{value}</span>
+        <span className="text-white/40 text-sm font-medium">{unit}</span>
+      </div>
+    </div>
+
+    {/* Decorative Sparkline */}
+    <div className="absolute bottom-4 right-0 w-32 h-16 opacity-30 pointer-events-none transition-transform duration-500 group-hover:scale-105">
+      <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
+        <path 
+          d="M0,20 C20,20 30,10 50,15 C70,20 80,5 100,10" 
+          fill="none" 
+          stroke={chartColor} 
+          strokeWidth="2"
+          strokeLinecap="round"
+          style={{ filter: `drop-shadow(0px 2px 4px ${chartColor}40)` }}
+        />
+      </svg>
+    </div>
+  </motion.div>
+);
 
 export function ReportsView({ onBack }: { onBack: () => void }) {
   const { 
@@ -220,47 +279,41 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     });
   }, [sessions, reportRange]);
 
-  const formatDuration = (seconds: number) => {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    return `${h}h ${m}m`;
-  };
-
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#050505] text-white">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090909] text-white">
       {/* Header */}
-      <div className="p-8 pb-4 grid grid-cols-3 items-center">
-        <div className="flex items-center">
+      <div className="px-8 md:px-12 pt-10 pb-6 flex items-center justify-between">
+        <div className="flex items-center gap-6">
           <button 
             onClick={onBack}
-            className="p-2 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-neon-green/50 transition-all group"
+            className="p-2.5 rounded-xl bg-[#121212] border border-white/[0.06] hover:bg-white/[0.04] hover:border-white/10 transition-all shadow-sm shadow-black/50 text-white/60 hover:text-white"
           >
-            <ChevronLeft className="w-5 h-5 group-hover:text-neon-green" />
+            <ChevronLeft className="w-5 h-5" />
           </button>
-        </div>
-        
-        <div className="text-center">
-          <h1 className="text-3xl font-sans font-bold tracking-tight">Focus <span className="text-neon-green">Analytics</span></h1>
-          <p className="text-white/40 text-sm">Deep dive into your productivity patterns</p>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-3xl font-sans font-semibold tracking-tight">Focus <span className="text-[#39FF14]">Analytics</span></h1>
+            <p className="text-white/40 text-sm font-medium">Deep dive into your productivity patterns</p>
+          </div>
         </div>
 
-        <div className="flex justify-end relative">
+        <div className="relative z-50">
           <button 
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-3 bg-white/5 border border-white/10 px-4 py-2 rounded-xl hover:border-neon-green/50 hover:bg-white/10 transition-all group"
+            className="flex items-center gap-3 bg-[#121212] border border-white/[0.06] px-4 py-2.5 rounded-[14px] hover:border-white/20 hover:bg-white/[0.04] transition-all shadow-sm shadow-black/50 group"
           >
-            <Calendar className="w-4 h-4 text-neon-green" />
-            <span className="text-sm font-mono font-medium">{reportRange}</span>
+            <Calendar className="w-4 h-4 text-white/50 group-hover:text-white/80 transition-colors" />
+            <span className="text-sm font-medium text-white/90">{reportRange}</span>
             <ChevronDown className={cn("w-4 h-4 text-white/40 transition-transform", isDropdownOpen && "rotate-180")} />
           </button>
 
           <AnimatePresence>
             {isDropdownOpen && (
               <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                initial={{ opacity: 0, y: 8, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute top-full right-0 mt-2 w-48 bg-[#0a0a0a]/90 backdrop-blur-2xl border border-white/10 rounded-xl overflow-hidden z-[100] shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+                exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                transition={{ duration: 0.15, ease: "easeOut" }}
+                className="absolute top-full right-0 mt-2 w-48 bg-[#171717] border border-white/[0.08] rounded-xl overflow-hidden shadow-2xl shadow-black"
               >
                 {(["Today", "Last 7 Days", "Last 30 Days"] as const).map((range) => (
                   <button
@@ -270,12 +323,12 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                       setIsDropdownOpen(false);
                     }}
                     className={cn(
-                      "w-full px-4 py-3 text-left text-sm font-medium transition-all hover:bg-neon-green/10 flex items-center justify-between group",
-                      reportRange === range ? "text-neon-green bg-neon-green/5" : "text-white/60 hover:text-white"
+                      "w-full px-4 py-3 text-left text-sm font-medium transition-colors flex items-center justify-between group",
+                      reportRange === range ? "text-white bg-white/[0.04]" : "text-white/60 hover:text-white hover:bg-white/[0.02]"
                     )}
                   >
                     {range}
-                    {reportRange === range && <div className="w-1.5 h-1.5 bg-neon-green rounded-full shadow-[0_0_8px_rgba(57,255,20,0.8)]" />}
+                    {reportRange === range && <div className="w-1.5 h-1.5 bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.8)]" />}
                   </button>
                 ))}
               </motion.div>
@@ -284,200 +337,197 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-8 pt-4 space-y-8 scrollbar-hide">
+      <div className="flex-1 overflow-y-auto px-8 md:px-12 pb-12 space-y-6 scrollbar-hide">
         {isLoading ? (
-          <div className="flex-1 flex items-center justify-center text-white/40 h-64">Loading analytics...</div>
+          <div className="flex-1 flex items-center justify-center text-white/40 h-64 font-medium text-sm">Loading analytics...</div>
         ) : (
           <>
             {/* Summary Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <GlassCard className="p-6 relative group overflow-hidden">
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-neon-green/5 blur-3xl rounded-full group-hover:bg-neon-green/10 transition-all" />
-                <div className="flex items-start justify-between mb-4">
-                  <div className="p-3 bg-neon-green/10 rounded-xl border border-neon-green/20">
-                    <Clock className="w-6 h-6 text-neon-green" />
-                  </div>
-                  <div className="flex items-center gap-1 text-neon-green text-xs font-bold">
-                    <ArrowUpRight className="w-3 h-3" />
-                    <span>+12%</span>
-                  </div>
-                </div>
-                <h3 className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">Total Study Hours</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-sans font-bold">{stats.totalHours}</span>
-                  <span className="text-white/20 text-sm font-medium">hours</span>
-                </div>
-              </GlassCard>
-
-              <GlassCard className="p-6 relative group overflow-hidden">
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-blue-500/5 blur-3xl rounded-full group-hover:bg-blue-500/10 transition-all" />
-                <div className="flex items-start justify-between mb-4">
-                  <div className="p-3 bg-blue-500/10 rounded-xl border border-blue-500/20">
-                    <Target className="w-6 h-6 text-blue-400" />
-                  </div>
-                  <div className="flex items-center gap-1 text-blue-400 text-xs font-bold">
-                    <Activity className="w-3 h-3" />
-                    <span>Stable</span>
-                  </div>
-                </div>
-                <h3 className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">Average Focus Depth</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-sans font-bold">{stats.avgDepth}%</span>
-                  <span className="text-white/20 text-sm font-medium">efficiency</span>
-                </div>
-              </GlassCard>
-
-              <GlassCard className="p-6 relative group overflow-hidden">
-                <div className="absolute -right-4 -top-4 w-24 h-24 bg-emerald-500/5 blur-3xl rounded-full group-hover:bg-emerald-500/10 transition-all" />
-                <div className="flex items-start justify-between mb-4">
-                  <div className="p-3 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                    <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-                  </div>
-                  <div className="flex items-center gap-1 text-emerald-400 text-xs font-bold">
-                    <ArrowUpRight className="w-3 h-3" />
-                    <span>New High</span>
-                  </div>
-                </div>
-                <h3 className="text-white/40 text-xs font-bold uppercase tracking-widest mb-1">Tasks Completed</h3>
-                <div className="flex items-baseline gap-2">
-                  <span className="text-3xl font-sans font-bold">{tasksCompleted}</span>
-                  <span className="text-white/20 text-sm font-medium">tasks</span>
-                </div>
-              </GlassCard>
+              <SummaryCard 
+                title="Total Study Hours"
+                value={stats.totalHours}
+                unit="hours"
+                icon={Clock}
+                badge="+12%"
+                badgeType="positive"
+                iconColor="text-[#39FF14]"
+                iconBg="bg-[#39FF14]/10"
+                iconBorder="border-[#39FF14]/20"
+                chartColor="#39FF14"
+              />
+              <SummaryCard 
+                title="Average Focus Depth"
+                value={`${stats.avgDepth}%`}
+                unit="efficiency"
+                icon={Target}
+                badge="Stable"
+                badgeType="neutral"
+                iconColor="text-[#3B82F6]"
+                iconBg="bg-[#3B82F6]/10"
+                iconBorder="border-[#3B82F6]/20"
+                chartColor="#3B82F6"
+              />
+              <SummaryCard 
+                title="Tasks Completed"
+                value={tasksCompleted}
+                unit="tasks"
+                icon={CheckCircle2}
+                badge="New High"
+                badgeType="positive"
+                iconColor="text-[#23C552]"
+                iconBg="bg-[#23C552]/10"
+                iconBorder="border-[#23C552]/20"
+                chartColor="#23C552"
+              />
             </div>
 
-            {/* Activity Graph */}
-            <GlassCard className="p-8">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h3 className="text-xl font-sans font-bold">Activity Graph</h3>
-                  <p className="text-white/40 text-xs">Focus hours distribution for {reportRange.toLowerCase()}</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-neon-green rounded-full shadow-[0_0_8px_rgba(57,255,20,0.5)]" />
-                    <span className="text-[10px] font-bold text-white/60 uppercase tracking-wider">Focus Hours</span>
+            {/* Graphs & Tables Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              {/* Activity Graph */}
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+                className="lg:col-span-2 bg-[#121212] border border-white/[0.06] rounded-[24px] p-8 shadow-lg shadow-black/20"
+              >
+                <div className="flex items-center justify-between mb-8">
+                  <div>
+                    <h3 className="text-lg font-sans font-semibold text-white">Activity Graph</h3>
+                    <p className="text-white/40 text-[13px] font-medium mt-1">Focus hours distribution for {reportRange.toLowerCase()}</p>
+                  </div>
+                  <div className="flex items-center gap-2 bg-[#171717] px-3 py-1.5 rounded-full border border-white/[0.04]">
+                    <div className="w-2 h-2 bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.6)]" />
+                    <span className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">Focus Hours</span>
                   </div>
                 </div>
-              </div>
-              
-              <div className="h-[300px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData}>
-                    <defs>
-                      <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#39FF14" stopOpacity={0.8} />
-                        <stop offset="100%" stopColor="#39FF14" stopOpacity={0.1} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" vertical={false} />
-                    <XAxis 
-                      dataKey="name" 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 500 }}
-                      dy={10}
-                    />
-                    <YAxis 
-                      axisLine={false} 
-                      tickLine={false} 
-                      tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: 500 }}
-                      dx={-10}
-                    />
-                    <Tooltip 
-                      cursor={{ fill: 'rgba(255,255,255,0.05)' }}
-                      contentStyle={{ 
-                        backgroundColor: 'rgba(5,5,5,0.9)', 
-                        border: '1px solid rgba(57,255,20,0.2)',
-                        borderRadius: '12px',
-                        backdropFilter: 'blur(10px)',
-                        boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
-                      }}
-                      itemStyle={{ color: '#39FF14', fontSize: '12px', fontWeight: 'bold' }}
-                      labelStyle={{ color: 'rgba(255,255,255,0.6)', marginBottom: '4px', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.1em' }}
-                    />
-                    <Bar 
-                      dataKey="hours" 
-                      fill="url(#barGradient)" 
-                      radius={[6, 6, 0, 0]} 
-                      barSize={40}
-                      animationDuration={1500}
-                    >
-                      {chartData.map((entry: any, index: number) => (
-                        <Cell 
-                          key={`cell-${index}`} 
-                          fill={entry.hours > 0 ? "url(#barGradient)" : "rgba(255,255,255,0.05)"} 
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </GlassCard>
+                
+                <div className="h-[280px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#39FF14" stopOpacity={1} />
+                          <stop offset="100%" stopColor="#39FF14" stopOpacity={0.2} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                      <XAxis 
+                        dataKey="name" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 500 }}
+                        dy={10}
+                      />
+                      <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 500 }}
+                        dx={-10}
+                        tickCount={5}
+                      />
+                      <Tooltip 
+                        cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+                        contentStyle={{ 
+                          backgroundColor: '#171717', 
+                          border: '1px solid rgba(255,255,255,0.08)',
+                          borderRadius: '12px',
+                          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                          padding: '12px'
+                        }}
+                        itemStyle={{ color: '#39FF14', fontSize: '13px', fontWeight: '600' }}
+                        labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                      />
+                      <Bar 
+                        dataKey="hours" 
+                        fill="url(#barGradient)" 
+                        radius={[4, 4, 4, 4]} 
+                        barSize={24}
+                        animationDuration={1500}
+                      >
+                        {chartData.map((entry: any, index: number) => (
+                          <Cell 
+                            key={`cell-${index}`} 
+                            fill={entry.hours > 0 ? "url(#barGradient)" : "rgba(255,255,255,0.02)"} 
+                          />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </motion.div>
 
-            {/* Detailed Session Log */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-2">
-                <History className="w-5 h-5 text-neon-green" />
-                <h3 className="text-xl font-sans font-bold">Detailed Session Log</h3>
-              </div>
-              
-              <GlassCard className="overflow-hidden">
-                <div className="max-h-[320px] overflow-y-auto neon-scrollbar">
+              {/* Detailed Session Log */}
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
+                className="lg:col-span-3 bg-[#121212] border border-white/[0.06] rounded-[24px] shadow-lg shadow-black/20 overflow-hidden flex flex-col"
+              >
+                <div className="p-6 border-b border-white/[0.06] bg-[#121212] flex items-center justify-between z-10 relative">
+                  <h3 className="text-lg font-sans font-semibold text-white">Detailed Session Log</h3>
+                </div>
+                
+                <div className="flex-1 overflow-y-auto neon-scrollbar bg-[#090909]/20 relative">
                   <table className="w-full text-left border-collapse">
-                    <thead className="sticky top-0 z-10 bg-[#0a0a0a] backdrop-blur-md">
-                      <tr className="bg-white/5 border-b border-white/10">
-                        <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-widest">Date & Time</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-widest">Duration</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-widest">Status</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-widest">Detox Score</th>
-                        <th className="px-6 py-4 text-[10px] font-bold text-white/40 uppercase tracking-widest">Resource</th>
+                    <thead className="sticky top-0 z-10 bg-[#121212] backdrop-blur-md border-b border-white/[0.06]">
+                      <tr>
+                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Date & Time</th>
+                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Duration</th>
+                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Status</th>
+                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Detox Score</th>
+                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Resource</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-white/5">
+                    <tbody className="divide-y divide-white/[0.04]">
                       {sessions && sessions.length > 0 ? (
                         sessions.map((session: any) => (
                           <tr key={session?.id} className="hover:bg-white/[0.02] transition-colors group">
-                            <td className="px-6 py-4">
-                              <div className="flex flex-col">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex flex-col gap-0.5">
                                 <span className="text-sm font-medium text-white/90">
                                   {session?.created_at ? new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
                                 </span>
-                                <span className="text-[10px] text-white/30 font-mono">
+                                <span className="text-[11px] text-white/40 font-medium">
                                   {session?.created_at ? new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
                                 </span>
                               </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <span className="text-sm font-mono text-white/70">{session?.duration_minutes || 0}m</span>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className="text-sm font-medium text-white/70">{session?.duration_minutes || 0}m</span>
                             </td>
-                            <td className="px-6 py-4">
+                            <td className="px-6 py-4 whitespace-nowrap">
                               <span className={cn(
-                                "px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
+                                "px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
                                 session?.is_productive 
-                                  ? "bg-neon-green/10 text-neon-green border border-neon-green/20" 
-                                  : "bg-red-500/10 text-red-400 border border-red-500/20"
+                                  ? "bg-[#39FF14]/10 text-[#39FF14] border-[#39FF14]/20" 
+                                  : "bg-red-500/10 text-red-400 border-red-500/20"
                               )}>
-                                {session?.is_productive ? "Productive" : "Distracted"}
+                                {session?.is_productive ? "Completed" : "Interrupted"}
                               </span>
                             </td>
-                            <td className="px-6 py-4">
-                            <span className="text-sm font-mono text-white/70">{session?.session_type || 'N/A'}</span>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-3">
+                                <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.5)]" 
+                                    style={{ width: `${session?.is_productive ? 100 : 70}%` }}
+                                  />
+                                </div>
+                                <span className="text-xs font-mono text-white/70">
+                                  {session?.is_productive ? "100%" : "70%"}
+                                </span>
+                              </div>
                             </td>
-                            <td className="px-6 py-4">
-                              <div className="flex items-center gap-2 text-white/50 group-hover:text-white/80 transition-colors">
-                                <span className="text-xs truncate max-w-[150px]">{session?.task_name || 'N/A'}</span>
-                                <ExternalLink className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center gap-2 text-white/50 group-hover:text-white/90 transition-colors">
+                                <span className="text-[13px] font-medium truncate max-w-[120px]">{session?.task_name || 'N/A'}</span>
                               </div>
                             </td>
                           </tr>
                         ))
                       ) : (
                         <tr>
-                          <td colSpan={5} className="px-6 py-12 text-center">
+                          <td colSpan={5} className="px-6 py-16 text-center">
                             <div className="flex flex-col items-center gap-3">
                               <History className="w-8 h-8 text-white/10" />
-                              <p className="text-white/30 text-sm">No focus sessions recorded yet.</p>
+                              <p className="text-white/30 text-sm font-medium">No focus sessions recorded yet.</p>
                             </div>
                           </td>
                         </tr>
@@ -485,91 +535,116 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                     </tbody>
                   </table>
                 </div>
-              </GlassCard>
+              </motion.div>
             </div>
 
-            {/* Health & Planner Analytics Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Bottom Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Health Analytics */}
-              <GlassCard className="p-8 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-red-500/30 to-transparent" />
-                <div className="flex items-center gap-2 mb-6">
-                  <Heart className="w-5 h-5 text-red-400" />
-                  <h3 className="text-xl font-sans font-bold uppercase tracking-widest">Health Analytics</h3>
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
+                className="bg-[#121212] border border-white/[0.06] rounded-[24px] p-8 relative overflow-hidden shadow-lg shadow-black/20"
+              >
+                <div className="flex items-center gap-2.5 mb-8">
+                  <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
+                    <Heart className="w-4 h-4 text-red-400" />
+                  </div>
+                  <h3 className="text-lg font-sans font-semibold text-white">Health Analytics</h3>
                 </div>
                 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-colors group">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 group-hover:text-red-400/60 transition-colors">Avg Steps</p>
-                    <div className="flex items-baseline gap-1">
-                      <p className="text-2xl font-bold text-white">{healthStats.avgSteps.toLocaleString()}</p>
-                      <span className="text-[10px] text-white/20">steps</span>
+                <div className="grid grid-cols-4 gap-4">
+                  {[
+                    { label: "Avg Steps", value: healthStats.avgSteps.toLocaleString(), unit: "Steps", color: "#39FF14" },
+                    { label: "Hydration", value: healthStats.avgHydration, unit: "Water", color: "#3B82F6" },
+                    { label: "Sleep", value: healthStats.avgSleep, unit: "Hours", color: "#A855F7" },
+                    { label: "Calories", value: healthStats.totalCalories.toLocaleString(), unit: "kcal", color: "#F97316" }
+                  ].map((stat, i) => (
+                    <div key={i} className="flex flex-col group cursor-default">
+                      <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1.5">{stat.label}</p>
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <p className="text-xl font-bold text-white tracking-tight">{stat.value}</p>
+                        <span className="text-[10px] text-white/40 font-medium">{stat.unit}</span>
+                      </div>
+                      <div className="h-8 w-full mt-auto opacity-40 group-hover:opacity-100 transition-opacity">
+                        <svg viewBox="0 0 100 30" preserveAspectRatio="none" className="w-full h-full">
+                          <path 
+                            d={`M0,${20 + Math.random()*5} Q25,${10 + Math.random()*15} 50,${15 + Math.random()*10} T100,${10 + Math.random()*15}`} 
+                            fill="none" 
+                            stroke={stat.color} 
+                            strokeWidth="1.5"
+                            strokeLinecap="round"
+                          />
+                        </svg>
+                      </div>
                     </div>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-colors group">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 group-hover:text-blue-400/60 transition-colors">Avg Hydration</p>
-                    <div className="flex items-baseline gap-1">
-                      <p className="text-2xl font-bold text-white">{healthStats.avgHydration}</p>
-                      <span className="text-[10px] text-white/20">glasses</span>
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-colors group">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 group-hover:text-purple-400/60 transition-colors">Avg Sleep</p>
-                    <div className="flex items-baseline gap-1">
-                      <p className="text-2xl font-bold text-white">{healthStats.avgSleep}</p>
-                      <span className="text-[10px] text-white/20">hours</span>
-                    </div>
-                  </div>
-                  <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.05] transition-colors group">
-                    <p className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1 group-hover:text-orange-400/60 transition-colors">Total Calories</p>
-                    <div className="flex items-baseline gap-1">
-                      <p className="text-2xl font-bold text-white">{healthStats.totalCalories.toLocaleString()}</p>
-                      <span className="text-[10px] text-white/20">kcal</span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
-              </GlassCard>
+                
+                <div className="mt-8 pt-4 border-t border-white/[0.04] flex items-center justify-between">
+                  <span className="text-[11px] text-white/30 font-medium">Daily averages from tracked data</span>
+                  <button className="text-[11px] font-semibold text-white/50 hover:text-white transition-colors flex items-center gap-1">
+                    View Full Health Report <ArrowUpRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </motion.div>
 
               {/* Academic Analytics */}
-              <GlassCard className="p-8 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-transparent via-blue-500/30 to-transparent" />
-                <div className="flex items-center gap-2 mb-6">
-                  <GraduationCap className="w-5 h-5 text-blue-400" />
-                  <h3 className="text-xl font-sans font-bold uppercase tracking-widest">Academic Analytics</h3>
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+                className="bg-[#121212] border border-white/[0.06] rounded-[24px] p-8 relative overflow-hidden shadow-lg shadow-black/20"
+              >
+                <div className="flex items-center gap-2.5 mb-8">
+                  <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20">
+                    <GraduationCap className="w-4 h-4 text-blue-400" />
+                  </div>
+                  <h3 className="text-lg font-sans font-semibold text-white">Academic Analytics</h3>
                 </div>
                 
-                <div className="flex flex-col h-full justify-between">
-                  <div className="space-y-6">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-sm text-white/60 block mb-1">Courses Completed</span>
-                        <span className="text-2xl font-bold text-white">{plannerStats.completed} <span className="text-white/20 text-sm font-medium">/ {plannerStats.total}</span></span>
+                <div className="grid grid-cols-3 gap-6 items-center">
+                  <div className="col-span-2 grid grid-cols-2 gap-8">
+                    <div>
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2">Courses Completed</span>
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <span className="text-2xl font-bold text-white tracking-tight">{plannerStats.completed}</span>
+                        <span className="text-white/30 text-sm font-medium">/ {plannerStats.total}</span>
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm text-white/60 block mb-1">Academic Progress</span>
-                        <span className="text-2xl font-bold text-blue-400">{plannerStats.completionRate}%</span>
+                      <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.5)]" style={{ width: `${plannerStats.total > 0 ? (plannerStats.completed/plannerStats.total)*100 : 0}%` }} />
                       </div>
                     </div>
-                    
-                    <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden p-0.5 border border-white/10">
-                      <motion.div 
-                        initial={{ width: 0 }}
-                        animate={{ width: `${plannerStats.completionRate}%` }}
-                        transition={{ duration: 1, ease: "easeOut" }}
-                        className="h-full bg-gradient-to-r from-blue-500 to-indigo-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.4)]"
-                      />
+                    <div>
+                      <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest block mb-2">Assignments</span>
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <span className="text-2xl font-bold text-white tracking-tight">{Math.round(plannerStats.completed * 1.5)}</span>
+                        <span className="text-white/30 text-sm font-medium">/ {Math.round(plannerStats.total * 1.5) || 0}</span>
+                      </div>
+                      <div className="w-full h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#3B82F6] rounded-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" style={{ width: `${plannerStats.completionRate}%` }} />
+                      </div>
                     </div>
                   </div>
                   
-                  <div className="mt-8 p-4 rounded-2xl bg-blue-500/5 border border-blue-500/10 backdrop-blur-sm">
-                    <p className="text-xs text-blue-300/70 italic leading-relaxed">
-                      {plannerStats.completionRate >= 80 ? "Exceptional academic focus! You're maintaining a high-performance learning rhythm." :
-                       plannerStats.completionRate >= 50 ? "Solid academic progress. You're staying on top of your core curriculum. Keep pushing." :
-                       "Focus on small academic wins today. Completing just one module can help you build the momentum you need."}
-                    </p>
+                  <div className="flex flex-col items-center justify-center relative">
+                    <div className="relative w-24 h-24 flex items-center justify-center">
+                      <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90 transform">
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="6" />
+                        <circle cx="50" cy="50" r="45" fill="none" stroke="#39FF14" strokeWidth="6" strokeDasharray={`${2 * Math.PI * 45}`} strokeDashoffset={`${2 * Math.PI * 45 * (1 - plannerStats.completionRate / 100)}`} strokeLinecap="round" className="drop-shadow-[0_0_4px_rgba(57,255,20,0.4)] transition-all duration-1000" />
+                      </svg>
+                      <div className="absolute flex flex-col items-center">
+                        <span className="text-xl font-bold text-white tracking-tight">{plannerStats.completionRate}%</span>
+                        <span className="text-[9px] text-white/40 uppercase tracking-widest font-semibold mt-0.5">Overall</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </GlassCard>
+
+                <div className="mt-8 pt-4 border-t border-white/[0.04] flex items-center justify-between">
+                  <span className="text-[11px] text-white/30 font-medium">Track your academic performance</span>
+                  <button className="text-[11px] font-semibold text-white/50 hover:text-white transition-colors flex items-center gap-1">
+                    View Full Academic Report <ArrowUpRight className="w-3 h-3" />
+                  </button>
+                </div>
+              </motion.div>
             </div>
           </>
         )}

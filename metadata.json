@@ -1,5 +1,6 @@
 {
   "name": "BYD - Block Your Dopamine",
   "description": "A high-end, futuristic self-improvement dashboard with Glassmorphism aesthetic, AI health insights, productivity tracking, and a specialized Academic Hub for exam preparation.",
-  "requestFramePermissions": ["screen-wake-lock"]
+  "requestFramePermissions": ["screen-wake-lock"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

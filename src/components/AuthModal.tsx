@@ -7,6 +7,7 @@ import { GlassCard } from "./GlassCard";
 import { logger } from "../lib/logger";
 
 import { supabase } from "../lib/supabase";
+import { signInWithGoogle } from "../lib/firebase";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -145,17 +146,17 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setLoading(true);
     setError(null);
     try {
-      const { error: authError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin,
-        }
-      });
-      if (authError) throw authError;
-      // Note: Redirect happens automatically for OAuth
+      const fbUser = await signInWithGoogle();
+      if (fbUser) {
+        onClose();
+        const username = fbUser.displayName?.toLowerCase().replace(/\s+/g, '_') || fbUser.email?.split('@')[0] || "user";
+        navigate(`/${username}/dashboard`, { replace: true });
+      }
     } catch (err: any) {
       logger.error("Google Auth Error:", err);
-      setError("Google sign-in failed. Please try again.");
+      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
+        setError(err.message || "Google sign-in failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

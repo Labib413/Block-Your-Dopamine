@@ -34,8 +34,8 @@ function RequireAuthMatch() {
   }
 
   if (!user) {
-    // If not logged in, prompt auth or handle unauthorized
-    return <Navigate to="/login" replace />;
+    // If not logged in, redirect to basic public dashboard
+    return <Navigate to="/public/dashboard" replace />;
   }
 
   const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
@@ -63,11 +63,11 @@ function AppWorkspace() {
 
   // Sync data on view changes
   useEffect(() => {
-    if (user) {
+    if (user?.id) {
       console.log(`Switching to ${currentView} - triggering background sync...`);
       syncData(currentView);
     }
-  }, [currentView, user, syncData]);
+  }, [currentView, user?.id, syncData]);
 
   // Manual Session Correction: Subtract 2h as requested by user
   useEffect(() => {

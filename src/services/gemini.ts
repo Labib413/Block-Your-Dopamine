@@ -21,6 +21,8 @@ const FALLBACK_INSIGHTS = [
   "The best way to predict the future is to create it through action."
 ];
 
+const FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+
 function getGenAI(apiKey?: string | null) {
   const finalApiKey = apiKey || process.env.GEMINI_API_KEY;
   if (!finalApiKey) {
@@ -31,22 +33,41 @@ function getGenAI(apiKey?: string | null) {
 
 export async function callGemini(params: any, apiKey?: string | null) {
   const ai = getGenAI(apiKey);
-  try {
-    return await ai.models.generateContent(params);
-  } catch (error: any) {
-    const errorMsg = error?.message?.toLowerCase() || "";
-    const isPermissionError = errorMsg.includes("permission") || errorMsg.includes("403") || errorMsg.includes("denied");
-    
-    // If permission denied, try fallback to gemini-3.5-flash
-    if (params.model !== "gemini-3.5-flash" && isPermissionError) {
-      console.warn(`Permission denied for ${params.model}, falling back to gemini-3.5-flash`);
+  const primaryModel = params.model || "gemini-3.8-flash";
+  const candidateModels = [
+    primaryModel,
+    ...FALLBACK_MODELS.filter(m => m !== primaryModel)
+  ];
+
+  let lastError: any = null;
+  for (const model of candidateModels) {
+    try {
       return await ai.models.generateContent({
         ...params,
-        model: "gemini-3.5-flash"
+        model
       });
+    } catch (error: any) {
+      lastError = error;
+      const errorMsg = error?.message?.toLowerCase() || JSON.stringify(error).toLowerCase();
+      const isTransientOrUnavailable =
+        errorMsg.includes("503") ||
+        errorMsg.includes("unavailable") ||
+        errorMsg.includes("high demand") ||
+        errorMsg.includes("spike") ||
+        errorMsg.includes("429") ||
+        errorMsg.includes("quota") ||
+        errorMsg.includes("permission") ||
+        errorMsg.includes("403") ||
+        errorMsg.includes("not found");
+
+      if (!isTransientOrUnavailable) {
+        throw error;
+      }
+      console.warn(`[Gemini] Model ${model} unavailable (${errorMsg.slice(0, 80)}...). Trying backup model...`);
     }
-    throw error;
   }
+
+  throw lastError;
 }
 
 export async function getDailyQuote(apiKey?: string | null) {
@@ -66,7 +87,7 @@ export async function getDailyQuote(apiKey?: string | null) {
 
   try {
     const response = await callGemini({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: "Generate a short, powerful, and unique productivity or self-improvement quote for a high-performance dashboard. The tone should be professional, slightly stoic, and inspiring. Return a JSON object with 'text' (the quote) and 'author' (the person who said it).",
       config: {
         responseMimeType: "application/json",
@@ -88,11 +109,18 @@ export async function getDailyQuote(apiKey?: string | null) {
     }
     throw new Error("Invalid response format");
   } catch (error: any) {
-    // Handle quota exceeded or other API errors silently with a fallback
-    if (error?.message?.includes("429") || error?.message?.includes("quota")) {
-      console.warn("Gemini API quota exceeded, using fallback quote.");
+    const errorMsg = error?.message?.toLowerCase() || JSON.stringify(error).toLowerCase();
+    const isHighDemand =
+      errorMsg.includes("503") ||
+      errorMsg.includes("unavailable") ||
+      errorMsg.includes("high demand") ||
+      errorMsg.includes("429") ||
+      errorMsg.includes("quota");
+
+    if (isHighDemand) {
+      console.warn("[Gemini] Quote generation: models busy/high demand, seamlessly serving curated stoic quote.");
     } else {
-      console.error("Error fetching quote:", error);
+      console.warn("[Gemini] Quote notice:", error?.message || error);
     }
     const fallback = FALLBACK_QUOTES[Math.floor(Math.random() * FALLBACK_QUOTES.length)];
     localStorage.setItem('dailyQuote', JSON.stringify({ date: today, quote: fallback }));
@@ -103,15 +131,23 @@ export async function getDailyQuote(apiKey?: string | null) {
 export async function getAIInsight(metrics: any, apiKey?: string | null) {
   try {
     const response = await callGemini({
-      model: "gemini-3.5-flash",
+      model: "gemini-3.8-flash",
       contents: `Analyze these productivity metrics: ${JSON.stringify(metrics)}. Provide a one-sentence peak performance advice.`,
     }, apiKey);
     return response.text || FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
   } catch (error: any) {
-    if (error?.message?.includes("429") || error?.message?.includes("quota")) {
-      console.warn("Gemini API quota exceeded, using fallback insight.");
+    const errorMsg = error?.message?.toLowerCase() || JSON.stringify(error).toLowerCase();
+    const isHighDemand =
+      errorMsg.includes("503") ||
+      errorMsg.includes("unavailable") ||
+      errorMsg.includes("high demand") ||
+      errorMsg.includes("429") ||
+      errorMsg.includes("quota");
+
+    if (isHighDemand) {
+      console.warn("[Gemini] Insight generation: models busy/high demand, seamlessly serving curated insight.");
     } else {
-      console.error("Error fetching AI insight:", error);
+      console.warn("[Gemini] Insight notice:", error?.message || error);
     }
     return FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
   }

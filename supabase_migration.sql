@@ -32,7 +32,7 @@ create table if not exists public.chapters (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 4. Focus Logs (Old - Deprecated in favor of focus_sessions)
+-- 4. Focus Logs Table
 create table if not exists public.focus_logs (
   id uuid default uuid_generate_v4() primary key,
   user_id uuid references auth.users on delete cascade not null,
@@ -42,36 +42,22 @@ create table if not exists public.focus_logs (
   status text -- e.g., 'completed', 'interrupted'
 );
 
--- 4b. Focus Sessions Table (New Schema)
-create table if not exists public.focus_sessions (
-  id uuid default uuid_generate_v4() primary key,
-  user_id uuid references auth.users on delete cascade not null,
-  task_name text,
-  duration_minutes integer not null,
-  session_type text,
-  is_productive boolean default true,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
 -- Enable Realtime
 alter publication supabase_realtime add table public.subjects;
 alter publication supabase_realtime add table public.chapters;
 alter publication supabase_realtime add table public.focus_logs;
-alter publication supabase_realtime add table public.focus_sessions;
 
 -- Set up basic RLS (Row Level Security)
 alter table public.user_profiles enable row level security;
 alter table public.subjects enable row level security;
 alter table public.chapters enable row level security;
 alter table public.focus_logs enable row level security;
-alter table public.focus_sessions enable row level security;
 
 -- Policies
 create policy "Users can view own profile" on public.user_profiles for select using (auth.uid() = id);
 create policy "Users can view own subjects" on public.subjects for all using (auth.uid() = user_id);
 create policy "Users can view own chapters" on public.chapters for all using (auth.uid() = user_id);
 create policy "Users can view own focus logs" on public.focus_logs for all using (auth.uid() = user_id);
-create policy "Users can view own focus sessions" on public.focus_sessions for all using (auth.uid() = user_id);
 
 -- 5. Detox Sessions Table
 create table if not exists public.detox_sessions (
@@ -115,17 +101,3 @@ alter table public.personal_tasks enable row level security;
 create policy "Users can view own detox sessions" on public.detox_sessions for all using (auth.uid() = user_id);
 create policy "Users can view own health logs" on public.health_daily_logs for all using (auth.uid() = user_id);
 create policy "Users can view own personal tasks" on public.personal_tasks for all using (auth.uid() = user_id);
-
--- 8. Study Resources Table
-create table if not exists public.resources (
-  id uuid default uuid_generate_v4() primary key,
-  user_id uuid references auth.users on delete cascade not null,
-  title text not null,
-  url text not null,
-  type text not null, -- 'YOUTUBE', 'PDF', 'IMAGE', 'OTHERS'
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
-);
-
-alter publication supabase_realtime add table public.resources;
-alter table public.resources enable row level security;
-create policy "Users can view own resources" on public.resources for all using (auth.uid() = user_id);

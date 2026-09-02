@@ -1,0 +1,179 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile and metadata in BYD system",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 50 },
+        "email": { "type": "string", "maxLength": 120 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "bio": { "type": "string", "maxLength": 500 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["userId", "email"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "Detox and focus timer sessions",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "startTime": { "type": "string" },
+        "endTime": { "type": "string" },
+        "durationSeconds": { "type": "number" },
+        "mode": { "type": "string", "maxLength": 50 },
+        "status": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["sessionId", "userId", "durationSeconds"]
+    },
+    "FocusLog": {
+      "title": "FocusLog",
+      "description": "Logs of dedicated focus blocks",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "sessionId": { "type": "string", "maxLength": 128 },
+        "timestamp": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "category": { "type": "string", "maxLength": 60 }
+      },
+      "required": ["logId", "userId"]
+    },
+    "UserStreak": {
+      "title": "UserStreak",
+      "description": "Gamified detox and productivity streak tracking",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "currentStreak": { "type": "number" },
+        "longestStreak": { "type": "number" },
+        "lastActivityDate": { "type": "string", "maxLength": 30 }
+      },
+      "required": ["userId", "currentStreak"]
+    },
+    "UserPreferences": {
+      "title": "UserPreferences",
+      "description": "User specific app configuration and settings",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "soundEnabled": { "type": "boolean" },
+        "theme": { "type": "string", "maxLength": 30 },
+        "notifications": { "type": "boolean" }
+      },
+      "required": ["userId"]
+    },
+    "GuardedWebsite": {
+      "title": "GuardedWebsite",
+      "description": "Restricted and blocked websites for dopamine control",
+      "type": "object",
+      "properties": {
+        "websiteId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "url": { "type": "string", "maxLength": 255 },
+        "name": { "type": "string", "maxLength": 100 },
+        "blocked": { "type": "boolean" }
+      },
+      "required": ["websiteId", "userId", "url"]
+    },
+    "PlannerTask": {
+      "title": "PlannerTask",
+      "description": "Daily and weekly planner agenda items",
+      "type": "object",
+      "properties": {
+        "taskId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "completed": { "type": "boolean" },
+        "date": { "type": "string", "maxLength": 30 },
+        "priority": { "type": "string", "maxLength": 20 }
+      },
+      "required": ["taskId", "userId", "title"]
+    },
+    "HealthLog": {
+      "title": "HealthLog",
+      "description": "Daily biometric and lifestyle habit records",
+      "type": "object",
+      "properties": {
+        "logId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "logDate": { "type": "string", "maxLength": 30 },
+        "sleepHours": { "type": "number" },
+        "waterMl": { "type": "number" },
+        "steps": { "type": "number" }
+      },
+      "required": ["logId", "userId", "logDate"]
+    },
+    "AcademicProgress": {
+      "title": "AcademicProgress",
+      "description": "Exam preparation syllabus progress",
+      "type": "object",
+      "properties": {
+        "progressId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "subjectId": { "type": "string", "maxLength": 128 },
+        "chapterId": { "type": "string", "maxLength": 128 },
+        "completed": { "type": "boolean" },
+        "score": { "type": "number" }
+      },
+      "required": ["progressId", "userId"]
+    },
+    "TestConnection": {
+      "title": "TestConnection",
+      "description": "Ping document used to test Firestore connectivity",
+      "type": "object",
+      "properties": {
+        "status": { "type": "string", "maxLength": 50 },
+        "timestamp": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "Stores user profile and account details"
+    },
+    "/users/{userId}/sessions/{sessionId}": {
+      "schema": "Session",
+      "description": "User focus and detox session records"
+    },
+    "/users/{userId}/focus_logs/{logId}": {
+      "schema": "FocusLog",
+      "description": "Granular focus logs for reporting"
+    },
+    "/users/{userId}/streaks/{streakId}": {
+      "schema": "UserStreak",
+      "description": "Current and historic streaks for user"
+    },
+    "/users/{userId}/preferences/{prefId}": {
+      "schema": "UserPreferences",
+      "description": "App preferences and settings"
+    },
+    "/users/{userId}/guarded_websites/{websiteId}": {
+      "schema": "GuardedWebsite",
+      "description": "User websites under dopamine detox guard"
+    },
+    "/users/{userId}/planner_tasks/{taskId}": {
+      "schema": "PlannerTask",
+      "description": "User planner and todo agenda items"
+    },
+    "/users/{userId}/health_logs/{logId}": {
+      "schema": "HealthLog",
+      "description": "Daily health logs"
+    },
+    "/users/{userId}/academic_progress/{progressId}": {
+      "schema": "AcademicProgress",
+      "description": "Academic subjects and chapter preparation tracking"
+    },
+    "/test/{docId}": {
+      "schema": "TestConnection",
+      "description": "Connection test document for health verification"
+    }
+  }
+}
