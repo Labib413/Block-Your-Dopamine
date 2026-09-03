@@ -10,12 +10,14 @@ import {
   Flame,
   PanelLeftClose,
   PanelLeftOpen,
-  ChevronRight
+  ChevronRight,
+  Download
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/src/lib/utils";
 import { motion, AnimatePresence } from "motion/react";
 import { useApp } from "../context/AppContext";
+import { usePWAInstall } from "../hooks/usePWAInstall";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Dashboard", active: true },
@@ -30,6 +32,7 @@ const menuItems = [
 export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string) => void, currentView: string }) {
   const [isMinimized, setIsMinimized] = useState(false);
   const { user, profile } = useApp();
+  const { isInstallable, installApp } = usePWAInstall();
 
   return (
     <motion.aside 
@@ -130,9 +133,34 @@ export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string
       </div>
 
       <div className={cn(
-        "mt-auto border-t border-white/[0.04] bg-[#0a0a0a] transition-all duration-300", 
+        "mt-auto border-t border-white/[0.04] bg-[#0a0a0a] transition-all duration-300 space-y-2", 
         isMinimized ? "p-4" : "p-6"
       )}>
+        {isInstallable && (
+          <button
+            onClick={() => installApp()}
+            className={cn(
+              "w-full flex items-center transition-all duration-200 group relative overflow-hidden bg-neon-green/10 border border-neon-green/30 hover:bg-neon-green/20 text-neon-green",
+              isMinimized ? "justify-center p-2.5 rounded-2xl" : "justify-center gap-2.5 px-3 py-2.5 rounded-2xl mb-3"
+            )}
+            title="Install BYD App"
+          >
+            <Download className="w-4 h-4 shrink-0 text-neon-green animate-bounce" />
+            <AnimatePresence initial={false}>
+              {!isMinimized && (
+                <motion.span 
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: "auto" }}
+                  exit={{ opacity: 0, width: 0 }}
+                  className="text-xs font-bold uppercase tracking-wider whitespace-nowrap overflow-hidden"
+                >
+                  Install App
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </button>
+        )}
+
         <button
           onClick={() => onNavigate("Personal")}
           className={cn(
