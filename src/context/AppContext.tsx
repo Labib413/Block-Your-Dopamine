@@ -5,6 +5,7 @@ import {
   auth as firebaseAuth, 
   onAuthStateChanged as onFirebaseAuthStateChanged, 
   syncItemToFirestore, 
+  subscribeToFirestoreUserData,
   signOutFirebase 
 } from "../lib/firebase";
 import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
@@ -690,7 +691,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     if (syncTimeoutRef.current) clearTimeout(syncTimeoutRef.current);
     syncTimeoutRef.current = setTimeout(() => {
       processSyncQueue();
-    }, 2000); // 2-second debounce
+    }, 400); // 400ms debounce for near-instant multi-browser sync
   }, [processSyncQueue]);
 
   const updateAcademicProgress = useCallback(async (subjectId: string, progress: number) => {
@@ -1705,6 +1706,117 @@ export function AppProvider({ children }: { children: ReactNode }) {
       )
       .subscribe();
 
+    // Firestore Realtime Listener for cross-browser / multi-device synchronization
+    const unsubscribeFirestore = subscribeToFirestoreUserData(uId, {
+      onProfile: (pd) => {
+        if (!pd) return;
+        setState(prev => ({
+          ...prev,
+          profile: {
+            username: pd.username || prev.profile?.username || '',
+            fullName: pd.full_name || pd.fullName || prev.profile?.fullName || '',
+            avatarUrl: pd.avatar_url || pd.avatarUrl || prev.profile?.avatarUrl,
+            institution: pd.institution || prev.profile?.institution || '',
+            class: pd.class || prev.profile?.class || '',
+            subjectGroup: pd.subject_group || prev.profile?.subjectGroup || '',
+            year: pd.year || prev.profile?.year || '',
+            gender: pd.gender || prev.profile?.gender || 'Male'
+          },
+          gender: pd.gender || prev.gender,
+          depexMode: pd.depex_mode ?? prev.depexMode
+        }));
+      },
+      onAcademicChapters: (cloudChapters) => {
+        if (!cloudChapters || cloudChapters.length === 0) return;
+        setState(prev => {
+          const defaultChapters = generateDefaultChapters(uId);
+          const mergedChapters = defaultChapters.map(defaultCh => {
+            const cloudCh = cloudChapters.find((c: any) => c.id === defaultCh.id);
+            const localCh = prev.academicChapters.find(c => c.id === defaultCh.id);
+            let localTimestamp = localCh?._timestamp || 0;
+            const cloudTimestamp = cloudCh?._timestamp || 0;
+            if (localTimestamp > cloudTimestamp) return localCh || defaultCh;
+            if (cloudCh) {
+              return {
+                id: cloudCh.id,
+                subject_id: cloudCh.subject_id || defaultCh.subject_id,
+                chapter_name: cloudCh.chapter_name || defaultCh.chapter_name,
+                is_weak: cloudCh.is_weak ?? false,
+                is_important: cloudCh.is_important ?? false,
+                is_active: cloudCh.is_active ?? true,
+                read_textbook: cloudCh.read_textbook ?? false,
+                watch_class: cloudCh.watch_class ?? false,
+                practice_problems: cloudCh.practice_problems ?? false,
+                make_notes: cloudCh.make_notes ?? false,
+                resources: Array.isArray(cloudCh.resources) ? cloudCh.resources : (localCh?.resources ?? []),
+                _timestamp: cloudCh._timestamp || 0
+              };
+            }
+            return localCh || defaultCh;
+          });
+          const updatedSubjects = calculateAllSubjectsProgress(mergedChapters, uId);
+          return {
+            ...prev,
+            academicChapters: mergedChapters,
+            academicSubjects: updatedSubjects
+          };
+        });
+      },
+      onAcademicSettings: (aS) => {
+        if (!aS) return;
+        setState(prev => ({
+          ...prev,
+          academicSettings: {
+            examDate: aS.exam_date || aS.examDate || prev.academicSettings.examDate,
+            focusSubjectId: aS.focus_subject_id || aS.focusSubjectId || prev.academicSettings.focusSubjectId,
+            prepStartDate: aS.prep_start_date || aS.prepStartDate || prev.academicSettings.prepStartDate
+          }
+        }));
+      },
+      onPlannerTasks: (tasks) => {
+        if (!tasks) return;
+        setState(prev => ({ ...prev, tasks }));
+      },
+      onHealthLogs: (logs) => {
+        if (!logs) return;
+        setState(prev => {
+          const today = getLocalDateString(new Date());
+          const health = logs.find((h: any) => h.entry_date === today || h.logDate === today);
+          let next = { ...prev, healthHistory: logs };
+          if (health) {
+            next.hydrationIntake = Math.max(prev.hydrationIntake || 0, health.hydration || health.waterMl || 0);
+            next.steps = Math.max(prev.steps || 0, health.steps || 0);
+            next.sleepHours = Math.max(prev.sleepHours || 0, health.sleep_hours || health.sleepHours || 0);
+            next.consumedCalories = Math.max(prev.consumedCalories || 0, health.calories || 0);
+          }
+          return next;
+        });
+      },
+      onGuardedWebsites: (websites) => {
+        if (!websites) return;
+        setState(prev => ({ ...prev, guardedWebsites: websites }));
+      },
+      onAcademicRoutines: (routines) => {
+        if (!routines) return;
+        setState(prev => ({ ...prev, academicRoutines: routines }));
+      },
+      onStreaks: (sd) => {
+        if (!sd) return;
+        setState(prev => ({
+          ...prev,
+          streak: sd.streak_count ?? sd.currentStreak ?? prev.streak,
+          lastStreakDate: sd.last_streak_date ?? sd.lastActivityDate ?? prev.lastStreakDate
+        }));
+      },
+      onPreferences: (prefs) => {
+        if (!prefs) return;
+        setState(prev => ({
+          ...prev,
+          dailyGoalHours: (prefs.daily_focus_goal_minutes || 120) / 60
+        }));
+      }
+    });
+
     const syncInterval = setInterval(() => {
       masterSync();
     }, 5 * 60 * 1000); // 5 minutes
@@ -1712,6 +1824,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     return () => {
       clearInterval(syncInterval);
       clearTimeout(syncTimeout);
+      unsubscribeFirestore();
       supabase.removeChannel(realtimeChannel);
     };
   }, [state.user?.id, masterSync]);

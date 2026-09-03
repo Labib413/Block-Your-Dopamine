@@ -12,14 +12,6 @@ service cloud.firestore {
       return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
-    function incoming() {
-      return request.resource.data;
-    }
-
-    function existing() {
-      return resource.data;
-    }
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -34,95 +26,22 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // User profiles
+    // User profiles and all user-owned data collections
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
-      allow create: if isOwner(userId) && isValidId(userId) &&
-        incoming().userId == userId;
-      allow update: if isOwner(userId) &&
-        incoming().userId == existing().userId;
+      allow create, update: if isOwner(userId) && isValidId(userId);
       allow delete: if isOwner(userId);
 
-      // User Sessions
-      match /sessions/{sessionId} {
+      // User subcollections (sessions, focus_logs, streaks, preferences, guarded_websites,
+      // planner_tasks, health_logs, academic_progress, academic_chapters, academic_settings,
+      // academic_routines, mood_entries, resources, macro_data, etc.)
+      match /{subcollection}/{docId} {
         allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(sessionId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // Focus Logs
-      match /focus_logs/{logId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(logId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // User Streaks
-      match /streaks/{streakId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(streakId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // User Preferences
-      match /preferences/{prefId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(prefId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // Guarded Websites
-      match /guarded_websites/{websiteId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(websiteId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // Planner Tasks
-      match /planner_tasks/{taskId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(taskId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // Health Logs
-      match /health_logs/{logId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(logId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
-        allow delete: if isOwner(userId);
-      }
-
-      // Academic Progress
-      match /academic_progress/{progressId} {
-        allow get, list: if isOwner(userId);
-        allow create: if isOwner(userId) && isValidId(progressId) &&
-          incoming().userId == userId;
-        allow update: if isOwner(userId) &&
-          incoming().userId == existing().userId;
+        allow create, update: if isOwner(userId) && isValidId(docId);
         allow delete: if isOwner(userId);
       }
     }
   }
 }
+

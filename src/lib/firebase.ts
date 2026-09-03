@@ -16,7 +16,11 @@ import {
   deleteDoc,
   collection, 
   getDocs,
-  serverTimestamp
+  onSnapshot,
+  query,
+  where,
+  serverTimestamp,
+  Unsubscribe
 } from 'firebase/firestore';
 import localFirebaseConfig from '../../firebase-applet-config.json';
 
@@ -128,7 +132,7 @@ export async function signOutFirebase(): Promise<void> {
   }
 }
 
-export { onAuthStateChanged };
+export { onAuthStateChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc };
 export type { FirebaseUser };
 
 // Mirror sync item to Firestore
@@ -146,6 +150,12 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     else if (table === 'planner_tasks') subcollection = 'planner_tasks';
     else if (table === 'health_logs') subcollection = 'health_logs';
     else if (table === 'academic_progress') subcollection = 'academic_progress';
+    else if (table === 'academic_chapters') subcollection = 'academic_chapters';
+    else if (table === 'academic_settings') subcollection = 'academic_settings';
+    else if (table === 'academic_routines') subcollection = 'academic_routines';
+    else if (table === 'mood_entries') subcollection = 'mood_entries';
+    else if (table === 'resources') subcollection = 'resources';
+    else if (table === 'macro_data') subcollection = 'macro_data';
     else if (table === 'profiles') {
       const userRef = doc(db, 'users', userId);
       await setDoc(userRef, { ...data, userId }, { merge: true });
@@ -164,4 +174,145 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     console.warn(`[Firestore sync] ${table}:`, err);
   }
 }
+
+/**
+ * Realtime multi-browser/device Firestore subscriber
+ */
+export function subscribeToFirestoreUserData(
+  userId: string,
+  callbacks: {
+    onProfile?: (data: any) => void;
+    onAcademicChapters?: (chapters: any[]) => void;
+    onAcademicSettings?: (settings: any) => void;
+    onAcademicProgress?: (progress: any[]) => void;
+    onPlannerTasks?: (tasks: any[]) => void;
+    onHealthLogs?: (logs: any[]) => void;
+    onGuardedWebsites?: (websites: any[]) => void;
+    onAcademicRoutines?: (routines: any[]) => void;
+    onStreaks?: (streak: any) => void;
+    onPreferences?: (pref: any) => void;
+    onFocusLogs?: (logs: any[]) => void;
+  }
+): () => void {
+  if (!userId) return () => {};
+
+  const unsubs: Unsubscribe[] = [];
+
+  try {
+    // 1. Root Profile Listener
+    const userDocRef = doc(db, 'users', userId);
+    unsubs.push(
+      onSnapshot(userDocRef, (snap) => {
+        if (snap.exists() && callbacks.onProfile) {
+          callbacks.onProfile(snap.data());
+        }
+      }, (err) => console.warn('[Firestore] Realtime profile listener error:', err))
+    );
+
+    // 2. Academic Chapters Listener
+    const chaptersCol = collection(db, 'users', userId, 'academic_chapters');
+    unsubs.push(
+      onSnapshot(chaptersCol, (snap) => {
+        if (callbacks.onAcademicChapters) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onAcademicChapters(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime chapters listener error:', err))
+    );
+
+    // 3. Academic Settings Listener
+    const settingsCol = collection(db, 'users', userId, 'academic_settings');
+    unsubs.push(
+      onSnapshot(settingsCol, (snap) => {
+        if (callbacks.onAcademicSettings && !snap.empty) {
+          callbacks.onAcademicSettings(snap.docs[0].data());
+        }
+      }, (err) => console.warn('[Firestore] Realtime academic settings listener error:', err))
+    );
+
+    // 4. Academic Progress Listener
+    const progCol = collection(db, 'users', userId, 'academic_progress');
+    unsubs.push(
+      onSnapshot(progCol, (snap) => {
+        if (callbacks.onAcademicProgress) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onAcademicProgress(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime progress listener error:', err))
+    );
+
+    // 5. Planner Tasks Listener
+    const tasksCol = collection(db, 'users', userId, 'planner_tasks');
+    unsubs.push(
+      onSnapshot(tasksCol, (snap) => {
+        if (callbacks.onPlannerTasks) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onPlannerTasks(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime tasks listener error:', err))
+    );
+
+    // 6. Health Logs Listener
+    const healthCol = collection(db, 'users', userId, 'health_logs');
+    unsubs.push(
+      onSnapshot(healthCol, (snap) => {
+        if (callbacks.onHealthLogs) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onHealthLogs(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime health logs listener error:', err))
+    );
+
+    // 7. Guarded Websites Listener
+    const websitesCol = collection(db, 'users', userId, 'guarded_websites');
+    unsubs.push(
+      onSnapshot(websitesCol, (snap) => {
+        if (callbacks.onGuardedWebsites) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onGuardedWebsites(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime guarded websites listener error:', err))
+    );
+
+    // 8. Academic Routines Listener
+    const routinesCol = collection(db, 'users', userId, 'academic_routines');
+    unsubs.push(
+      onSnapshot(routinesCol, (snap) => {
+        if (callbacks.onAcademicRoutines) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onAcademicRoutines(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime routines listener error:', err))
+    );
+
+    // 9. Streaks Listener
+    const streaksCol = collection(db, 'users', userId, 'streaks');
+    unsubs.push(
+      onSnapshot(streaksCol, (snap) => {
+        if (callbacks.onStreaks && !snap.empty) {
+          callbacks.onStreaks(snap.docs[0].data());
+        }
+      }, (err) => console.warn('[Firestore] Realtime streaks listener error:', err))
+    );
+
+    // 10. Preferences Listener
+    const prefsCol = collection(db, 'users', userId, 'preferences');
+    unsubs.push(
+      onSnapshot(prefsCol, (snap) => {
+        if (callbacks.onPreferences && !snap.empty) {
+          callbacks.onPreferences(snap.docs[0].data());
+        }
+      }, (err) => console.warn('[Firestore] Realtime preferences listener error:', err))
+    );
+  } catch (e) {
+    console.warn('[Firestore] Error attaching realtime listeners:', e);
+  }
+
+  return () => {
+    unsubs.forEach(unsub => {
+      try { unsub(); } catch {}
+    });
+  };
+}
+
 
