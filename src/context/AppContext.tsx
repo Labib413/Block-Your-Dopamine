@@ -1103,6 +1103,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
           remainingQueue.push(item);
         } else {
           successCount++;
+          if (state.user?.id) {
+            syncItemToFirestore(state.user.id, item.table, dataWithUser, 'upsert');
+          }
         }
       } catch (e) {
         logger.error(`Offline sync exception for ${item.table}:`, e);
@@ -2590,6 +2593,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
           const { error } = await supabase.from('sessions').upsert(finalSessionData, { onConflict: 'session_id' });
           if (!error) localStorage.removeItem('pending_session');
           await supabase.from('user_streaks').upsert(finalStreakData, { onConflict: 'user_id' });
+          if (state.user?.id) {
+            syncItemToFirestore(state.user.id, 'sessions', finalSessionData, 'upsert');
+            syncItemToFirestore(state.user.id, 'user_streaks', finalStreakData, 'upsert');
+          }
         } catch(err) {
           logger.error("Error syncing final session", err);
         }

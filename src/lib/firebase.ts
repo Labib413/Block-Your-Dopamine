@@ -132,7 +132,7 @@ export async function signOutFirebase(): Promise<void> {
   }
 }
 
-export { onAuthStateChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc };
+export { onAuthStateChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query, where };
 export type { FirebaseUser };
 
 // Mirror sync item to Firestore
@@ -192,6 +192,7 @@ export function subscribeToFirestoreUserData(
     onStreaks?: (streak: any) => void;
     onPreferences?: (pref: any) => void;
     onFocusLogs?: (logs: any[]) => void;
+    onSessions?: (sessions: any[]) => void;
   }
 ): () => void {
   if (!userId) return () => {};
@@ -303,6 +304,28 @@ export function subscribeToFirestoreUserData(
           callbacks.onPreferences(snap.docs[0].data());
         }
       }, (err) => console.warn('[Firestore] Realtime preferences listener error:', err))
+    );
+
+    // 11. Focus Logs Listener
+    const focusLogsCol = collection(db, 'users', userId, 'focus_logs');
+    unsubs.push(
+      onSnapshot(focusLogsCol, (snap) => {
+        if (callbacks.onFocusLogs) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onFocusLogs(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime focus_logs listener error:', err))
+    );
+
+    // 12. Sessions Listener
+    const sessionsCol = collection(db, 'users', userId, 'sessions');
+    unsubs.push(
+      onSnapshot(sessionsCol, (snap) => {
+        if (callbacks.onSessions) {
+          const list = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+          callbacks.onSessions(list);
+        }
+      }, (err) => console.warn('[Firestore] Realtime sessions listener error:', err))
     );
   } catch (e) {
     console.warn('[Firestore] Error attaching realtime listeners:', e);

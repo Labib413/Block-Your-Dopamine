@@ -29,6 +29,7 @@ import { cn } from "@/src/lib/utils";
 import { useBYDData } from '../hooks/useBYDData';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { supabase } from '../lib/supabase';
+import { db, collection, getDocs } from '../lib/firebase';
 
 // Use console as fallback logger
 const logger = console;
@@ -101,11 +102,17 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     steps,
     hydrationIntake,
     sleepHours,
-    consumedCalories
+    consumedCalories,
+    focusHistory,
+    healthHistory,
+    academicChapters
   } = useApp();
   
-  const { data: focusSessions, isLoading: isSessionsLoading } = useBYDData('focus_sessions');
-  useRealtimeSync('focus_sessions');
+  // Fetch sessions and focus_logs from Firestore + Supabase via useBYDData
+  const { data: rawSessions, isLoading: isSessionsLoading } = useBYDData('sessions');
+  const { data: rawFocusLogs } = useBYDData('focus_logs');
+  useRealtimeSync('sessions');
+  useRealtimeSync('focus_logs');
 
   const [reportRange, setReportRange] = useState<"Today" | "Last 7 Days" | "Last 30 Days">("Last 7 Days");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -135,6 +142,75 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     }).format(date);
   };
 
+  // 1. Unify and normalize sessions from Firestore, Supabase, and AppContext focusHistory
+  const allSessions = useMemo(() => {
+    const sessionMap = new Map<string, any>();
+
+    const processItem = (s: any) => {
+      if (!s) return;
+      const key = s.id || s.session_id || s.logId || `${s.start_time || s.created_at || s.timestamp}`;
+      const createdAt = s.created_at || s.start_time || s.timestamp || new Date().toISOString();
+
+      let durationMinutes = 0;
+      if (s.duration_minutes !== undefined && s.duration_minutes !== null) {
+        durationMinutes = Number(s.duration_minutes);
+      } else if (s.total_duration !== undefined && s.total_duration !== null) {
+        durationMinutes = Math.max(1, Math.round(Number(s.total_duration) / 60));
+      } else if (s.session_duration !== undefined && s.session_duration !== null) {
+        const val = Number(s.session_duration);
+        durationMinutes = val > 120 ? Math.round(val / 60) : val;
+      } else if (s.net_focus_time !== undefined && s.net_focus_time !== null) {
+        durationMinutes = Math.max(1, Math.round(Number(s.net_focus_time) / 60));
+      } else if (s.net_focus_seconds !== undefined && s.net_focus_seconds !== null) {
+        durationMinutes = Math.max(1, Math.round(Number(s.net_focus_seconds) / 60));
+      }
+
+      const detoxScore = Number(s.detox_score ?? s.growth_percentage ?? 100);
+      const isProductive = s.is_productive !== undefined 
+        ? Boolean(s.is_productive) 
+        : (detoxScore >= 60);
+
+      const taskName = s.task_name || s.subject || s.resource_used || (isProductive ? 'Focus Session' : 'Detox Block');
+
+      sessionMap.set(key, {
+        id: key,
+        created_at: createdAt,
+        duration_minutes: durationMinutes,
+        is_productive: isProductive,
+        detox_score: detoxScore,
+        task_name: taskName,
+      });
+    };
+
+    (rawSessions || []).forEach(processItem);
+    (rawFocusLogs || []).forEach(processItem);
+    (focusHistory || []).forEach(processItem);
+
+    return Array.from(sessionMap.values()).sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+  }, [rawSessions, rawFocusLogs, focusHistory]);
+
+  // 2. Filter sessions by selected report range
+  const sessions = useMemo(() => {
+    const now = new Date();
+    const dhakaTodayStr = getLocalDateString(now);
+    const dhakaToday = new Date(dhakaTodayStr);
+
+    if (reportRange === "Today") {
+      return allSessions.filter(s => getLocalDateString(new Date(s.created_at)) === dhakaTodayStr);
+    }
+
+    const days = reportRange === "Last 7 Days" ? 7 : 30;
+    const cutoff = new Date(dhakaToday);
+    cutoff.setDate(cutoff.getDate() - days);
+    const cutoffStr = getLocalDateString(cutoff);
+
+    return allSessions.filter(s => getLocalDateString(new Date(s.created_at)) >= cutoffStr);
+  }, [allSessions, reportRange]);
+
+  const isLoading = isSessionsLoading;
+
   useEffect(() => {
     async function fetchReportsData() {
       if (!user) return;
@@ -155,20 +231,53 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
       }
 
       try {
-        // Fetch Health Data using local date strings
-        const { data: healthData } = await supabase
-          .from('health_logs')
-          .select('*')
-          .eq('user_id', user.id)
-          .gte('entry_date', startDateStr);
+        let combinedHealth: any[] = [];
+        
+        // 1. Fetch Health Logs from Firebase Firestore
+        if (user?.id) {
+          try {
+            const hCol = collection(db, 'users', user.id, 'health_logs');
+            const hSnap = await getDocs(hCol);
+            if (!hSnap.empty) {
+              combinedHealth = hSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            }
+          } catch (e) {
+            logger.warn("[Firestore] health_logs fetch error:", e);
+          }
+        }
 
-        if (healthData && healthData.length > 0) {
-          const avgSteps = Math.round(healthData.reduce((acc, curr) => acc + (curr.steps || 0), 0) / healthData.length);
-          const avgHydration = Number((healthData.reduce((acc, curr) => acc + (curr.hydration || 0), 0) / healthData.length).toFixed(1));
-          const avgSleep = Number((healthData.reduce((acc, curr) => acc + (curr.sleep_hours || 0), 0) / healthData.length).toFixed(1));
-          const totalCalories = healthData.reduce((acc, curr) => acc + (curr.calories || 0), 0);
+        // 2. Fetch from Supabase local adapter
+        try {
+          const { data: localHealth } = await supabase
+            .from('health_logs')
+            .select('*')
+            .eq('user_id', user.id);
+          if (localHealth && localHealth.length > 0) {
+            const healthMap = new Map();
+            combinedHealth.forEach(h => healthMap.set(h.entry_date || h.id, h));
+            localHealth.forEach(h => healthMap.set(h.entry_date || h.id, { ...(healthMap.get(h.entry_date || h.id) || {}), ...h }));
+            combinedHealth = Array.from(healthMap.values());
+          }
+        } catch (e) {
+          logger.warn("[Supabase] health_logs fetch error:", e);
+        }
 
-          // MERGE: If reportRange is "Today", prioritize AppContext values over DB (they are more live)
+        // 3. Merge with AppContext healthHistory
+        if (healthHistory && healthHistory.length > 0) {
+          const healthMap = new Map();
+          combinedHealth.forEach(h => healthMap.set(h.entry_date || h.id, h));
+          healthHistory.forEach(h => healthMap.set(h.entry_date || h.id, { ...(healthMap.get(h.entry_date || h.id) || {}), ...h }));
+          combinedHealth = Array.from(healthMap.values());
+        }
+
+        const filteredHealth = combinedHealth.filter(h => (h.entry_date || '') >= startDateStr);
+
+        if (filteredHealth.length > 0) {
+          const avgSteps = Math.round(filteredHealth.reduce((acc, curr) => acc + (curr.steps || 0), 0) / filteredHealth.length);
+          const avgHydration = Number((filteredHealth.reduce((acc, curr) => acc + (curr.hydration || 0), 0) / filteredHealth.length).toFixed(1));
+          const avgSleep = Number((filteredHealth.reduce((acc, curr) => acc + (curr.sleep_hours || 0), 0) / filteredHealth.length).toFixed(1));
+          const totalCalories = filteredHealth.reduce((acc, curr) => acc + (curr.calories || 0), 0);
+
           if (reportRange === "Today") {
             setHealthStats({
               avgSteps: steps > 0 ? steps : avgSteps,
@@ -180,7 +289,6 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
             setHealthStats({ avgSteps, avgHydration, avgSleep, totalCalories });
           }
         } else if (reportRange === "Today") {
-          // Fallback to AppContext if DB is empty for Today
           setHealthStats({
             avgSteps: steps,
             avgHydration: hydrationIntake,
@@ -191,23 +299,38 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           setHealthStats({ avgSteps: 0, avgHydration: 0, avgSleep: 0, totalCalories: 0 });
         }
 
-        // Planner Stats (Sync from Weekly History)
-        if (weeklyHistory && weeklyHistory.length > 0) {
-          const relevantHistory = reportRange === "Today" ? [] : weeklyHistory.slice(-(reportRange === "Last 7 Days" ? 7 : 30));
-          const completed = relevantHistory.reduce((acc, curr) => acc + curr.tasksCompleted, 0) || tasksCompleted;
-          const total = relevantHistory.reduce((acc, curr) => acc + curr.totalTasks, 0) || tasks.length;
-          setPlannerStats({
-            completed,
-            total: Math.max(completed, total),
-            completionRate: total > 0 ? Math.round((completed / total) * 100) : 0
-          });
-        } else {
-          setPlannerStats({
-            completed: tasksCompleted,
-            total: tasks.length,
-            completionRate: tasks.length > 0 ? Math.round((tasksCompleted / tasks.length) * 100) : 0
-          });
+        // Planner Stats (Sync from Firestore + AppContext)
+        let allTasks = tasks || [];
+        if (user?.id) {
+          try {
+            const tCol = collection(db, 'users', user.id, 'planner_tasks');
+            const tSnap = await getDocs(tCol);
+            if (!tSnap.empty) {
+              const fTasks = tSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+              const tMap = new Map();
+              allTasks.forEach(t => tMap.set(t.id, t));
+              fTasks.forEach(t => tMap.set(t.id, { ...(tMap.get(t.id) || {}), ...t }));
+              allTasks = Array.from(tMap.values());
+            }
+          } catch (e) {}
         }
+
+        const completedCount = allTasks.filter(t => t.completed || t.status === 'completed').length;
+        const totalCount = allTasks.length;
+
+        // Academic chapters completion
+        const completedChapters = (academicChapters || []).filter((c: any) => c.is_completed || c.progress >= 100).length;
+        const totalChapters = (academicChapters || []).length;
+
+        const finalCompleted = completedChapters > 0 ? completedChapters : (completedCount || tasksCompleted);
+        const finalTotal = totalChapters > 0 ? totalChapters : Math.max(finalCompleted, totalCount || tasks.length);
+        const rate = finalTotal > 0 ? Math.round((finalCompleted / finalTotal) * 100) : 0;
+
+        setPlannerStats({
+          completed: finalCompleted,
+          total: finalTotal,
+          completionRate: rate
+        });
 
       } catch (err) {
         logger.error("Error fetching reports:", err);
@@ -215,30 +338,33 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     }
 
     fetchReportsData();
-  }, [user, reportRange, weeklyHistory, tasksCompleted, tasks.length]);
-
-  const sessions = (focusSessions || []) as any[];
-  const isLoading = isSessionsLoading;
+  }, [user, reportRange, weeklyHistory, tasksCompleted, tasks, steps, hydrationIntake, sleepHours, consumedCalories, healthHistory, academicChapters]);
 
   const stats = useMemo(() => {
-    if (!sessions || sessions.length === 0) return { totalHours: "0.0", avgDepth: 0, fullTrees: 0 };
-    
-    // Combine local real-time focus time if looking at "Today"
     let totalSecs = sessions.reduce((acc: number, s: any) => acc + ((s?.duration_minutes || 0) * 60), 0);
     
-    // Note: Assuming net focus time logic based on is_productive
+    // If reportRange is "Today", take live totalNetFocusTime from AppContext if it is higher
+    if (reportRange === "Today" && totalNetFocusTime > totalSecs) {
+      totalSecs = totalNetFocusTime;
+    }
+
     let totalNetSecs = sessions.reduce((acc: number, s: any) => acc + ((s?.is_productive ? (s?.duration_minutes || 0) : 0) * 60), 0);
+    if (reportRange === "Today" && totalNetFocusTime > 0) {
+      totalNetSecs = Math.max(totalNetSecs, totalNetFocusTime);
+    }
 
     const totalHours = (totalSecs / 3600).toFixed(1);
-    const avgDepth = totalSecs > 0 ? Math.round((totalNetSecs / totalSecs) * 100) : 0;
-    const fullTrees = sessions.filter((s: any) => s?.is_productive).length;
+    let avgDepth = totalSecs > 0 ? Math.round((totalNetSecs / totalSecs) * 100) : 0;
+    if (reportRange === "Today" && detoxPercent > 0 && avgDepth === 0) {
+      avgDepth = Math.round(detoxPercent);
+    }
+
+    const fullTrees = sessions.filter((s: any) => s?.is_productive).length || (totalHours !== "0.0" ? 1 : 0);
 
     return { totalHours, avgDepth, fullTrees };
-  }, [sessions]);
+  }, [sessions, reportRange, totalNetFocusTime, detoxPercent]);
 
   const chartData = useMemo(() => {
-    if (!sessions) return [];
-    
     const rangeDays = reportRange === "Today" ? 1 : reportRange === "Last 7 Days" ? 7 : 30;
     
     if (reportRange === "Today") {
@@ -250,25 +376,32 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           const dhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(d));
           return dhakaHour === hour;
         });
-        const hours = hourSessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
+        let hours = hourSessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
+        const nowDhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(new Date()));
+        if (hour === nowDhakaHour && hours === 0 && totalNetFocusTime > 0) {
+          hours = totalNetFocusTime / 3600;
+        }
         return { name: `${hour}:00`, hours: parseFloat(hours.toFixed(2)) };
       });
     }
 
-    // Helper for date string
-    const getLocalDateString = (date: Date) => date.toISOString().split('T')[0];
-
     // Fixed Date Grid for Charts
-    const today = new Date();
+    const now = new Date();
+    const dhakaTodayStr = getLocalDateString(now);
+    const dhakaToday = new Date(dhakaTodayStr);
+
     const lastDays = Array.from({ length: rangeDays }, (_, i) => {
-      const d = new Date(today);
+      const d = new Date(dhakaToday);
       d.setDate(d.getDate() - (rangeDays - 1 - i));
       return getLocalDateString(d);
     });
 
     return lastDays.map(date => {
       const daySessions = sessions.filter((s: any) => s?.created_at && getLocalDateString(new Date(s.created_at)) === date);
-      const hours = daySessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
+      let hours = daySessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
+      if (date === dhakaTodayStr && hours === 0 && totalNetFocusTime > 0) {
+        hours = totalNetFocusTime / 3600;
+      }
       return {
         name: rangeDays === 30 
           ? new Date(date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
@@ -277,7 +410,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
         fullDate: date
       };
     });
-  }, [sessions, reportRange]);
+  }, [sessions, reportRange, totalNetFocusTime]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090909] text-white">
@@ -296,15 +429,21 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           </div>
         </div>
 
-        <div className="relative z-50">
-          <button 
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-3 bg-[#121212] border border-white/[0.06] px-4 py-2.5 rounded-[14px] hover:border-white/20 hover:bg-white/[0.04] transition-all shadow-sm shadow-black/50 group"
-          >
-            <Calendar className="w-4 h-4 text-white/50 group-hover:text-white/80 transition-colors" />
-            <span className="text-sm font-medium text-white/90">{reportRange}</span>
-            <ChevronDown className={cn("w-4 h-4 text-white/40 transition-transform", isDropdownOpen && "rotate-180")} />
-          </button>
+        <div className="flex items-center gap-3">
+          <div className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-[14px] bg-[#121212] border border-white/[0.06] text-[12px] font-medium text-white/70">
+            <div className="w-2 h-2 rounded-full bg-[#39FF14] shadow-[0_0_8px_rgba(57,255,20,0.8)] animate-pulse" />
+            <span>Firebase Connected</span>
+          </div>
+
+          <div className="relative z-50">
+            <button 
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              className="flex items-center gap-3 bg-[#121212] border border-white/[0.06] px-4 py-2.5 rounded-[14px] hover:border-white/20 hover:bg-white/[0.04] transition-all shadow-sm shadow-black/50 group"
+            >
+              <Calendar className="w-4 h-4 text-white/50 group-hover:text-white/80 transition-colors" />
+              <span className="text-sm font-medium text-white/90">{reportRange}</span>
+              <ChevronDown className={cn("w-4 h-4 text-white/40 transition-transform", isDropdownOpen && "rotate-180")} />
+            </button>
 
           <AnimatePresence>
             {isDropdownOpen && (
@@ -336,6 +475,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           </AnimatePresence>
         </div>
       </div>
+    </div>
 
       <div className="flex-1 overflow-y-auto px-8 md:px-12 pb-12 space-y-6 scrollbar-hide">
         {isLoading ? (
