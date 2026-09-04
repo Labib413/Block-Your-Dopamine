@@ -1,10 +1,14 @@
-const CACHE_NAME = 'byd-cache-v1';
+const CACHE_NAME = 'byd-cache-v2';
 
 const PRECACHE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
-  '/logo.png'
+  '/logo.png',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png',
+  '/icons/icon-maskable-512.png',
+  '/icons/apple-touch-icon.png'
 ];
 
 // Install Event: Pre-cache static app shell

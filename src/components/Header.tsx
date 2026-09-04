@@ -168,13 +168,13 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
         {/* Animated Install App Button */}
         <button
           onClick={() => triggerInstall()}
-          className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-neon-green/10 hover:bg-neon-green/20 border border-neon-green/30 hover:border-neon-green/60 text-neon-green transition-all shadow-[0_0_15px_rgba(57,255,20,0.15)] hover:shadow-[0_0_20px_rgba(57,255,20,0.3)] active:scale-95 group"
+          className="flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-2xl bg-neon-green/10 hover:bg-neon-green/20 border border-neon-green/40 hover:border-neon-green/70 text-neon-green transition-all shadow-[0_0_15px_rgba(57,255,20,0.15)] hover:shadow-[0_0_22px_rgba(57,255,20,0.35)] active:scale-95 group"
           title="Install BYD App (PWA)"
         >
           <div className="w-6 h-6 rounded-lg bg-neon-green/20 flex items-center justify-center border border-neon-green/40">
             <Download className="w-3.5 h-3.5 text-neon-green animate-bounce" />
           </div>
-          <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Install App</span>
+          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Install App</span>
         </button>
 
         <div className="relative" ref={dropdownRef}>
