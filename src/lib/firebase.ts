@@ -139,7 +139,7 @@ export type { FirebaseUser };
 export async function syncItemToFirestore(userId: string, table: string, data: any, type: string = 'upsert') {
   if (!userId) return;
   try {
-    const cleanId = String(data.id || data.session_id || data.log_id || data.task_id || data.website_id || 'default').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const cleanId = String(data.id || data.session_id || data.log_id || data.task_id || data.website_id || data.user_id || 'default').replace(/[^a-zA-Z0-9_\-]/g, '_');
     
     let subcollection = '';
     if (table === 'sessions') subcollection = 'sessions';
@@ -172,6 +172,40 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     }
   } catch (err) {
     console.warn(`[Firestore sync] ${table}:`, err);
+  }
+}
+
+/**
+ * Fetch an entire subcollection from Firestore for a given user
+ */
+export async function fetchFirestoreCollection(userId: string, subcollection: string): Promise<any[]> {
+  if (!userId) return [];
+  try {
+    const colRef = collection(db, 'users', userId, subcollection);
+    const snap = await getDocs(colRef);
+    if (snap.empty) return [];
+    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn(`[Firestore] Fetch error for ${subcollection}:`, err);
+    return [];
+  }
+}
+
+/**
+ * Fetch a single document from Firestore (user profile or subcollection doc)
+ */
+export async function fetchFirestoreDoc(userId: string, subcollection?: string, docId?: string): Promise<any | null> {
+  if (!userId) return null;
+  try {
+    const docRef = subcollection && docId 
+      ? doc(db, 'users', userId, subcollection, docId)
+      : doc(db, 'users', userId);
+    const snap = await getDoc(docRef);
+    if (!snap.exists()) return null;
+    return { id: snap.id, ...snap.data() };
+  } catch (err) {
+    console.warn(`[Firestore] Fetch doc error for ${subcollection || 'user'}:`, err);
+    return null;
   }
 }
 

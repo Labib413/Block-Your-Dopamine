@@ -12,11 +12,15 @@ export const queryClient = new QueryClient({
   },
 });
 
-const localStoragePersister = createSyncStoragePersister({
-  storage: window.localStorage,
-});
+const localStoragePersister = typeof window !== 'undefined'
+  ? createSyncStoragePersister({
+      storage: window.localStorage,
+    })
+  : undefined;
 
-persistQueryClient({
-  queryClient,
-  persister: localStoragePersister,
-});
+if (typeof window !== 'undefined' && localStoragePersister) {
+  persistQueryClient({
+    queryClient,
+    persister: localStoragePersister,
+  });
+}

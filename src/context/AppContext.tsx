@@ -6,10 +6,13 @@ import {
   onAuthStateChanged as onFirebaseAuthStateChanged, 
   syncItemToFirestore, 
   subscribeToFirestoreUserData,
-  signOutFirebase 
+  signOutFirebase,
+  fetchFirestoreCollection,
+  fetchFirestoreDoc 
 } from "../lib/firebase";
 import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
 import { logger } from "../lib/logger";
+import { queryClient } from "../lib/queryClient";
 export interface User {
   id: string;
   email: string;
@@ -1272,91 +1275,93 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, [state.user, syncOfflineQueue]);
 
-  // Auth & Sync
-  useEffect(() => {
-    // Supabase disconnected / offline mode connection check
-    const testConnection = async () => {
-      setIsSupabaseConnected(null);
-      setConnectionError(null);
-    };
-    testConnection();
-
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
-      if (session?.user) {
-        const user = session.user as unknown as User;
-        const profile = { 
-          fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          avatarUrl: user.user_metadata?.avatar_url 
-        };
-        setState(prev => ({ ...prev, user, profile }));
-        fetchUserData(user.id);
-      } else {
-        setIsDataLoading(false);
-      }
-      setIsAuthReady(true);
+  const clearState = useCallback(() => {
+    stateRef.current.user = null;
+    stateRef.current.profile = null;
+    queryClient.clear();
+    const today = getLocalDateString(new Date());
+    const now = new Date();
+    setState({
+      xp: 0,
+      level: 1,
+      streak: 0,
+      lastStreakDate: null,
+      consecutiveMissedDays: 0,
+      streakSeasonStartDate: today,
+      focusTime: 0,
+      isFocusing: false,
+      tasksCompleted: 0,
+      detoxPercent: 100,
+      physicalFitness: 0,
+      weeklyRank: "---",
+      globalRank: "---",
+      topSkill: "TBD",
+      resources: [],
+      totalNetFocusTime: 0,
+      dailyTotalFocusTime: 0,
+      dailyGoalHours: 2.0,
+      dailySessions: 0,
+      lastResetDate: today,
+      currentSessionDuration: 0,
+      currentSessionId: null,
+      currentSubjectId: null,
+      currentSessionResources: [],
+      isManualExit: false,
+      sessionTimeLeft: 0,
+      sessionDistractionTime: 0,
+      isSessionDistracted: false,
+      hydrationIntake: 0,
+      sleepHours: 0,
+      sleepSessions: 0,
+      steps: 0,
+      consumedCalories: 0,
+      screenTimeHours: 0,
+      screenTimeMinutes: 0,
+      healthTargets: {
+        hydration: '8',
+        sleep: '8',
+        footsteps: '10000',
+        calories: '2000'
+      },
+      tasks: [],
+      notificationsEnabled: true,
+      notifications: [],
+      user: null,
+      profile: null,
+      daysActive: 1,
+      equippedBadges: [null, null, null],
+      unlockedBadgeIds: [],
+      badgeHealth: {},
+      lastActivityTimestamp: now.toISOString(),
+      weeklyHistory: [],
+      sessionScores: [],
+      focusHistory: [],
+      healthHistory: [],
+      isSyncing: false,
+      hasFetchedFocusData: false,
+      latestMood: null,
+      macros: { protein: 0, carbs: 0, fats: 0 },
+      geminiApiKey: null,
+      syncQueue: [],
+      offlineSyncQueue: [],
+      currentSessionStartTime: null,
+      academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
+      academicChapters: generateDefaultChapters(null),
+      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
+      academicRoutines: [],
+      guardedWebsites: [],
+      depexMode: false
     });
-
-    // Listen for Firebase auth changes
-    const unregisterFirebase = onFirebaseAuthStateChanged(firebaseAuth, (fbUser) => {
-      if (fbUser) {
-        const user: User = {
-          id: fbUser.uid,
-          email: fbUser.email || '',
-          uniqueId: fbUser.uid,
-          daysActive: 1,
-          lastActiveDate: new Date().toISOString(),
-          user_metadata: {
-            full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-            avatar_url: fbUser.photoURL || undefined,
-          },
-        };
-        const profile = { 
-          fullName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-          avatarUrl: fbUser.photoURL || undefined 
-        };
-        setState(prev => ({ ...prev, user, profile }));
-        fetchUserData(user.id);
-        setIsAuthReady(true);
-      } else {
-        supabase.auth.getSession().then(({ data: { session } }: any) => {
-          if (!session?.user) {
-            setState(prev => ({ ...prev, user: null, profile: null }));
-            setIsDataLoading(false);
-          }
-          setIsAuthReady(true);
-        });
-      }
-    });
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        const user = session.user as unknown as User;
-        const profile = { 
-          fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          avatarUrl: user.user_metadata?.avatar_url 
-        };
-        setState(prev => ({ ...prev, user, profile }));
-        fetchUserData(user.id);
-      } else if (!firebaseAuth.currentUser) {
-        setIsDataLoading(false);
-        clearState();
-      }
-      setIsAuthReady(true);
-    });
-
-    return () => {
-      subscription.unsubscribe();
-      unregisterFirebase();
-    };
   }, []);
 
-  const masterSync = useCallback(async (view?: string) => {
-    const currentUser = stateRef.current.user;
+  const masterSync = useCallback(async (view?: string, explicitUser?: User | null) => {
+    const currentUser = explicitUser || stateRef.current.user;
     if (!currentUser) {
       setIsDataLoading(false);
       return;
+    }
+    if (explicitUser) {
+      stateRef.current.user = explicitUser;
     }
     if (isSyncingRef.current) return;
     const userId = currentUser.id;
@@ -1378,23 +1383,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setState(prev => ({ ...prev, isSyncing: true }));
 
       const fetchFocusData = async () => {
-        const now = new Date();
-        const dhakaOffset = 6 * 60 * 60 * 1000;
-        const dhakaTime = new Date(now.getTime() + dhakaOffset);
-        const startOfDhakaDay = new Date(dhakaTime);
-        startOfDhakaDay.setUTCHours(0, 0, 0, 0);
-        const startOfDhakaDayUTC = new Date(startOfDhakaDay.getTime() - dhakaOffset);
-        const endOfDhakaDay = new Date(dhakaTime);
-        endOfDhakaDay.setUTCHours(23, 59, 59, 999);
-        const endOfDhakaDayUTC = new Date(endOfDhakaDay.getTime() - dhakaOffset);
-        
-        // Extended range for weekly trends: last 7 days
-        const sevenDaysAgo = new Date(startOfDhakaDayUTC.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-      const [logsRes, sessionsRes, guardedRes] = await Promise.all([
-          supabase.from('focus_logs').select('*').eq('user_id', userId).gte('start_time', sevenDaysAgo.toISOString()).lte('start_time', endOfDhakaDayUTC.toISOString()),
-          supabase.from('sessions').select('*').eq('user_id', userId).gte('start_time', sevenDaysAgo.toISOString()).lte('start_time', endOfDhakaDayUTC.toISOString()),
-          supabase.from('guarded_websites').select('*').eq('user_id', userId)
+        const [logsRes, sessionsRes, guardedRes, fsSessions, fsFocusLogs] = await Promise.all([
+          supabase.from('focus_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }).limit(300),
+          supabase.from('sessions').select('*').eq('user_id', userId).order('start_time', { ascending: false }).limit(300),
+          supabase.from('guarded_websites').select('*').eq('user_id', userId),
+          fetchFirestoreCollection(userId, 'sessions').catch(() => []),
+          fetchFirestoreCollection(userId, 'focus_logs').catch(() => [])
         ]);
         
         if (guardedRes.data) {
@@ -1402,9 +1396,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
 
         const combined = new Map<string, any>();
+        // 1. Local logs
         (logsRes.data || []).forEach(log => { if (log.session_id) combined.set(log.session_id, log); });
+        // 2. Cloud Firestore focus logs
+        (fsFocusLogs || []).forEach(log => {
+          const key = log.session_id || log.id || log.log_id;
+          if (key) {
+            combined.set(key, { ...(combined.get(key) || {}), ...log });
+            try { supabase.from('focus_logs').upsert({ ...log, user_id: userId }); } catch {}
+          }
+        });
+        // 3. Local sessions
         (sessionsRes.data || []).forEach(s => {
-          const mapped = { ...s, session_duration: s.total_duration, growth_percentage: s.detox_score };
+          const mapped = { ...s, session_duration: s.total_duration || s.session_duration, growth_percentage: s.detox_score ?? s.growth_percentage };
           if (s.session_id) {
             const existing = combined.get(s.session_id);
             if (!existing || mapped.session_duration >= existing.session_duration) combined.set(s.session_id, mapped);
@@ -1412,36 +1416,133 @@ export function AppProvider({ children }: { children: ReactNode }) {
             combined.set(`legacy_${s.id}`, mapped);
           }
         });
+        // 4. Cloud Firestore sessions
+        (fsSessions || []).forEach(s => {
+          const mapped = { ...s, session_duration: s.total_duration || s.session_duration, growth_percentage: s.detox_score ?? s.growth_percentage };
+          const key = s.session_id || s.id || `legacy_${s.id}`;
+          const existing = combined.get(key);
+          if (!existing || mapped.session_duration >= (existing.session_duration || 0)) {
+            combined.set(key, { ...(existing || {}), ...mapped });
+          }
+          try { supabase.from('sessions').upsert({ ...s, user_id: userId }); } catch {}
+        });
+
         return Array.from(combined.values());
       };
 
+      const fetchStreak = async () => {
+        const local = await supabase.from('user_streaks').select('*').eq('user_id', userId).single();
+        if (local.data) return local;
+        const fsStreak = await fetchFirestoreDoc(userId, 'streaks', 'default') 
+          || await fetchFirestoreDoc(userId, 'streaks', userId);
+        if (fsStreak) return { data: fsStreak, error: null };
+        return local;
+      };
+
+      const fetchProfile = async () => {
+        const local = await supabase.from('profiles').select('*').eq('id', userId).single();
+        if (local.data) return local;
+        const fsProfile = await fetchFirestoreDoc(userId);
+        if (fsProfile) return { data: fsProfile, error: null };
+        return local;
+      };
+
+      const fetchTasks = async () => {
+        const [localRes, fsTasks] = await Promise.all([
+          supabase.from('planner_tasks').select('*').eq('user_id', userId),
+          fetchFirestoreCollection(userId, 'planner_tasks').catch(() => [])
+        ]);
+        const taskMap = new Map<string, any>();
+        (localRes.data || []).forEach(t => taskMap.set(t.id || t.task_id, t));
+        (fsTasks || []).forEach(t => {
+          const id = t.id || t.task_id;
+          if (id) {
+            taskMap.set(id, { ...(taskMap.get(id) || {}), ...t });
+            try { supabase.from('planner_tasks').upsert({ ...t, user_id: userId }); } catch {}
+          }
+        });
+        return { data: Array.from(taskMap.values()) };
+      };
+
+      const fetchHealth = async () => {
+        const [localRes, fsHealth] = await Promise.all([
+          supabase.from('health_logs').select('*').eq('user_id', userId),
+          fetchFirestoreCollection(userId, 'health_logs').catch(() => [])
+        ]);
+        const healthMap = new Map<string, any>();
+        (localRes.data || []).forEach(h => healthMap.set(h.id || h.entry_date || JSON.stringify(h), h));
+        (fsHealth || []).forEach(h => {
+          const key = h.id || h.entry_date || JSON.stringify(h);
+          healthMap.set(key, { ...(healthMap.get(key) || {}), ...h });
+          try { supabase.from('health_logs').upsert({ ...h, user_id: userId }); } catch {}
+        });
+        return { data: Array.from(healthMap.values()) };
+      };
+
       const jobs: Record<string, any> = {
-        profile: supabase.from('profiles').select('*').eq('id', userId).single(),
-        streak: supabase.from('user_streaks').select('*').eq('user_id', userId).single(),
+        profile: fetchProfile(),
+        streak: fetchStreak(),
       };
 
       if (!view || view === 'Dashboard' || view === 'Reports' || view === 'Detox') {
         jobs.focus = fetchFocusData();
-        jobs.prefs = supabase.from('user_preferences').select('*').eq('user_id', userId).single();
+        jobs.prefs = (async () => {
+          const res = await supabase.from('user_preferences').select('*').eq('user_id', userId).single();
+          if (res.data) return res;
+          const fsData = await fetchFirestoreDoc(userId, 'preferences', 'default').catch(() => null)
+            || await fetchFirestoreDoc(userId, 'preferences', userId).catch(() => null);
+          return { data: fsData };
+        })();
       }
 
-      if (!view || view === 'Planner') jobs.tasks = supabase.from('planner_tasks').select('*').eq('user_id', userId);
+      if (!view || view === 'Planner') jobs.tasks = fetchTasks();
 
       if (!view || view === 'Health') {
-        jobs.healthLogs = supabase.from('health_logs').select('*').eq('user_id', userId);
+        jobs.healthLogs = fetchHealth();
         jobs.macroData = supabase.from('macro_data').select('*').eq('user_id', userId).eq('entry_date', today).single();
       }
 
       if (!view || view === 'Dashboard' || view === 'Personal') {
-        jobs.mood = supabase.from('mood_entries').select('*').eq('user_id', userId).order('timestamp', { ascending: false }).limit(1);
-        jobs.resources = supabase.from('resources').select('*').eq('user_id', userId);
+        jobs.mood = (async () => {
+          const res = await supabase.from('mood_entries').select('*').eq('user_id', userId).order('timestamp', { ascending: false }).limit(1);
+          if (res.data && res.data.length > 0) return res;
+          const fsData = await fetchFirestoreCollection(userId, 'mood_entries').catch(() => []);
+          return { data: fsData.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, 1) };
+        })();
+        jobs.resources = (async () => {
+          const res = await supabase.from('resources').select('*').eq('user_id', userId);
+          if (res.data && res.data.length > 0) return res;
+          const fsData = await fetchFirestoreCollection(userId, 'resources').catch(() => []);
+          return { data: fsData };
+        })();
       }
 
       if (!view || view === 'Academic') {
-        jobs.academicProgress = supabase.from('academic_progress').select('*').eq('user_id', userId);
-        jobs.academicSettings = supabase.from('academic_settings').select('*').eq('user_id', userId).single();
-        jobs.academicChapters = supabase.from('academic_chapters').select('*').eq('user_id', userId);
-        jobs.academicRoutines = supabase.from('academic_routines').select('*').eq('user_id', userId);
+        jobs.academicProgress = (async () => {
+          const res = await supabase.from('academic_progress').select('*').eq('user_id', userId);
+          if (res.data && res.data.length > 0) return res;
+          const fsData = await fetchFirestoreCollection(userId, 'academic_progress').catch(() => []);
+          return { data: fsData };
+        })();
+        jobs.academicSettings = (async () => {
+          const res = await supabase.from('academic_settings').select('*').eq('user_id', userId).single();
+          if (res.data) return res;
+          const fsData = await fetchFirestoreDoc(userId, 'academic_settings', 'default').catch(() => null)
+            || await fetchFirestoreDoc(userId, 'academic_settings', userId).catch(() => null);
+          return { data: fsData };
+        })();
+        jobs.academicChapters = (async () => {
+          const res = await supabase.from('academic_chapters').select('*').eq('user_id', userId);
+          if (res.data && res.data.length > 0) return res;
+          const fsData = await fetchFirestoreCollection(userId, 'academic_chapters').catch(() => []);
+          return { data: fsData };
+        })();
+        jobs.academicRoutines = (async () => {
+          const res = await supabase.from('academic_routines').select('*').eq('user_id', userId);
+          if (res.data && res.data.length > 0) return res;
+          const fsData = await fetchFirestoreCollection(userId, 'academic_routines').catch(() => []);
+          return { data: fsData };
+        })();
       }
 
       const keys = Object.keys(jobs);
@@ -1475,18 +1576,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
           let fcmd = sd.consecutive_missed_days || 0;
           let fsssd = sd.season_start_date || today;
 
-          const sDiff = getDayDifference(fsssd, today);
-          // Auto-Reset logic for seasons: Disabled as part of streak preservation
           if (flsd) {
              const daysSince = getDayDifference(flsd, today);
-             // Streak loss logic was requested to be disabled, so we only update fcmd
              fcmd = (daysSince > 0 && flsd !== today) ? daysSince : 0;
           }
 
-          // Optimized Max-Wins Logic:
-          // 1. If remote date is newer than local, take remote.
-          // 2. If dates are same but remote count is higher, take remote.
-          // 3. Otherwise, trust local state as it might be a pending sync.
           const isRemoteNewer = !prev.lastStreakDate || (flsd && flsd > prev.lastStreakDate);
           const isRemoteHigher = fs > prev.streak;
 
@@ -1502,8 +1596,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.healthHistory = results.healthLogs.data;
           const health = results.healthLogs.data.find((h: any) => h.entry_date === today);
           if (health) {
-            // "Stale-While-Revalidate": Merge DB data with local state using Max Wins for counters 
-            // to prevent flickering to zero during background syncs
             next.hydrationIntake = Math.max(prev.hydrationIntake || 0, health.hydration || 0);
             next.steps = Math.max(prev.steps || 0, health.steps || 0);
             next.sleepHours = Math.max(prev.sleepHours || 0, health.sleep_hours || 0);
@@ -1547,14 +1639,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
             scs.push(sc);
           });
           
-          // "Stale-While-Revalidate": Only update focus time if DB has more data (Max Wins)
-          // or if we have no local focus data yet for today. This prevents 
-          // the UI from flashing back to 0 during background revalidation.
           next.totalNetFocusTime = Math.max(prev.totalNetFocusTime || 0, tNet);
           next.dailyTotalFocusTime = Math.max(prev.dailyTotalFocusTime || 0, tAtt);
           next.dailySessions = Math.max(prev.dailySessions || 0, results.focus.length);
           
-          // Re-calculate derived detox percent based on the merged times
           next.detoxPercent = next.dailyTotalFocusTime > 0 
             ? Math.round((next.totalNetFocusTime / next.dailyTotalFocusTime) * 10000) / 100 
             : 100;
@@ -1609,12 +1697,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         next.lastResetDate = today;
         next.lastSyncTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
 
-        setTimeout(() => {
-          // Used to contain local storage saves, now managed by supabase sync
-        }, 0);
-
         return next;
       });
+
+      // Invalidate queries so TanStack Query hooks re-fetch fresh data
+      queryClient.invalidateQueries();
     } catch (error) {
       logger.error("Master Sync failed:", error);
       setState(prev => ({ 
@@ -1630,6 +1717,96 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const syncData = masterSync;
   const fetchUserData = masterSync;
+
+  // Auth & Sync
+  useEffect(() => {
+    // Supabase disconnected / offline mode connection check
+    const testConnection = async () => {
+      setIsSupabaseConnected(null);
+      setConnectionError(null);
+    };
+    testConnection();
+
+    // Initial session check
+    supabase.auth.getSession().then(({ data: { session } }: any) => {
+      if (session?.user) {
+        const user = session.user as unknown as User;
+        const profile = { 
+          fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+          avatarUrl: user.user_metadata?.avatar_url 
+        };
+        stateRef.current.user = user;
+        stateRef.current.profile = profile;
+        setState(prev => ({ ...prev, user, profile }));
+        masterSync(undefined, user);
+      } else {
+        setIsDataLoading(false);
+      }
+      setIsAuthReady(true);
+    });
+
+    // Listen for Firebase auth changes
+    const unregisterFirebase = onFirebaseAuthStateChanged(firebaseAuth, (fbUser) => {
+      if (fbUser) {
+        const user: User = {
+          id: fbUser.uid,
+          email: fbUser.email || '',
+          uniqueId: fbUser.uid,
+          daysActive: 1,
+          lastActiveDate: new Date().toISOString(),
+          user_metadata: {
+            full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+            avatar_url: fbUser.photoURL || undefined,
+          },
+        };
+        const profile = { 
+          fullName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+          avatarUrl: fbUser.photoURL || undefined 
+        };
+        stateRef.current.user = user;
+        stateRef.current.profile = profile;
+        setState(prev => ({ ...prev, user, profile }));
+        masterSync(undefined, user);
+        setIsAuthReady(true);
+      } else {
+        supabase.auth.getSession().then(({ data: { session } }: any) => {
+          if (!session?.user) {
+            stateRef.current.user = null;
+            stateRef.current.profile = null;
+            setState(prev => ({ ...prev, user: null, profile: null }));
+            setIsDataLoading(false);
+          }
+          setIsAuthReady(true);
+        });
+      }
+    });
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const user = session.user as unknown as User;
+        const profile = { 
+          fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+          avatarUrl: user.user_metadata?.avatar_url 
+        };
+        stateRef.current.user = user;
+        stateRef.current.profile = profile;
+        setState(prev => ({ ...prev, user, profile }));
+        masterSync(undefined, user);
+      } else if (!firebaseAuth.currentUser) {
+        setIsDataLoading(false);
+        stateRef.current.user = null;
+        stateRef.current.profile = null;
+        clearState();
+      }
+      setIsAuthReady(true);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+      unregisterFirebase();
+    };
+  }, [masterSync, clearState]);
 
   // BYD Offline Protocol: Automatic Background Sync Listener
   useEffect(() => {
@@ -1817,6 +1994,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
           ...prev,
           dailyGoalHours: (prefs.daily_focus_goal_minutes || 120) / 60
         }));
+      },
+      onFocusLogs: (logs) => {
+        if (!logs || logs.length === 0) return;
+        setState(prev => {
+          const map = new Map<string, any>();
+          (prev.focusHistory || []).forEach(item => {
+            const key = item.id || item.session_id || JSON.stringify(item);
+            map.set(key, item);
+          });
+          logs.forEach(item => {
+            const key = item.id || item.session_id || JSON.stringify(item);
+            map.set(key, { ...(map.get(key) || {}), ...item });
+          });
+          return { ...prev, focusHistory: Array.from(map.values()), hasFetchedFocusData: true };
+        });
+      },
+      onSessions: (sessions) => {
+        if (!sessions || sessions.length === 0) return;
+        setState(prev => {
+          const map = new Map<string, any>();
+          (prev.focusHistory || []).forEach(item => {
+            const key = item.id || item.session_id || JSON.stringify(item);
+            map.set(key, item);
+          });
+          sessions.forEach(s => {
+            const mapped = { ...s, session_duration: s.total_duration || s.session_duration, growth_percentage: s.detox_score ?? s.growth_percentage };
+            const key = s.session_id || s.id || `legacy_${s.id}`;
+            map.set(key, { ...(map.get(key) || {}), ...mapped });
+          });
+          return { ...prev, focusHistory: Array.from(map.values()), hasFetchedFocusData: true };
+        });
       }
     });
 
@@ -3125,82 +3333,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     // This is now handled by Supabase Auth in AuthModal
   };
 
-  const clearState = useCallback(() => {
-    const today = getLocalDateString(new Date());
-    const now = new Date();
-    setState({
-      xp: 0,
-      level: 1,
-      streak: 0,
-      lastStreakDate: null,
-      consecutiveMissedDays: 0,
-      streakSeasonStartDate: today,
-      focusTime: 0,
-      isFocusing: false,
-      tasksCompleted: 0,
-      detoxPercent: 100,
-      physicalFitness: 0,
-      weeklyRank: "---",
-      globalRank: "---",
-      topSkill: "TBD",
-      resources: [],
-      totalNetFocusTime: 0,
-      dailyTotalFocusTime: 0,
-      dailyGoalHours: 2.0,
-      dailySessions: 0,
-      lastResetDate: today,
-      currentSessionDuration: 0,
-      currentSessionId: null,
-      currentSubjectId: null,
-      currentSessionResources: [],
-      isManualExit: false,
-      sessionTimeLeft: 0,
-      sessionDistractionTime: 0,
-      isSessionDistracted: false,
-      hydrationIntake: 0,
-      sleepHours: 0,
-      sleepSessions: 0,
-      steps: 0,
-      consumedCalories: 0,
-      screenTimeHours: 0,
-      screenTimeMinutes: 0,
-      healthTargets: {
-        hydration: '8',
-        sleep: '8',
-        footsteps: '10000',
-        calories: '2000'
-      },
-      tasks: [],
-      notificationsEnabled: true,
-      notifications: [],
-      user: null,
-      profile: null,
-      daysActive: 1,
-      equippedBadges: [null, null, null],
-      unlockedBadgeIds: [],
-      badgeHealth: {},
-      lastActivityTimestamp: now.toISOString(),
-      weeklyHistory: [],
-      sessionScores: [],
-      focusHistory: [],
-      healthHistory: [],
-      isSyncing: false,
-      hasFetchedFocusData: false,
-      latestMood: null,
-      macros: { protein: 0, carbs: 0, fats: 0 },
-      geminiApiKey: null,
-      syncQueue: [],
-      offlineSyncQueue: [],
-      currentSessionStartTime: null,
-      academicSettings: { examDate: null, focusSubjectId: null, prepStartDate: null },
-      academicChapters: generateDefaultChapters(null),
-      academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
-      academicRoutines: [],
-      guardedWebsites: [],
-      depexMode: false
-    });
-  }, []);
-
   const logout = async () => {
     // 1. Set loading state
     setIsLoggingOut(true);
@@ -3209,8 +3341,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     await signOutFirebase().catch(() => {});
     await supabase.auth.signOut().catch(() => {});
     
-    // 3. Clear caches
-    localStorage.clear();
+    // 3. Clear session tokens, preserving offline and table cache
+    localStorage.removeItem('byd_auth_session');
+    localStorage.removeItem('current_session');
+    localStorage.removeItem('pending_session');
+    localStorage.removeItem('distraction_start_time');
+    localStorage.removeItem('startTime');
+    localStorage.removeItem('isManualExit');
+    localStorage.removeItem('isDistracted');
     sessionStorage.clear();
     
     // Unsubscribe from any realtime connections
