@@ -1,9 +1,11 @@
 import { useState, useRef, useEffect } from "react";
-import { Bell, ShieldCheck, Flame, Trophy, X, Trash2 } from "lucide-react";
+import { Bell, ShieldCheck, Flame, Trophy, X, Trash2, Download } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { useIsFetching } from "@tanstack/react-query";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
+import { usePWAInstall } from "../hooks/usePWAInstall";
+import { PWAInstallModal } from "./PWAInstallModal";
 
 export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: string) => void, onShowBadges?: () => void }) {
   const { 
@@ -26,6 +28,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
   const honorific = user ? (gender === "Female" ? "Ma'am." : "Sir.") : "Guest.";
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { hasNativePrompt, triggerInstall, showModal, setShowModal } = usePWAInstall();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -161,28 +164,42 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
         </div>
       </div>
 
-      <div className="relative" ref={dropdownRef}>
-        <button 
-          onClick={() => setShowNotifications(!showNotifications)}
-          className={cn(
-            "relative p-2 rounded-xl border transition-all duration-300",
-            notificationsEnabled 
-              ? "bg-neon-green/10 border-neon-green/30 hover:bg-neon-green/20" 
-              : "bg-red-500/10 border-red-500/30 hover:bg-red-500/20",
-            showNotifications && "ring-2 ring-neon-green/50 border-neon-green/50"
-          )}
+      <div className="flex items-center gap-3">
+        {/* Animated Install App Button */}
+        <button
+          onClick={() => triggerInstall()}
+          className="flex items-center gap-2.5 px-3.5 py-2 rounded-2xl bg-neon-green/10 hover:bg-neon-green/20 border border-neon-green/30 hover:border-neon-green/60 text-neon-green transition-all shadow-[0_0_15px_rgba(57,255,20,0.15)] hover:shadow-[0_0_20px_rgba(57,255,20,0.3)] active:scale-95 group"
+          title="Install BYD App (PWA)"
         >
-          <Bell className={cn(
-            "w-5 h-5",
-            notificationsEnabled ? "text-neon-green" : "text-red-500"
-          )} />
-          {notifications?.length > 0 && notificationsEnabled && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-neon-green rounded-full border-2 border-[#050505] shadow-[0_0_8px_rgba(0,255,102,0.8)]" />
-          )}
-          {notifications?.length > 0 && !notificationsEnabled && (
-            <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#050505] shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
-          )}
+          <div className="w-6 h-6 rounded-lg bg-neon-green/20 flex items-center justify-center border border-neon-green/40">
+            <Download className="w-3.5 h-3.5 text-neon-green animate-bounce" />
+          </div>
+          <span className="text-xs font-bold uppercase tracking-wider hidden sm:inline">Install App</span>
         </button>
+
+        <div className="relative" ref={dropdownRef}>
+          <button 
+            onClick={() => setShowNotifications(!showNotifications)}
+            className={cn(
+              "relative p-2 rounded-xl border transition-all duration-300",
+              notificationsEnabled 
+                ? "bg-neon-green/10 border-neon-green/30 hover:bg-neon-green/20" 
+                : "bg-red-500/10 border-red-500/30 hover:bg-red-500/20",
+              showNotifications && "ring-2 ring-neon-green/50 border-neon-green/50"
+            )}
+          >
+            <Bell className={cn(
+              "w-5 h-5",
+              notificationsEnabled ? "text-neon-green" : "text-red-500"
+            )} />
+            {notifications?.length > 0 && notificationsEnabled && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-neon-green rounded-full border-2 border-[#050505] shadow-[0_0_8px_rgba(0,255,102,0.8)]" />
+            )}
+            {notifications?.length > 0 && !notificationsEnabled && (
+              <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-[#050505] shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+            )}
+          </button>
+
 
         {showNotifications && (
           <div className="absolute top-full right-0 mt-3 w-80 bg-[#0A0A0A]/95 border border-white/10 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] z-[100] overflow-hidden backdrop-blur-2xl animate-in fade-in zoom-in-95 duration-200 origin-top-right">
@@ -256,6 +273,15 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
           </div>
         )}
       </div>
-    </header>
-  );
+    </div>
+
+    {/* PWA Install Modal Triggered From Header */}
+    <PWAInstallModal
+      isOpen={showModal}
+      onClose={() => setShowModal(false)}
+      hasNativePrompt={hasNativePrompt}
+      onNativeInstall={() => triggerInstall()}
+    />
+  </header>
+);
 }

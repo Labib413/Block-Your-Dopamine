@@ -7,13 +7,15 @@ interface BeforeInstallPromptEvent extends Event {
 
 export function usePWAInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [showModal, setShowModal] = useState(false);
 
   useEffect(() => {
     // Check if app is already running in standalone mode (installed)
-    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || 
-      (window.navigator as any).standalone === true;
+    const isStandalone = 
+      window.matchMedia('(display-mode: standalone)').matches || 
+      (window.navigator as any).standalone === true ||
+      document.referrer.includes('android-app://');
     
     if (isStandalone) {
       setIsInstalled(true);
@@ -22,13 +24,12 @@ export function usePWAInstall() {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
     };
 
     const handleAppInstalled = () => {
       setIsInstalled(true);
-      setIsInstallable(false);
       setDeferredPrompt(null);
+      setShowModal(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -40,22 +41,32 @@ export function usePWAInstall() {
     };
   }, []);
 
-  const installApp = async () => {
-    if (!deferredPrompt) return false;
-    try {
-      await deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === 'accepted') {
-        setIsInstallable(false);
-        setDeferredPrompt(null);
-        return true;
+  const triggerInstall = async () => {
+    if (deferredPrompt) {
+      try {
+        await deferredPrompt.prompt();
+        const choice = await deferredPrompt.userChoice;
+        if (choice.outcome === 'accepted') {
+          setDeferredPrompt(null);
+          setShowModal(false);
+          return true;
+        }
+      } catch (err) {
+        console.error('[PWA] Native prompt error:', err);
       }
-      return false;
-    } catch (err) {
-      console.error('[PWA] Error during installation:', err);
-      return false;
     }
+    // If native prompt is not available (e.g. inside iframe or iOS or Safari), open the guide modal
+    setShowModal(true);
+    return false;
   };
 
-  return { isInstallable, isInstalled, installApp };
+  return { 
+    isInstallable: true, // Always allow user to view install instructions / install
+    isInstalled, 
+    hasNativePrompt: !!deferredPrompt,
+    triggerInstall,
+    showModal,
+    setShowModal
+  };
 }
+
