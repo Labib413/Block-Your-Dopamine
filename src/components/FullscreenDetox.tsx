@@ -1498,10 +1498,12 @@ export const FullscreenDetox = React.memo(() => {
           <div className="relative">
             <button 
               onClick={() => setIsAmbientSoundOpen(prev => !prev)}
-              className={`h-10 px-3.5 rounded-xl flex items-center gap-2 border transition-all ${
-                isAmbientPlaying
-                  ? 'bg-neon-green/10 border-neon-green/40 text-neon-green shadow-[0_0_15px_rgba(57,255,20,0.25)]'
-                  : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+              className={`h-10 px-3.5 rounded-xl flex items-center gap-2 border-2 transition-all cursor-pointer select-none active:scale-95 ${
+                isAmbientSoundOpen
+                  ? 'bg-[#39FF14]/20 border-[#39FF14] text-[#39FF14] shadow-[0_0_20px_rgba(57,255,20,0.4)]'
+                  : isAmbientPlaying
+                  ? 'bg-neon-green/10 border-neon-green/50 text-neon-green shadow-[0_0_15px_rgba(57,255,20,0.25)]'
+                  : 'bg-white/5 border-white/15 text-white/70 hover:bg-white/10 hover:border-white/30 hover:text-white'
               }`}
               title="Ambient Sound Controls (White Noise, Rain, Lo-Fi)"
             >
@@ -1511,12 +1513,14 @@ export const FullscreenDetox = React.memo(() => {
                   ? (activeAmbientType === 'white_noise' ? 'White Noise' : activeAmbientType === 'rain' ? 'Rainfall' : 'Lo-Fi') 
                   : 'Audio'}
               </span>
-              {isAmbientPlaying && (
+              {isAmbientPlaying ? (
                 <span className="flex items-center gap-0.5 ml-0.5">
                   <span className="w-0.5 h-2 bg-neon-green rounded-full animate-pulse" />
                   <span className="w-0.5 h-3.5 bg-neon-green rounded-full animate-pulse delay-75" />
                   <span className="w-0.5 h-1.5 bg-neon-green rounded-full animate-pulse delay-150" />
                 </span>
+              ) : (
+                <div className={`w-1.5 h-1.5 rounded-full transition-colors ${isAmbientSoundOpen ? 'bg-[#39FF14]' : 'bg-white/30'}`} />
               )}
             </button>
 

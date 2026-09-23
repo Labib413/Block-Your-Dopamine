@@ -75,10 +75,19 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), "dist");
+    // In production bundled CJS, distPath might be __dirname or process.cwd()/dist
+    const distPath = path.resolve(process.cwd(), "dist");
     app.use(express.static(distPath));
-    app.get("*", (_req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
+    app.get("*", (req, res, next) => {
+      // Don't intercept API routes that 404
+      if (req.path.startsWith("/api/")) {
+        return next();
+      }
+      res.sendFile(path.join(distPath, "index.html"), (err) => {
+        if (err) {
+          res.status(500).send("Application build artifacts loading error.");
+        }
+      });
     });
   }
 

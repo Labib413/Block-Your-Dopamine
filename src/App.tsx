@@ -23,6 +23,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { BadgeShowroom } from "./components/BadgeShowroom";
 import { AuthModal } from "./components/AuthModal";
 import { PublicProfile } from "./components/PublicProfile";
+import { AppOpeningSplash } from "./components/AppOpeningSplash";
 
 function RequireAuthMatch() {
   const { username } = useParams<{ username: string }>();
@@ -253,9 +254,18 @@ function RootRedirect() {
 }
 
 export default function App() {
+  // Opening splash plays every time the app is opened / reloaded
+  const [showOpeningSplash, setShowOpeningSplash] = useState(true);
+
   return (
     <QueryClientProvider client={queryClient}>
       <AppProvider>
+        {showOpeningSplash && (
+          <AppOpeningSplash 
+            onComplete={() => setShowOpeningSplash(false)}
+            videoSrc="/opening.mp4"
+          />
+        )}
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<RootRedirect />} />
