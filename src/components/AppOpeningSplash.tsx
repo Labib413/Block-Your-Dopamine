@@ -91,10 +91,17 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
           </div>
         ) : (
           /* Native 60FPS Hardware-Accelerated Opening Experience */
-          <div className="relative w-full h-full flex flex-col items-center justify-center px-4 overflow-hidden">
+          <div className="relative w-full h-full flex flex-col items-center justify-center px-4 overflow-hidden bg-[#040404]">
             
-            {/* Background Radial Glow */}
-            <div className="absolute w-[500px] h-[500px] rounded-full bg-[#39FF14]/[0.035] blur-[80px] pointer-events-none transform-gpu" />
+            {/* 1. Deep Core Neon Green Radial Glows (Rich Atmospheric Aura) */}
+            <div className="absolute w-[650px] h-[650px] rounded-full bg-[#39FF14]/[0.06] blur-[120px] pointer-events-none transform-gpu" />
+            <div className="absolute w-[350px] h-[350px] rounded-full bg-emerald-500/[0.045] blur-[80px] pointer-events-none transform-gpu" />
+
+            {/* 2. Cyber Matrix Dot Matrix Atmosphere (High-Precision Constellation Grid) */}
+            <div className="absolute inset-0 pointer-events-none opacity-35 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:28px_28px] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,#000_70%,transparent_100%)]" />
+
+            {/* 3. Subtle Cyber Vignette Frame */}
+            <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(circle_at_center,transparent_0%,rgba(0,0,0,0.85)_100%)]" />
 
             {/* FULLSCREEN GLITCH OVERLAY (Lightweight transform-only hardware accelerated) */}
             {phase === "glitch" && (
