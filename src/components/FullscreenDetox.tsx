@@ -2,11 +2,13 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import { cn, formatTime, safeStringify, generateId } from "@/src/lib/utils";
 import { useApp, Resource, ResourceType } from "../context/AppContext";
 import { motion, AnimatePresence } from "motion/react";
-import { TrendingUp, X, Cloud, Youtube, FileText, Image as ImageIcon, Maximize, Minimize, Plus, Trash2, BookOpen, Timer, AlertCircle, Globe, ExternalLink, CheckCircle2, Loader2, Upload, ChevronLeft, ChevronRight, Download, ShieldCheck } from "lucide-react";
+import { TrendingUp, X, Cloud, Youtube, FileText, Image as ImageIcon, Maximize, Minimize, Plus, Trash2, BookOpen, Timer, AlertCircle, Globe, ExternalLink, CheckCircle2, Loader2, Upload, ChevronLeft, ChevronRight, Download, ShieldCheck, Headphones, CloudRain, Waves, Music } from "lucide-react";
 import { TreeGrowth } from "./TreeGrowth";
 import { supabase } from "../lib/supabase";
 import { HSC_SUBJECT_NAMES } from "../constants";
 import { logger } from "../lib/logger";
+import { AmbientSoundPanel } from "./AmbientSoundPanel";
+import { ambientSound, AmbientSoundType } from "../lib/ambientSound";
 
 // Native Browser PDF Viewer with scrolling and toolbar support
 const PDFViewer = React.memo(({ url, title, onReupload }: { url: string; title: string; onReupload?: (file: File) => void }) => {
@@ -287,15 +289,75 @@ const ResourceViewer = React.memo(({
 });
 
 // Memoized static views to prevent re-renders on timer updates
-const DetoxActivatedView = React.memo(() => (
-  <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8">
-    <Cloud className="w-24 h-24 text-white/10 mb-6" />
-    <h2 className="text-2xl font-sans font-bold text-white mb-2">Your Detox Activated.</h2>
-    <p className="text-white/40 max-w-md">
-      Select a resource from the sidebar to open it in a tab. All other distractions are blocked.
-    </p>
-  </div>
-));
+const DetoxActivatedView = React.memo(({ 
+  isPlaying, 
+  activeType, 
+  onToggleSound, 
+  onOpenAmbient 
+}: { 
+  isPlaying: boolean; 
+  activeType: AmbientSoundType; 
+  onToggleSound: (type: AmbientSoundType) => void; 
+  onOpenAmbient?: () => void; 
+}) => {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-8 select-none">
+      <Cloud className="w-20 h-20 text-white/10 mb-5" />
+      <h2 className="text-2xl font-sans font-bold text-white mb-2">Your Detox Activated.</h2>
+      <p className="text-white/40 max-w-md text-sm leading-relaxed mb-6">
+        Select a resource from the sidebar to open it in a tab. All other distractions are blocked.
+      </p>
+
+      {/* Ambient Audio Deep Work Controller */}
+      <div className="w-full max-w-md p-4 rounded-2xl bg-white/[0.02] border border-white/10 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.5)]">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center gap-2">
+            <Headphones className="w-3.5 h-3.5 text-neon-green" />
+            <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-white/80">
+              Deep Work Soundscape
+            </span>
+          </div>
+          {onOpenAmbient && (
+            <button
+              onClick={onOpenAmbient}
+              className="text-[10px] font-mono text-neon-green hover:underline uppercase tracking-wider transition-all"
+            >
+              Control Panel &rarr;
+            </button>
+          )}
+        </div>
+
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { id: 'white_noise' as AmbientSoundType, title: 'White Noise', subtitle: 'Focus Mask', icon: Waves },
+            { id: 'rain' as AmbientSoundType, title: 'Rainfall', subtitle: 'Gentle Storm', icon: CloudRain },
+            { id: 'lofi' as AmbientSoundType, title: 'Lo-Fi Beats', subtitle: '74 BPM Chords', icon: Music },
+          ].map((item) => {
+            const Icon = item.icon;
+            const active = isPlaying && activeType === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => onToggleSound(item.id)}
+                className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all ${
+                  active
+                    ? 'border-neon-green/60 bg-neon-green/10 text-white shadow-[0_0_15px_rgba(57,255,20,0.25)]'
+                    : 'border-white/5 bg-white/5 text-white/60 hover:bg-white/10 hover:text-white'
+                }`}
+              >
+                <Icon className={`w-4 h-4 mb-1.5 transition-transform ${active ? 'text-neon-green scale-110' : 'text-white/40'}`} />
+                <span className="text-xs font-bold leading-tight">{item.title}</span>
+                <span className="text-[8px] font-mono text-white/40 uppercase tracking-widest mt-0.5">
+                  {active ? 'Playing' : item.subtitle}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+});
 
 // Isolated Timer Display Component to prevent parent re-renders
 const formatActiveTime = (seconds: number) => {
@@ -625,6 +687,36 @@ export const FullscreenDetox = React.memo(() => {
   const [lastCheckpoint, setLastCheckpoint] = useState(Date.now());
   const [showSaveError, setShowSaveError] = useState(false);
   const [failedSessionData, setFailedSessionData] = useState<any>(null);
+
+  // Ambient Sound Controller State
+  const [isAmbientSoundOpen, setIsAmbientSoundOpen] = useState(false);
+  const [isAmbientPlaying, setIsAmbientPlaying] = useState(() => ambientSound.isPlaying());
+  const [activeAmbientType, setActiveAmbientType] = useState<AmbientSoundType>(() => ambientSound.getActiveType() || 'rain');
+
+  useEffect(() => {
+    const unsubscribe = ambientSound.subscribe(() => {
+      setIsAmbientPlaying(ambientSound.isPlaying());
+      if (ambientSound.getActiveType()) {
+        setActiveAmbientType(ambientSound.getActiveType()!);
+      }
+    });
+    return unsubscribe;
+  }, []);
+
+  const handleToggleAmbient = React.useCallback((type: AmbientSoundType) => {
+    if (ambientSound.isPlaying() && ambientSound.getActiveType() === type) {
+      ambientSound.pause();
+    } else {
+      ambientSound.play(type);
+    }
+  }, []);
+
+  // Gracefully stop ambient audio when exiting detox session
+  useEffect(() => {
+    return () => {
+      ambientSound.pause();
+    };
+  }, []);
 
   const lastFragmentSaveRef = React.useRef(Date.now());
   const sessionBlobUrls = React.useRef<Set<string>>(new Set());
@@ -1449,6 +1541,38 @@ export const FullscreenDetox = React.memo(() => {
 
           <div className="h-8 w-[1px] bg-white/10 mx-2"></div>
 
+          {/* Ambient Sound Control Trigger & Popover */}
+          <div className="relative">
+            <button 
+              onClick={() => setIsAmbientSoundOpen(prev => !prev)}
+              className={`h-10 px-3.5 rounded-xl flex items-center gap-2 border transition-all ${
+                isAmbientPlaying
+                  ? 'bg-neon-green/10 border-neon-green/40 text-neon-green shadow-[0_0_15px_rgba(57,255,20,0.25)]'
+                  : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+              }`}
+              title="Ambient Sound Controls (White Noise, Rain, Lo-Fi)"
+            >
+              <Headphones className="w-4 h-4" />
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider hidden sm:inline">
+                {isAmbientPlaying 
+                  ? (activeAmbientType === 'white_noise' ? 'White Noise' : activeAmbientType === 'rain' ? 'Rainfall' : 'Lo-Fi') 
+                  : 'Audio'}
+              </span>
+              {isAmbientPlaying && (
+                <span className="flex items-center gap-0.5 ml-0.5">
+                  <span className="w-0.5 h-2 bg-neon-green rounded-full animate-pulse" />
+                  <span className="w-0.5 h-3.5 bg-neon-green rounded-full animate-pulse delay-75" />
+                  <span className="w-0.5 h-1.5 bg-neon-green rounded-full animate-pulse delay-150" />
+                </span>
+              )}
+            </button>
+
+            <AmbientSoundPanel 
+              isOpen={isAmbientSoundOpen} 
+              onClose={() => setIsAmbientSoundOpen(false)} 
+            />
+          </div>
+
           <button 
             onClick={toggleFullscreen}
             className="w-10 h-10 rounded-xl bg-white/5 text-white/60 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all border border-white/10"
@@ -1672,7 +1796,12 @@ export const FullscreenDetox = React.memo(() => {
                 </div>
               ))
             ) : (
-              <DetoxActivatedView />
+              <DetoxActivatedView 
+                isPlaying={isAmbientPlaying}
+                activeType={activeAmbientType}
+                onToggleSound={handleToggleAmbient}
+                onOpenAmbient={() => setIsAmbientSoundOpen(true)} 
+              />
             )}
           </div>
         </div>

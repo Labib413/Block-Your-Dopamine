@@ -108,3 +108,11 @@
   clip-path: polygon(0% 0%, 100% 50%, 0% 100%, 20% 50%);
 }
 
+/* Hide PWA Install Button when opened in PC shortcut or standalone window */
+@media all and (display-mode: standalone), (display-mode: window-controls-overlay), (display-mode: minimal-ui), (display-mode: fullscreen) {
+  .pwa-install-btn {
+    display: none !important;
+  }
+}
+
+

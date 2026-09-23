@@ -13,6 +13,7 @@ import {
 import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
 import { logger } from "../lib/logger";
 import { queryClient } from "../lib/queryClient";
+import { syncAggregatedReportsToFirestore } from "../lib/sessionReports";
 export interface User {
   id: string;
   email: string;
@@ -2727,6 +2728,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const isNewStreakDayInner = prev.lastStreakDate !== today;
       const newStreakInner = isNewStreakDayInner ? prev.streak + 1 : Math.max(prev.streak, 1);
 
+      const finalSessionId = prev.currentSessionId || `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+      const startIso = prev.currentSessionStartTime || new Date(Date.now() - (safeTotalAttempted * 1000)).toISOString();
+      const durationMins = Math.max(1, Math.round(safeTotalAttempted / 60));
+      const isProductive = sessionScore >= 60;
+      const finalTaskName = resourceUsed || "Focus Session";
+
+      const newHistoryItem = {
+        id: finalSessionId,
+        session_id: finalSessionId,
+        created_at: startIso,
+        start_time: startIso,
+        duration_minutes: durationMins,
+        net_focus_time: safeNetFocus,
+        net_focus_seconds: safeNetFocus,
+        total_duration: safeTotalAttempted,
+        detox_score: parseFloat(sessionScore.toFixed(2)),
+        is_productive: isProductive,
+        task_name: finalTaskName,
+      };
+
+      const updatedHistory = [newHistoryItem, ...(prev.focusHistory || []).filter(h => (h.id || h.session_id) !== finalSessionId)];
+
       const newState = {
         ...prev,
         isFocusing: false,
@@ -2740,6 +2763,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         detoxPercent: newDailyTotal > 0 ? Math.round((newDailyNet / newDailyTotal) * 10000) / 100 : 100,
         sessionScores: [...prev.sessionScores, sessionScore],
         focusTime: prev.focusTime + safeTotalAttempted,
+        focusHistory: updatedHistory,
         xp: newXP,
         level: newLevel,
         streak: newStreakInner,
@@ -2759,14 +2783,27 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     // 2. Silent Background Sync Execution
     const startIso = state.currentSessionStartTime || new Date(Date.now() - (safeTotalAttempted * 1000)).toISOString();
+    const finalSessionId = state.currentSessionId || `session_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const durationMins = Math.max(1, Math.round(safeTotalAttempted / 60));
+    const isProductive = sessionScore >= 60;
+    const finalTaskName = resourceUsed || "Focus Session";
+
     const finalSessionData = {
+      id: finalSessionId,
+      session_id: finalSessionId,
       user_id: state.user?.id,
-      session_id: state.currentSessionId,
       total_duration: Math.floor(safeTotalAttempted),
+      duration_minutes: durationMins,
       net_focus_time: Math.floor(safeNetFocus),
+      net_focus_seconds: Math.floor(safeNetFocus),
       distraction_time: Math.floor(safeTotalAttempted - safeNetFocus),
       detox_score: parseFloat(sessionScore.toFixed(2)),
-      start_time: startIso
+      is_productive: isProductive,
+      task_name: finalTaskName,
+      start_time: startIso,
+      created_at: startIso,
+      mode: "focus",
+      status: "completed"
     };
 
     const finalStreakData = {
@@ -2782,7 +2819,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const sessionsItem = {
         table: 'sessions',
         data: finalSessionData,
-        session_id: state.currentSessionId
+        session_id: finalSessionId
       };
       
       const streaksItem = {
@@ -2802,8 +2839,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
           if (!error) localStorage.removeItem('pending_session');
           await supabase.from('user_streaks').upsert(finalStreakData, { onConflict: 'user_id' });
           if (state.user?.id) {
-            syncItemToFirestore(state.user.id, 'sessions', finalSessionData, 'upsert');
-            syncItemToFirestore(state.user.id, 'user_streaks', finalStreakData, 'upsert');
+            // 1. Sync session to Firestore sessions collection
+            await syncItemToFirestore(state.user.id, 'sessions', finalSessionData, 'upsert');
+            // 2. Sync to focus_logs
+            await syncItemToFirestore(state.user.id, 'focus_logs', finalSessionData, 'upsert');
+            // 3. Sync user streaks
+            await syncItemToFirestore(state.user.id, 'user_streaks', finalStreakData, 'upsert');
+            // 4. Calculate and save Daily, Weekly, and Monthly reports to Firestore!
+            await syncAggregatedReportsToFirestore(state.user.id, finalSessionData, state.focusHistory || []);
           }
         } catch(err) {
           logger.error("Error syncing final session", err);

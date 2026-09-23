@@ -17,7 +17,8 @@ const TABLE_TO_SUBCOLLECTION: Record<string, string> = {
   academic_routines: 'academic_routines',
   mood_entries: 'mood_entries',
   resources: 'resources',
-  macro_data: 'macro_data'
+  macro_data: 'macro_data',
+  session_reports: 'session_reports'
 };
 
 // এই হুকটি Firebase Firestore এবং Supabase থেকে ডাটা ফেচ ও সিঙ্ক করবে

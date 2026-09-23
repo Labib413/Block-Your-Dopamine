@@ -139,11 +139,13 @@ export type { FirebaseUser };
 export async function syncItemToFirestore(userId: string, table: string, data: any, type: string = 'upsert') {
   if (!userId) return;
   try {
-    const cleanId = String(data.id || data.session_id || data.log_id || data.task_id || data.website_id || data.user_id || 'default').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const rawId = data.id || data.session_id || data.reportId || data.report_id || data.log_id || data.task_id || data.website_id || (table === 'sessions' ? `session_${Date.now()}_${Math.random().toString(36).substring(2, 7)}` : data.user_id || 'default');
+    const cleanId = String(rawId).replace(/[^a-zA-Z0-9_\-]/g, '_');
     
     let subcollection = '';
     if (table === 'sessions') subcollection = 'sessions';
     else if (table === 'focus_logs') subcollection = 'focus_logs';
+    else if (table === 'session_reports' || table === 'reports') subcollection = 'session_reports';
     else if (table === 'user_streaks') subcollection = 'streaks';
     else if (table === 'user_preferences') subcollection = 'preferences';
     else if (table === 'guarded_websites') subcollection = 'guarded_websites';
@@ -168,7 +170,7 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     if (type === 'delete') {
       await deleteDoc(docRef);
     } else {
-      await setDoc(docRef, { ...data, userId }, { merge: true });
+      await setDoc(docRef, { ...data, userId, updatedAt: new Date().toISOString() }, { merge: true });
     }
   } catch (err) {
     console.warn(`[Firestore sync] ${table}:`, err);

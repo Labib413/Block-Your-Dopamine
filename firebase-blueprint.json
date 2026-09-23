@@ -132,6 +132,26 @@
         "status": { "type": "string", "maxLength": 50 },
         "timestamp": { "type": "string" }
       }
+    },
+    "SessionReport": {
+      "title": "SessionReport",
+      "description": "Aggregated daily, weekly, and monthly focus session reports",
+      "type": "object",
+      "properties": {
+        "reportId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "periodType": { "type": "string", "maxLength": 30 },
+        "periodKey": { "type": "string", "maxLength": 50 },
+        "dateLabel": { "type": "string", "maxLength": 100 },
+        "totalSessions": { "type": "number" },
+        "completedSessions": { "type": "number" },
+        "totalDurationSeconds": { "type": "number" },
+        "totalNetFocusSeconds": { "type": "number" },
+        "totalFocusHours": { "type": "number" },
+        "avgDetoxScore": { "type": "number" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["reportId", "userId", "periodType"]
     }
   },
   "firestore": {
@@ -146,6 +166,10 @@
     "/users/{userId}/focus_logs/{logId}": {
       "schema": "FocusLog",
       "description": "Granular focus logs for reporting"
+    },
+    "/users/{userId}/session_reports/{reportId}": {
+      "schema": "SessionReport",
+      "description": "Aggregated daily, weekly, and monthly focus session reports"
     },
     "/users/{userId}/streaks/{streakId}": {
       "schema": "UserStreak",

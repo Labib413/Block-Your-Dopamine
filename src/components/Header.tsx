@@ -28,7 +28,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
   const honorific = user ? (gender === "Female" ? "Ma'am." : "Sir.") : "Guest.";
   const [showNotifications, setShowNotifications] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { hasNativePrompt, triggerInstall, showModal, setShowModal } = usePWAInstall();
+  const { hasNativePrompt, triggerInstall, showModal, setShowModal, isInstalled } = usePWAInstall();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -165,17 +165,19 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
       </div>
 
       <div className="flex items-center gap-3">
-        {/* Animated Install App Button */}
-        <button
-          onClick={() => triggerInstall()}
-          className="flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-2xl bg-neon-green/10 hover:bg-neon-green/20 border border-neon-green/40 hover:border-neon-green/70 text-neon-green transition-all shadow-[0_0_15px_rgba(57,255,20,0.15)] hover:shadow-[0_0_22px_rgba(57,255,20,0.35)] active:scale-95 group"
-          title="Install BYD App (PWA)"
-        >
-          <div className="w-6 h-6 rounded-lg bg-neon-green/20 flex items-center justify-center border border-neon-green/40">
-            <Download className="w-3.5 h-3.5 text-neon-green animate-bounce" />
-          </div>
-          <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Install App</span>
-        </button>
+        {/* Animated Install App Button - Hidden once installed or opened in PC shortcut/standalone mode */}
+        {!isInstalled && (
+          <button
+            onClick={() => triggerInstall()}
+            className="pwa-install-btn flex items-center gap-2 px-3 sm:px-3.5 py-2 rounded-2xl bg-neon-green/10 hover:bg-neon-green/20 border border-neon-green/40 hover:border-neon-green/70 text-neon-green transition-all shadow-[0_0_15px_rgba(57,255,20,0.15)] hover:shadow-[0_0_22px_rgba(57,255,20,0.35)] active:scale-95 group"
+            title="Install BYD App (PWA)"
+          >
+            <div className="w-6 h-6 rounded-lg bg-neon-green/20 flex items-center justify-center border border-neon-green/40">
+              <Download className="w-3.5 h-3.5 text-neon-green animate-bounce" />
+            </div>
+            <span className="text-[11px] sm:text-xs font-bold uppercase tracking-wider">Install App</span>
+          </button>
+        )}
 
         <div className="relative" ref={dropdownRef}>
           <button 

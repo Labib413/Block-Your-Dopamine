@@ -21,7 +21,12 @@ import {
   ExternalLink,
   ChevronDown,
   Heart,
-  GraduationCap
+  GraduationCap,
+  Database,
+  RefreshCw,
+  Sparkles,
+  Cloud,
+  Check
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { motion, AnimatePresence } from "motion/react";
@@ -30,6 +35,14 @@ import { useBYDData } from '../hooks/useBYDData';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { supabase } from '../lib/supabase';
 import { db, collection, getDocs } from '../lib/firebase';
+import { 
+  syncAggregatedReportsToFirestore, 
+  fetchAllSessionReportsFromFirestore, 
+  getDhakaDateString,
+  getDhakaWeekKey,
+  getDhakaMonthKey,
+  type SessionReportItem 
+} from '../lib/sessionReports';
 
 // Use console as fallback logger
 const logger = console;
@@ -115,7 +128,12 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
   useRealtimeSync('focus_logs');
 
   const [reportRange, setReportRange] = useState<"Today" | "Last 7 Days" | "Last 30 Days">("Last 7 Days");
+  const [graphViewMode, setGraphViewMode] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [directFirestoreSessions, setDirectFirestoreSessions] = useState<any[]>([]);
+  const [firebaseReports, setFirebaseReports] = useState<SessionReportItem[]>([]);
+  const [isSyncingReports, setIsSyncingReports] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
 
   // Health Metrics State
   const [healthStats, setHealthStats] = useState({
@@ -142,7 +160,43 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     }).format(date);
   };
 
-  // 1. Unify and normalize sessions from Firestore, Supabase, and AppContext focusHistory
+  // Direct Firestore Fetch for guaranteed per-user persistence
+  useEffect(() => {
+    let isMounted = true;
+    async function loadFirestoreData() {
+      if (!user?.id) return;
+      try {
+        const [reportsSnap, sessionsSnap] = await Promise.all([
+          fetchAllSessionReportsFromFirestore(user.id),
+          getDocs(collection(db, 'users', user.id, 'sessions')).catch(() => ({ empty: true, docs: [] }))
+        ]);
+
+        if (isMounted) {
+          if (reportsSnap && reportsSnap.length > 0) {
+            setFirebaseReports(reportsSnap);
+          }
+          if ('docs' in sessionsSnap && !sessionsSnap.empty) {
+            const docs = sessionsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setDirectFirestoreSessions(docs);
+          }
+        }
+      } catch (e) {
+        console.warn("[ReportsView] Firestore direct fetch error:", e);
+      }
+    }
+    loadFirestoreData();
+    return () => { isMounted = false; };
+  }, [user?.id]);
+
+  // Synchronized mode changer for Activity Graph
+  const handleGraphModeChange = (mode: "daily" | "weekly" | "monthly") => {
+    setGraphViewMode(mode);
+    if (mode === 'daily') setReportRange("Today");
+    else if (mode === 'weekly') setReportRange("Last 7 Days");
+    else if (mode === 'monthly') setReportRange("Last 30 Days");
+  };
+
+  // 1. Unify and normalize sessions from Firestore, Supabase, AppContext focusHistory, and direct Firestore fetch
   const allSessions = useMemo(() => {
     const sessionMap = new Map<string, any>();
 
@@ -174,6 +228,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
 
       sessionMap.set(key, {
         id: key,
+        session_id: key,
         created_at: createdAt,
         duration_minutes: durationMinutes,
         is_productive: isProductive,
@@ -182,6 +237,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
       });
     };
 
+    (directFirestoreSessions || []).forEach(processItem);
     (rawSessions || []).forEach(processItem);
     (rawFocusLogs || []).forEach(processItem);
     (focusHistory || []).forEach(processItem);
@@ -189,7 +245,32 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
     return Array.from(sessionMap.values()).sort(
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
-  }, [rawSessions, rawFocusLogs, focusHistory]);
+  }, [directFirestoreSessions, rawSessions, rawFocusLogs, focusHistory]);
+
+  // Sync all historical & active sessions to Firestore Daily/Weekly/Monthly reports
+  const handleSyncAllToFirebase = async () => {
+    if (!user?.id || isSyncingReports) return;
+    setIsSyncingReports(true);
+    try {
+      const res = await syncAggregatedReportsToFirestore(user.id, null, allSessions);
+      if (res) {
+        setFirebaseReports(prev => {
+          const map = new Map<string, SessionReportItem>();
+          prev.forEach(r => map.set(r.reportId, r));
+          map.set(res.daily.reportId, res.daily);
+          map.set(res.weekly.reportId, res.weekly);
+          map.set(res.monthly.reportId, res.monthly);
+          return Array.from(map.values());
+        });
+        setSyncSuccess(true);
+        setTimeout(() => setSyncSuccess(false), 3000);
+      }
+    } catch (e) {
+      console.error("[ReportsView] Sync all to Firebase failed:", e);
+    } finally {
+      setIsSyncingReports(false);
+    }
+  };
 
   // 2. Filter sessions by selected report range
   const sessions = useMemo(() => {
@@ -365,52 +446,168 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
   }, [sessions, reportRange, totalNetFocusTime, detoxPercent]);
 
   const chartData = useMemo(() => {
-    const rangeDays = reportRange === "Today" ? 1 : reportRange === "Last 7 Days" ? 7 : 30;
-    
-    if (reportRange === "Today") {
+    const now = new Date();
+    const dhakaTodayStr = getLocalDateString(now);
+
+    if (graphViewMode === "daily") {
+      const todaySessions = allSessions.filter(s => getLocalDateString(new Date(s.created_at)) === dhakaTodayStr);
+      const nowDhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(now));
+
       return Array.from({ length: 24 }, (_, i) => {
         const hour = i;
-        const hourSessions = sessions.filter((s: any) => {
+        const hourSessions = todaySessions.filter((s: any) => {
           if (!s?.created_at) return false;
           const d = new Date(s.created_at);
           const dhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(d));
           return dhakaHour === hour;
         });
+
         let hours = hourSessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
-        const nowDhakaHour = parseInt(new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Dhaka', hour: 'numeric', hour12: false }).format(new Date()));
         if (hour === nowDhakaHour && hours === 0 && totalNetFocusTime > 0) {
           hours = totalNetFocusTime / 3600;
         }
-        return { name: `${hour}:00`, hours: parseFloat(hours.toFixed(2)) };
+
+        const label = hour === 0 ? '12 AM' : hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+        return {
+          name: hour % 3 === 0 ? label : `${hour}:00`,
+          fullLabel: `${label} (${hour}:00 - ${hour + 1}:00)`,
+          hours: parseFloat(hours.toFixed(2)),
+          sessionsCount: hourSessions.length,
+          isCurrentHour: hour === nowDhakaHour
+        };
       });
     }
 
-    // Fixed Date Grid for Charts
-    const now = new Date();
-    const dhakaTodayStr = getLocalDateString(now);
-    const dhakaToday = new Date(dhakaTodayStr);
+    if (graphViewMode === "weekly") {
+      const { startStr } = getDhakaWeekKey(now);
+      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
-    const lastDays = Array.from({ length: rangeDays }, (_, i) => {
-      const d = new Date(dhakaToday);
-      d.setDate(d.getDate() - (rangeDays - 1 - i));
-      return getLocalDateString(d);
-    });
+      return dayNames.map((name, idx) => {
+        const targetDate = new Date(startStr);
+        targetDate.setDate(targetDate.getDate() + idx);
+        const targetStr = getLocalDateString(targetDate);
+        const daySessions = allSessions.filter(s => getLocalDateString(new Date(s.created_at)) === targetStr);
 
-    return lastDays.map(date => {
-      const daySessions = sessions.filter((s: any) => s?.created_at && getLocalDateString(new Date(s.created_at)) === date);
+        let hours = daySessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
+        if (targetStr === dhakaTodayStr && hours === 0 && totalNetFocusTime > 0) {
+          hours = totalNetFocusTime / 3600;
+        }
+
+        return {
+          name,
+          fullLabel: `${name}, ${targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+          hours: parseFloat(hours.toFixed(2)),
+          sessionsCount: daySessions.length,
+          fullDate: targetStr
+        };
+      });
+    }
+
+    // Monthly view: all days of the current month
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    return Array.from({ length: daysInMonth }, (_, i) => {
+      const dayNum = i + 1;
+      const targetDate = new Date(year, month, dayNum);
+      const targetStr = getLocalDateString(targetDate);
+      const daySessions = allSessions.filter(s => getLocalDateString(new Date(s.created_at)) === targetStr);
+
       let hours = daySessions.reduce((acc: number, s: any) => acc + (s?.duration_minutes || 0), 0) / 60;
-      if (date === dhakaTodayStr && hours === 0 && totalNetFocusTime > 0) {
+      if (targetStr === dhakaTodayStr && hours === 0 && totalNetFocusTime > 0) {
         hours = totalNetFocusTime / 3600;
       }
+
       return {
-        name: rangeDays === 30 
-          ? new Date(date).toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' })
-          : new Date(date).toLocaleDateString('en-US', { weekday: 'short' }),
+        name: `${dayNum}`,
+        fullLabel: targetDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         hours: parseFloat(hours.toFixed(2)),
-        fullDate: date
+        sessionsCount: daySessions.length,
+        fullDate: targetStr
       };
     });
-  }, [sessions, reportRange, totalNetFocusTime]);
+  }, [allSessions, graphViewMode, totalNetFocusTime]);
+
+  const activeGraphStats = useMemo(() => {
+    const totalHours = chartData.reduce((acc: number, d: any) => acc + (d.hours || 0), 0).toFixed(1);
+    const sessionsCount = chartData.reduce((acc: number, d: any) => acc + (d.sessionsCount || 0), 0);
+    
+    let relevantSessions: any[] = [];
+    const now = new Date();
+    const todayStr = getLocalDateString(now);
+
+    if (graphViewMode === "daily") {
+      relevantSessions = allSessions.filter(s => getLocalDateString(new Date(s.created_at)) === todayStr);
+    } else if (graphViewMode === "weekly") {
+      const { startStr, endStr } = getDhakaWeekKey(now);
+      relevantSessions = allSessions.filter(s => {
+        const d = getLocalDateString(new Date(s.created_at));
+        return d >= startStr && d <= endStr;
+      });
+    } else {
+      const { key: mKey } = getDhakaMonthKey(now);
+      relevantSessions = allSessions.filter(s => getDhakaMonthKey(new Date(s.created_at)).key === mKey);
+    }
+
+    const efficiency = relevantSessions.length > 0
+      ? Math.round(relevantSessions.reduce((acc: number, s: any) => acc + (s.detox_score || 100), 0) / relevantSessions.length)
+      : (detoxPercent > 0 ? Math.round(detoxPercent) : 100);
+
+    return { totalHours, sessionsCount, efficiency };
+  }, [chartData, allSessions, graphViewMode, detoxPercent]);
+
+  const { todayReportSummary, weekReportSummary, monthReportSummary } = useMemo(() => {
+    const now = new Date();
+    const todayStr = getLocalDateString(now);
+    const { key: weekKey, label: weekLabel, startStr: weekStart, endStr: weekEnd } = getDhakaWeekKey(now);
+    const { key: monthKey, label: monthLabel } = getDhakaMonthKey(now);
+
+    const dailyFb = firebaseReports.find(r => r.periodType === 'daily' && r.periodKey === todayStr);
+    const weeklyFb = firebaseReports.find(r => r.periodType === 'weekly' && r.periodKey === weekKey);
+    const monthlyFb = firebaseReports.find(r => r.periodType === 'monthly' && r.periodKey === monthKey);
+
+    const todaySessions = allSessions.filter(s => getLocalDateString(new Date(s.created_at)) === todayStr);
+    const weekSessions = allSessions.filter(s => {
+      const d = getLocalDateString(new Date(s.created_at));
+      return d >= weekStart && d <= weekEnd;
+    });
+    const monthSessions = allSessions.filter(s => getDhakaMonthKey(new Date(s.created_at)).key === monthKey);
+
+    const calcStats = (fb: SessionReportItem | undefined, list: any[]) => {
+      if (fb) {
+        return {
+          focusHours: fb.totalFocusHours,
+          sessionsCount: fb.totalSessions,
+          avgScore: fb.avgDetoxScore
+        };
+      }
+      const focusHours = parseFloat((list.reduce((acc, s) => acc + (s.duration_minutes || 0), 0) / 60).toFixed(1));
+      const sessionsCount = list.length;
+      const avgScore = list.length > 0 
+        ? Math.round(list.reduce((acc, s) => acc + (s.detox_score || 100), 0) / list.length)
+        : 100;
+      return { focusHours, sessionsCount, avgScore };
+    };
+
+    return {
+      todayReportSummary: {
+        label: now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }),
+        docKey: `daily_${todayStr}`,
+        ...calcStats(dailyFb, todaySessions)
+      },
+      weekReportSummary: {
+        label: weekLabel,
+        docKey: `weekly_${weekKey}`,
+        ...calcStats(weeklyFb, weekSessions)
+      },
+      monthReportSummary: {
+        label: monthLabel,
+        docKey: `monthly_${monthKey}`,
+        ...calcStats(monthlyFb, monthSessions)
+      }
+    };
+  }, [firebaseReports, allSessions]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#090909] text-white">
@@ -459,6 +656,9 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                     key={range}
                     onClick={() => {
                       setReportRange(range);
+                      if (range === "Today") setGraphViewMode("daily");
+                      else if (range === "Last 7 Days") setGraphViewMode("weekly");
+                      else if (range === "Last 30 Days") setGraphViewMode("monthly");
                       setIsDropdownOpen(false);
                     }}
                     className={cn(
@@ -522,76 +722,299 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
               />
             </div>
 
+            {/* Firebase Saved Reports Segment */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+              className="bg-[#121212] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 shadow-lg shadow-black/20"
+            >
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14]">
+                    <Database className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-sans font-semibold text-white flex items-center gap-2">
+                      Firebase Session Reports
+                      <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/20">
+                        Cloud Persistent
+                      </span>
+                    </h3>
+                    <p className="text-white/40 text-[13px] font-medium mt-0.5">
+                      Per-user daily sessions, weekly rollups & monthly summaries saved to Firestore
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={handleSyncAllToFirebase}
+                  disabled={isSyncingReports}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer",
+                    syncSuccess 
+                      ? "bg-[#39FF14]/20 text-[#39FF14] border border-[#39FF14]/40"
+                      : "bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.08]"
+                  )}
+                >
+                  <RefreshCw className={cn("w-3.5 h-3.5", isSyncingReports && "animate-spin")} />
+                  <span>{isSyncingReports ? "Saving to Cloud..." : syncSuccess ? "Reports Saved to Firebase" : "Sync Reports to Firebase"}</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Daily Report Card */}
+                <div 
+                  onClick={() => handleGraphModeChange("daily")}
+                  className={cn(
+                    "p-4 rounded-2xl bg-[#171717] border transition-all cursor-pointer",
+                    graphViewMode === "daily" ? "border-[#39FF14]/50 shadow-[0_0_15px_rgba(57,255,20,0.15)]" : "border-white/[0.06] hover:border-white/[0.15]"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 font-semibold">Daily Report</span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded-full border border-[#39FF14]/20">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse" />
+                      Active
+                    </span>
+                  </div>
+                  <div className="text-sm font-semibold text-white mb-2 truncate">
+                    {todayReportSummary.label}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/[0.04] text-center">
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Focus</div>
+                      <div className="text-xs font-bold text-white font-mono mt-0.5">{todayReportSummary.focusHours}h</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Sessions</div>
+                      <div className="text-xs font-bold text-white font-mono mt-0.5">{todayReportSummary.sessionsCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Score</div>
+                      <div className="text-xs font-bold text-[#39FF14] font-mono mt-0.5">{todayReportSummary.avgScore}%</div>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-white/30 font-mono">
+                    <span className="truncate">/{todayReportSummary.docKey}</span>
+                    <span className="text-[#39FF14]/80">Click to view</span>
+                  </div>
+                </div>
+
+                {/* Weekly Report Card */}
+                <div 
+                  onClick={() => handleGraphModeChange("weekly")}
+                  className={cn(
+                    "p-4 rounded-2xl bg-[#171717] border transition-all cursor-pointer",
+                    graphViewMode === "weekly" ? "border-[#39FF14]/50 shadow-[0_0_15px_rgba(57,255,20,0.15)]" : "border-white/[0.06] hover:border-white/[0.15]"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 font-semibold">Weekly Report</span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded-full border border-[#39FF14]/20">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse" />
+                      Active
+                    </span>
+                  </div>
+                  <div className="text-sm font-semibold text-white mb-2 truncate">
+                    {weekReportSummary.label}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/[0.04] text-center">
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Focus</div>
+                      <div className="text-xs font-bold text-white font-mono mt-0.5">{weekReportSummary.focusHours}h</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Sessions</div>
+                      <div className="text-xs font-bold text-white font-mono mt-0.5">{weekReportSummary.sessionsCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Score</div>
+                      <div className="text-xs font-bold text-[#39FF14] font-mono mt-0.5">{weekReportSummary.avgScore}%</div>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-white/30 font-mono">
+                    <span className="truncate">/{weekReportSummary.docKey}</span>
+                    <span className="text-[#39FF14]/80">Click to view</span>
+                  </div>
+                </div>
+
+                {/* Monthly Report Card */}
+                <div 
+                  onClick={() => handleGraphModeChange("monthly")}
+                  className={cn(
+                    "p-4 rounded-2xl bg-[#171717] border transition-all cursor-pointer",
+                    graphViewMode === "monthly" ? "border-[#39FF14]/50 shadow-[0_0_15px_rgba(57,255,20,0.15)]" : "border-white/[0.06] hover:border-white/[0.15]"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 font-semibold">Monthly Report</span>
+                    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded-full border border-[#39FF14]/20">
+                      <div className="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse" />
+                      Active
+                    </span>
+                  </div>
+                  <div className="text-sm font-semibold text-white mb-2 truncate">
+                    {monthReportSummary.label}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/[0.04] text-center">
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Focus</div>
+                      <div className="text-xs font-bold text-white font-mono mt-0.5">{monthReportSummary.focusHours}h</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Sessions</div>
+                      <div className="text-xs font-bold text-white font-mono mt-0.5">{monthReportSummary.sessionsCount}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-white/40 uppercase">Score</div>
+                      <div className="text-xs font-bold text-[#39FF14] font-mono mt-0.5">{monthReportSummary.avgScore}%</div>
+                    </div>
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-white/30 font-mono">
+                    <span className="truncate">/{monthReportSummary.docKey}</span>
+                    <span className="text-[#39FF14]/80">Click to view</span>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
             {/* Graphs & Tables Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
               {/* Activity Graph */}
               <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                className="lg:col-span-2 bg-[#121212] border border-white/[0.06] rounded-[24px] p-8 shadow-lg shadow-black/20"
+                className="lg:col-span-2 bg-[#121212] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 shadow-lg shadow-black/20 flex flex-col justify-between"
               >
-                <div className="flex items-center justify-between mb-8">
-                  <div>
-                    <h3 className="text-lg font-sans font-semibold text-white">Activity Graph</h3>
-                    <p className="text-white/40 text-[13px] font-medium mt-1">Focus hours distribution for {reportRange.toLowerCase()}</p>
+                <div>
+                  {/* Graph Header with Daily / Weekly / Monthly Switcher */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                    <div>
+                      <div className="flex items-center gap-2.5">
+                        <h3 className="text-lg font-sans font-semibold text-white">Activity Graph</h3>
+                        <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/20 uppercase tracking-wider">
+                          {graphViewMode === 'daily' ? '24H Daily' : graphViewMode === 'weekly' ? '7-Day Weekly' : 'Monthly View'}
+                        </span>
+                      </div>
+                      <p className="text-white/40 text-[13px] font-medium mt-1">
+                        {graphViewMode === 'daily' && "Focus distribution by hour for today"}
+                        {graphViewMode === 'weekly' && "Daily focus hours over this week"}
+                        {graphViewMode === 'monthly' && "Day-by-day focus performance this month"}
+                      </p>
+                    </div>
+
+                    {/* Daily / Weekly / Monthly Segmented Toggle */}
+                    <div className="flex items-center p-1 bg-[#171717] border border-white/[0.08] rounded-xl self-start sm:self-auto shadow-inner">
+                      {(['daily', 'weekly', 'monthly'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          onClick={() => handleGraphModeChange(mode)}
+                          className={cn(
+                            "px-3.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all duration-200 cursor-pointer",
+                            graphViewMode === mode
+                              ? "bg-[#39FF14] text-black shadow-[0_0_12px_rgba(57,255,20,0.35)]"
+                              : "text-white/50 hover:text-white hover:bg-white/[0.04]"
+                          )}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 bg-[#171717] px-3 py-1.5 rounded-full border border-white/[0.04]">
-                    <div className="w-2 h-2 bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.6)]" />
-                    <span className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">Focus Hours</span>
+
+                  {/* Metric Highlights for Selected View */}
+                  <div className="grid grid-cols-3 gap-3 mb-6 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40">Total Focus</div>
+                      <div className="text-base font-bold text-white font-mono mt-0.5">
+                        {activeGraphStats.totalHours} <span className="text-xs text-white/40 font-normal">hrs</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40">Sessions</div>
+                      <div className="text-base font-bold text-white font-mono mt-0.5">
+                        {activeGraphStats.sessionsCount} <span className="text-xs text-white/40 font-normal">total</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40">Efficiency</div>
+                      <div className="text-base font-bold text-[#39FF14] font-mono mt-0.5">
+                        {activeGraphStats.efficiency}%
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="h-[260px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                        <defs>
+                          <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#39FF14" stopOpacity={1} />
+                            <stop offset="100%" stopColor="#39FF14" stopOpacity={0.2} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
+                        <XAxis 
+                          dataKey="name" 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: graphViewMode === 'monthly' ? 9 : 11, fontWeight: 500 }}
+                          dy={10}
+                          interval={graphViewMode === 'monthly' ? 2 : 0}
+                        />
+                        <YAxis 
+                          axisLine={false} 
+                          tickLine={false} 
+                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 500 }}
+                          dx={-10}
+                          tickCount={5}
+                        />
+                        <Tooltip 
+                          cursor={{ fill: 'rgba(255,255,255,0.02)' }}
+                          contentStyle={{ 
+                            backgroundColor: '#171717', 
+                            border: '1px solid rgba(255,255,255,0.08)',
+                            borderRadius: '12px',
+                            boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                            padding: '12px'
+                          }}
+                          formatter={(value: any) => [`${value} hrs`, 'Focus Duration']}
+                          labelFormatter={(label: any, payload: any) => {
+                            if (payload && payload[0]?.payload?.fullLabel) {
+                              return payload[0].payload.fullLabel;
+                            }
+                            return label;
+                          }}
+                          itemStyle={{ color: '#39FF14', fontSize: '13px', fontWeight: '600' }}
+                          labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                        />
+                        <Bar 
+                          dataKey="hours" 
+                          fill="url(#barGradient)" 
+                          radius={[4, 4, 0, 0]} 
+                          barSize={graphViewMode === 'daily' ? 8 : graphViewMode === 'weekly' ? 26 : 6}
+                          animationDuration={800}
+                        >
+                          {chartData.map((entry: any, index: number) => (
+                            <Cell 
+                              key={`cell-${index}`} 
+                              fill={entry.hours > 0 ? "url(#barGradient)" : "rgba(255,255,255,0.02)"} 
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
                 </div>
-                
-                <div className="h-[280px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={chartData} margin={{ top: 10, right: 0, left: -20, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="0%" stopColor="#39FF14" stopOpacity={1} />
-                          <stop offset="100%" stopColor="#39FF14" stopOpacity={0.2} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
-                      <XAxis 
-                        dataKey="name" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 500 }}
-                        dy={10}
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 500 }}
-                        dx={-10}
-                        tickCount={5}
-                      />
-                      <Tooltip 
-                        cursor={{ fill: 'rgba(255,255,255,0.02)' }}
-                        contentStyle={{ 
-                          backgroundColor: '#171717', 
-                          border: '1px solid rgba(255,255,255,0.08)',
-                          borderRadius: '12px',
-                          boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                          padding: '12px'
-                        }}
-                        itemStyle={{ color: '#39FF14', fontSize: '13px', fontWeight: '600' }}
-                        labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
-                      />
-                      <Bar 
-                        dataKey="hours" 
-                        fill="url(#barGradient)" 
-                        radius={[4, 4, 4, 4]} 
-                        barSize={24}
-                        animationDuration={1500}
-                      >
-                        {chartData.map((entry: any, index: number) => (
-                          <Cell 
-                            key={`cell-${index}`} 
-                            fill={entry.hours > 0 ? "url(#barGradient)" : "rgba(255,255,255,0.02)"} 
-                          />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
+
+                <div className="flex items-center justify-between pt-4 mt-2 border-t border-white/[0.04]">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2 h-2 bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.6)]" />
+                    <span className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
+                      {graphViewMode === 'daily' ? 'Hourly Distribution' : graphViewMode === 'weekly' ? 'Daily Focus' : 'Days of Month'}
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-white/40 font-mono">
+                    {graphViewMode === 'daily' ? '24 Hours' : graphViewMode === 'weekly' ? 'Mon — Sun' : '1 — 31 Days'}
+                  </span>
                 </div>
               </motion.div>
 
