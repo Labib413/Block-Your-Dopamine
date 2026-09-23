@@ -15,27 +15,17 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<"emerge" | "glitch" | "loading" | "complete">("emerge");
 
-  // If there's an actual video file (e.g. /opening.mp4 placed by user), use the HTML5 video element.
-  // Otherwise, render the ultra-precise, high-fidelity replica matching the video animation:
-  // - Dark particle atmosphere & ambient neon green radial glow
-  // - Glitch BYD logo with flame icon
-  // - "Block Your Dopamine" with green highlight
-  // - "Created by Tasnem Hossen Labib"
-  // - High-precision cyber loader ring + progress bar (0% -> 100%)
-  // - Smooth fade-out exit to reveal the dashboard
-
   useEffect(() => {
     // If video is not found or fails, run simulated code animation calibrated to run for ~10 seconds
     if (videoError || !videoSrc) {
       // Timeline across 10 seconds:
-      // 0.0s - 1.8s: Emerge & crisp typography entrance
-      // 1.8s - 4.8s: Cinematic subtle fullscreen cyber glitch phase
-      // 4.8s - 9.8s: Cyber focus loading ring + smooth 0% -> 100% progress
-      // 9.8s - 10.4s: Complete flourish and smooth fade exit to dashboard
-      const p1 = setTimeout(() => setPhase("glitch"), 1800);
-      const p2 = setTimeout(() => setPhase("loading"), 4800);
+      // 0.0s - 2.0s: Cinematic Logo & Icon Reveal (Expansion, Cyber flare, Neon Beam)
+      // 2.0s - 5.0s: Dynamic Fullscreen Cyber Glitch (Background grid, Scanlines, Chromatic split across entire viewport)
+      // 5.0s - 9.8s: Cyber Focus Loading Ring + 0% -> 100% Progress
+      // 9.8s - 10.4s: Complete & Smooth Dashboard Fadeout
+      const p1 = setTimeout(() => setPhase("glitch"), 2000);
+      const p2 = setTimeout(() => setPhase("loading"), 5000);
 
-      // Start progress loading at 4.8s, reaching 100% at ~9.8s (total ~5 seconds of smooth filling)
       let interval: NodeJS.Timeout | null = null;
       const startLoadingTimeout = setTimeout(() => {
         interval = setInterval(() => {
@@ -45,14 +35,14 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
               setPhase("complete");
               setTimeout(() => {
                 onComplete();
-              }, 700);
+              }, 650);
               return 100;
             }
-            // 50 updates of 2% each over 5000ms = 100ms per 2%
+            // Smooth 2% increment every 96ms (~4.8s to reach 100%)
             return Math.min(100, prev + 2);
           });
-        }, 100);
-      }, 4800);
+        }, 96);
+      }, 5000);
 
       return () => {
         clearTimeout(p1);
@@ -69,8 +59,8 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
         key="byd-opening-splash"
         initial={{ opacity: 1 }}
         exit={{ opacity: 0, scale: 1.04 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        className="fixed inset-0 z-[999999] bg-[#050505] flex flex-col items-center justify-center select-none overflow-hidden"
+        transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}
+        className="fixed inset-0 z-[999999] bg-[#030303] flex flex-col items-center justify-center select-none overflow-hidden"
       >
         {/* If video source exists and hasn't errored, play the actual MP4 */}
         {!videoError && videoSrc ? (
@@ -97,19 +87,42 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
             </button>
           </div>
         ) : (
-          /* Native High-Fidelity BYD Opening Experience (Replica of the user's MP4) */
+          /* Native High-Fidelity Cinematic Opening Experience */
           <div className="relative w-full h-full flex flex-col items-center justify-center px-4 overflow-hidden">
-            {/* Background Ambient Radial Glow */}
-            <div className="absolute w-[600px] h-[600px] rounded-full bg-[#39FF14]/[0.04] blur-[120px] pointer-events-none" />
-            <div className="absolute w-[300px] h-[300px] rounded-full bg-emerald-500/[0.03] blur-[80px] pointer-events-none" />
+            
+            {/* FULLSCREEN BACKGROUND GLITCH LAYERS (Active throughout the glitch phase) */}
+            {phase === "glitch" && (
+              <>
+                {/* 1. Fullscreen Horizontal Slice Aberrations (Cyan Shift) */}
+                <div 
+                  aria-hidden="true" 
+                  className="absolute inset-0 z-10 pointer-events-none mix-blend-screen animate-glitch-layer-1 opacity-25 bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,rgba(0,255,255,0.15),transparent_70%)]"
+                />
 
-            {/* Particle Canvas Effect Simulation */}
-            <div className="absolute inset-0 pointer-events-none opacity-40 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)]" />
+                {/* 2. Fullscreen Horizontal Slice Aberrations (Magenta Shift) */}
+                <div 
+                  aria-hidden="true" 
+                  className="absolute inset-0 z-10 pointer-events-none mix-blend-screen animate-glitch-layer-2 opacity-25 bg-[radial-gradient(ellipse_80%_80%_at_50%_50%,rgba(255,0,85,0.15),transparent_70%)]"
+                />
+              </>
+            )}
 
-            {/* Main Content */}
-            <div className="relative z-10 flex flex-col items-center text-center">
+            {/* Ambient Deep Glows */}
+            <motion.div 
+              animate={phase === "glitch" ? { scale: [1, 1.2, 0.9, 1.1, 1], opacity: [0.08, 0.16, 0.05, 0.12, 0.08] } : {}}
+              transition={{ duration: 0.4, repeat: phase === "glitch" ? Infinity : 0 }}
+              className="absolute w-[680px] h-[680px] rounded-full bg-[#39FF14]/[0.05] blur-[140px] pointer-events-none" 
+            />
+            <div className="absolute w-[350px] h-[350px] rounded-full bg-emerald-500/[0.03] blur-[90px] pointer-events-none" />
+
+            {/* Particle Atmosphere Matrix */}
+            <div className="absolute inset-0 pointer-events-none opacity-30 bg-[radial-gradient(#ffffff_1px,transparent_1px)] [background-size:24px_24px] [mask-image:radial-gradient(ellipse_50%_50%_at_50%_50%,#000_70%,transparent_100%)]" />
+
+            {/* Main Stage Content */}
+            <div className="relative z-20 flex flex-col items-center text-center">
+              
               {/* Spinning Cyber Focus Orbit (visible during loading phase) */}
-              <div className="relative flex items-center justify-center mb-5">
+              <div className="relative flex items-center justify-center mb-6">
                 {phase === "loading" && (
                   <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
@@ -118,123 +131,141 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
                       opacity: { duration: 0.5 },
                       rotate: { duration: 6, ease: "linear", repeat: Infinity }
                     }}
-                    className="absolute w-40 h-40 sm:w-48 sm:h-48 rounded-full border border-dashed border-[#39FF14]/25 pointer-events-none"
+                    className="absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border border-dashed border-[#39FF14]/30 pointer-events-none"
                   />
                 )}
 
-                {/* Logo Badge & Glitch BYD */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8, filter: "blur(12px)" }}
-                  animate={{ 
-                    opacity: 1, 
-                    scale: 1, 
-                    filter: "blur(0px)",
-                  }}
-                  transition={{ duration: 1.2, ease: [0.16, 1, 0.3, 1] }}
-                  className="flex items-center gap-3.5 sm:gap-4"
-                >
-                  {/* Green Rounded App Icon with Cyber Glitch Effect */}
-                  <div className="relative">
-                    <div
-                      className={`w-14 h-14 sm:w-16 sm:h-16 rounded-[18px] bg-gradient-to-br from-[#39FF14] to-[#26c90d] flex items-center justify-center shadow-[0_0_35px_rgba(57,255,20,0.45)] shrink-0 border border-white/20 transition-all ${
-                        phase === "glitch" ? "opacity-90" : ""
-                      }`}
-                    >
-                      <Flame className="w-8 h-8 sm:w-9 sm:h-9 text-black" fill="currentColor" />
+                {/* CINEMATIC REVEAL CONTAINER (Dramatic Glow, Scale, & Flare Entrance) */}
+                <div className="relative flex items-center gap-3 sm:gap-3.5">
+                  
+                  {/* Neon Glow Burst Behind the Reveal */}
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: [0, 1.4, 1], opacity: [0, 0.7, 0.25] }}
+                    transition={{ duration: 1.4, ease: [0.16, 1, 0.3, 1] }}
+                    className="absolute inset-0 rounded-full bg-[#39FF14]/15 blur-xl pointer-events-none"
+                  />
+
+                  {/* 1. App Icon Dramatic Reveal - Sleek & Balanced Size */}
+                  <motion.div
+                    initial={{ scale: 0.2, opacity: 0, rotate: -35, filter: "blur(16px)" }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0, filter: "blur(0px)" }}
+                    transition={{ 
+                      duration: 1.2, 
+                      ease: [0.34, 1.56, 0.64, 1]
+                    }}
+                    className="relative"
+                  >
+                    {/* Glowing outer aura for the icon */}
+                    <motion.div 
+                      animate={{ scale: [1, 1.06, 1], opacity: [0.3, 0.65, 0.3] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                      className="absolute -inset-0.5 rounded-[18px] bg-gradient-to-r from-[#39FF14] to-emerald-400 opacity-50 blur-md pointer-events-none"
+                    />
+
+                    {/* Main Flame Icon Badge */}
+                    <div className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-[16px] bg-gradient-to-br from-[#39FF14] via-[#2bf20b] to-[#1cb805] flex items-center justify-center shadow-[0_0_30px_rgba(57,255,20,0.45)] shrink-0 border border-white/25 overflow-hidden">
+                      {/* Diagonal light sweep inside badge during reveal */}
+                      <motion.div
+                        initial={{ x: "-100%" }}
+                        animate={{ x: "200%" }}
+                        transition={{ delay: 0.6, duration: 1.0, ease: "easeInOut" }}
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/40 to-transparent skew-x-12 pointer-events-none"
+                      />
+                      <Flame className="w-7 h-7 sm:w-8 sm:h-8 text-black" fill="currentColor" />
                     </div>
 
-                    {/* Glitch RGB chromatic ghost overlays during glitch phase */}
+                    {/* Chromatic Ghosting on Icon during Glitch */}
                     {phase === "glitch" && (
                       <>
-                        <div className="absolute inset-0 w-14 h-14 sm:w-16 sm:h-16 rounded-[18px] bg-[#00ffff]/30 flex items-center justify-center pointer-events-none mix-blend-screen animate-glitch-layer-1">
-                          <Flame className="w-8 h-8 sm:w-9 sm:h-9 text-cyan-300" fill="currentColor" />
+                        <div className="absolute inset-0 rounded-[16px] bg-[#00ffff]/30 flex items-center justify-center pointer-events-none mix-blend-screen animate-glitch-layer-1">
+                          <Flame className="w-7 h-7 sm:w-8 sm:h-8 text-cyan-300" fill="currentColor" />
                         </div>
-                        <div className="absolute inset-0 w-14 h-14 sm:w-16 sm:h-16 rounded-[18px] bg-[#ff0055]/30 flex items-center justify-center pointer-events-none mix-blend-screen animate-glitch-layer-2">
-                          <Flame className="w-8 h-8 sm:w-9 sm:h-9 text-rose-400" fill="currentColor" />
+                        <div className="absolute inset-0 rounded-[16px] bg-[#ff0055]/30 flex items-center justify-center pointer-events-none mix-blend-screen animate-glitch-layer-2">
+                          <Flame className="w-7 h-7 sm:w-8 sm:h-8 text-rose-400" fill="currentColor" />
                         </div>
                       </>
                     )}
-                  </div>
+                  </motion.div>
 
-                  {/* BYD Glitch Bold Typography with RGB Chromatic Split & Slice Artifacts */}
-                  <div className="relative select-none">
-                    {/* Main Base Text */}
+                  {/* 2. BYD Logo Dramatic Kinetic Reveal - Sleek & Refined Typography */}
+                  <motion.div
+                    initial={{ x: -20, opacity: 0, filter: "blur(12px)" }}
+                    animate={{ x: 0, opacity: 1, filter: "blur(0px)" }}
+                    transition={{ 
+                      delay: 0.35, 
+                      duration: 1.1, 
+                      ease: [0.16, 1, 0.3, 1] 
+                    }}
+                    className="relative select-none"
+                  >
+                    {/* Primary BYD Text in Rubik Glitch font */}
                     <h1 
                       style={{ fontFamily: "'Rubik Glitch', monospace, sans-serif" }}
-                      className="text-5xl sm:text-6xl md:text-7xl font-normal tracking-wide text-white uppercase drop-shadow-[0_0_25px_rgba(255,255,255,0.4)] flex items-center select-none"
+                      className="text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-white uppercase drop-shadow-[0_0_24px_rgba(255,255,255,0.4)] flex items-center select-none"
                     >
                       BYD
                     </h1>
 
-                    {/* Glitch RGB Chromatic Slices */}
+                    {/* Chromatic Slice Ghosts during Glitch phase */}
                     {phase === "glitch" && (
                       <>
-                        {/* Cyan Sliced Layer */}
                         <h1 
                           aria-hidden="true"
                           style={{ fontFamily: "'Rubik Glitch', monospace, sans-serif" }}
-                          className="absolute inset-0 text-5xl sm:text-6xl md:text-7xl font-normal tracking-wide text-[#00ffea] uppercase flex items-center select-none pointer-events-none mix-blend-screen animate-glitch-layer-1 opacity-80"
+                          className="absolute inset-0 text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-[#00ffea] uppercase flex items-center select-none pointer-events-none mix-blend-screen animate-glitch-layer-1 opacity-75"
                         >
                           BYD
                         </h1>
-                        {/* Magenta Sliced Layer */}
                         <h1 
                           aria-hidden="true"
                           style={{ fontFamily: "'Rubik Glitch', monospace, sans-serif" }}
-                          className="absolute inset-0 text-5xl sm:text-6xl md:text-7xl font-normal tracking-wide text-[#ff0055] uppercase flex items-center select-none pointer-events-none mix-blend-screen animate-glitch-layer-2 opacity-80"
-                        >
-                          BYD
-                        </h1>
-                        {/* Neon Green Slice Flash */}
-                        <h1 
-                          aria-hidden="true"
-                          style={{ fontFamily: "'Rubik Glitch', monospace, sans-serif" }}
-                          className="absolute inset-0 text-5xl sm:text-6xl md:text-7xl font-normal tracking-wide text-[#39FF14] uppercase flex items-center select-none pointer-events-none mix-blend-screen animate-glitch-layer-1 opacity-70 translate-x-1"
+                          className="absolute inset-0 text-4xl sm:text-5xl md:text-6xl font-normal tracking-wide text-[#ff0055] uppercase flex items-center select-none pointer-events-none mix-blend-screen animate-glitch-layer-2 opacity-75"
                         >
                           BYD
                         </h1>
                       </>
                     )}
-                  </div>
-                </motion.div>
+                  </motion.div>
+                </div>
               </div>
 
-              {/* Subtitle: "Block Your Dopamine" in TT Bluescreens Bold Italic */}
+              {/* Subtitle Reveal: "Block Your Dopamine" in TT Bluescreens Bold Italic */}
               <motion.div
-                initial={{ opacity: 0, y: 15 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6, duration: 0.8 }}
+                initial={{ opacity: 0, y: 16, filter: "blur(6px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ delay: 0.8, duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
                 className="mb-2"
               >
                 <h2 
                   style={{ fontFamily: "'TT Bluescreens', 'TT Bluescreens Trl', 'Barlow Condensed', sans-serif" }}
-                  className="text-2xl sm:text-3xl md:text-4xl font-extrabold italic tracking-wider flex items-center justify-center gap-2 select-none uppercase"
+                  className="text-xl sm:text-2xl md:text-3xl font-extrabold italic tracking-wider flex items-center justify-center gap-1.5 select-none uppercase"
                 >
                   <span className="text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">Block Your</span>
                   <span className="text-[#39FF14] drop-shadow-[0_0_20px_rgba(57,255,20,0.6)]">Dopamine</span>
                 </h2>
               </motion.div>
 
-              {/* Creator Credit: "Created by Tasnem Hossen Labib" */}
+              {/* Creator Credit Reveal */}
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                transition={{ delay: 1.0, duration: 0.8 }}
+                transition={{ delay: 1.2, duration: 0.8 }}
                 className="text-xs sm:text-sm font-sans font-medium text-white/50 tracking-wider mb-8"
               >
-                Created by <span className="text-white/80 font-semibold">Tasnem Hossen Labib</span>
+                Created by <span className="text-white/85 font-semibold">Tasnem Hossen Labib</span>
               </motion.p>
 
-              {/* High-Precision Progress Bar + Percentage Counter */}
+              {/* Loading Indicator & Smooth 10s Timeline Progress Bar */}
               <motion.div
-                initial={{ opacity: 0, y: 10 }}
+                initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 1.4, duration: 0.5 }}
+                transition={{ delay: 1.5, duration: 0.5 }}
                 className="w-56 sm:w-72 flex flex-col items-center gap-2"
               >
                 {/* Counter Percentage */}
                 <div className="flex items-center justify-between w-full text-[10px] font-mono text-white/50 px-1">
-                  <span className="uppercase tracking-widest text-[#39FF14]/80">Loading</span>
+                  <span className="uppercase tracking-widest text-[#39FF14]/80 font-semibold">Loading System</span>
                   <span className="font-bold text-white tabular-nums">{progress}%</span>
                 </div>
 
