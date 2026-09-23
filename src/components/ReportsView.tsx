@@ -722,179 +722,24 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
               />
             </div>
 
-            {/* Firebase Saved Reports Segment */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
-              className="bg-[#121212] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 shadow-lg shadow-black/20"
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14]">
-                    <Database className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-sans font-semibold text-white flex items-center gap-2">
-                      Firebase Session Reports
-                      <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-full bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/20">
-                        Cloud Persistent
-                      </span>
-                    </h3>
-                    <p className="text-white/40 text-[13px] font-medium mt-0.5">
-                      Per-user daily sessions, weekly rollups & monthly summaries saved to Firestore
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={handleSyncAllToFirebase}
-                  disabled={isSyncingReports}
-                  className={cn(
-                    "flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer",
-                    syncSuccess 
-                      ? "bg-[#39FF14]/20 text-[#39FF14] border border-[#39FF14]/40"
-                      : "bg-white/[0.05] hover:bg-white/[0.1] text-white border border-white/[0.08]"
-                  )}
-                >
-                  <RefreshCw className={cn("w-3.5 h-3.5", isSyncingReports && "animate-spin")} />
-                  <span>{isSyncingReports ? "Saving to Cloud..." : syncSuccess ? "Reports Saved to Firebase" : "Sync Reports to Firebase"}</span>
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Daily Report Card */}
-                <div 
-                  onClick={() => handleGraphModeChange("daily")}
-                  className={cn(
-                    "p-4 rounded-2xl bg-[#171717] border transition-all cursor-pointer",
-                    graphViewMode === "daily" ? "border-[#39FF14]/50 shadow-[0_0_15px_rgba(57,255,20,0.15)]" : "border-white/[0.06] hover:border-white/[0.15]"
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 font-semibold">Daily Report</span>
-                    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded-full border border-[#39FF14]/20">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse" />
-                      Active
-                    </span>
-                  </div>
-                  <div className="text-sm font-semibold text-white mb-2 truncate">
-                    {todayReportSummary.label}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/[0.04] text-center">
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Focus</div>
-                      <div className="text-xs font-bold text-white font-mono mt-0.5">{todayReportSummary.focusHours}h</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Sessions</div>
-                      <div className="text-xs font-bold text-white font-mono mt-0.5">{todayReportSummary.sessionsCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Score</div>
-                      <div className="text-xs font-bold text-[#39FF14] font-mono mt-0.5">{todayReportSummary.avgScore}%</div>
-                    </div>
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-white/30 font-mono">
-                    <span className="truncate">/{todayReportSummary.docKey}</span>
-                    <span className="text-[#39FF14]/80">Click to view</span>
-                  </div>
-                </div>
-
-                {/* Weekly Report Card */}
-                <div 
-                  onClick={() => handleGraphModeChange("weekly")}
-                  className={cn(
-                    "p-4 rounded-2xl bg-[#171717] border transition-all cursor-pointer",
-                    graphViewMode === "weekly" ? "border-[#39FF14]/50 shadow-[0_0_15px_rgba(57,255,20,0.15)]" : "border-white/[0.06] hover:border-white/[0.15]"
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 font-semibold">Weekly Report</span>
-                    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded-full border border-[#39FF14]/20">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse" />
-                      Active
-                    </span>
-                  </div>
-                  <div className="text-sm font-semibold text-white mb-2 truncate">
-                    {weekReportSummary.label}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/[0.04] text-center">
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Focus</div>
-                      <div className="text-xs font-bold text-white font-mono mt-0.5">{weekReportSummary.focusHours}h</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Sessions</div>
-                      <div className="text-xs font-bold text-white font-mono mt-0.5">{weekReportSummary.sessionsCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Score</div>
-                      <div className="text-xs font-bold text-[#39FF14] font-mono mt-0.5">{weekReportSummary.avgScore}%</div>
-                    </div>
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-white/30 font-mono">
-                    <span className="truncate">/{weekReportSummary.docKey}</span>
-                    <span className="text-[#39FF14]/80">Click to view</span>
-                  </div>
-                </div>
-
-                {/* Monthly Report Card */}
-                <div 
-                  onClick={() => handleGraphModeChange("monthly")}
-                  className={cn(
-                    "p-4 rounded-2xl bg-[#171717] border transition-all cursor-pointer",
-                    graphViewMode === "monthly" ? "border-[#39FF14]/50 shadow-[0_0_15px_rgba(57,255,20,0.15)]" : "border-white/[0.06] hover:border-white/[0.15]"
-                  )}
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-[11px] font-mono uppercase tracking-wider text-white/50 font-semibold">Monthly Report</span>
-                    <span className="flex items-center gap-1.5 text-[10px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded-full border border-[#39FF14]/20">
-                      <div className="w-1.5 h-1.5 rounded-full bg-[#39FF14] animate-pulse" />
-                      Active
-                    </span>
-                  </div>
-                  <div className="text-sm font-semibold text-white mb-2 truncate">
-                    {monthReportSummary.label}
-                  </div>
-                  <div className="grid grid-cols-3 gap-2 py-2 border-y border-white/[0.04] text-center">
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Focus</div>
-                      <div className="text-xs font-bold text-white font-mono mt-0.5">{monthReportSummary.focusHours}h</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Sessions</div>
-                      <div className="text-xs font-bold text-white font-mono mt-0.5">{monthReportSummary.sessionsCount}</div>
-                    </div>
-                    <div>
-                      <div className="text-[10px] text-white/40 uppercase">Score</div>
-                      <div className="text-xs font-bold text-[#39FF14] font-mono mt-0.5">{monthReportSummary.avgScore}%</div>
-                    </div>
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between text-[10px] text-white/30 font-mono">
-                    <span className="truncate">/{monthReportSummary.docKey}</span>
-                    <span className="text-[#39FF14]/80">Click to view</span>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Graphs & Tables Grid */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Graphs & Tables Grid - 1x1 full width per row */}
+            <div className="grid grid-cols-1 gap-6">
               {/* Activity Graph */}
               <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
-                className="lg:col-span-2 bg-[#121212] border border-white/[0.06] rounded-[24px] p-6 sm:p-8 shadow-lg shadow-black/20 flex flex-col justify-between"
+                className="w-full bg-[#121212] border border-white/[0.06] rounded-[24px] p-5 sm:p-6 shadow-lg shadow-black/20 flex flex-col justify-between"
               >
                 <div>
                   {/* Graph Header with Daily / Weekly / Monthly Switcher */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                     <div>
                       <div className="flex items-center gap-2.5">
-                        <h3 className="text-lg font-sans font-semibold text-white">Activity Graph</h3>
-                        <span className="text-[11px] font-mono font-semibold px-2.5 py-0.5 rounded-full bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/20 uppercase tracking-wider">
+                        <h3 className="text-base sm:text-lg font-sans font-semibold text-white">Activity Graph</h3>
+                        <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-[#39FF14]/10 text-[#39FF14] border border-[#39FF14]/20 uppercase tracking-wider">
                           {graphViewMode === 'daily' ? '24H Daily' : graphViewMode === 'weekly' ? '7-Day Weekly' : 'Monthly View'}
                         </span>
                       </div>
-                      <p className="text-white/40 text-[13px] font-medium mt-1">
+                      <p className="text-white/40 text-xs font-medium mt-0.5">
                         {graphViewMode === 'daily' && "Focus distribution by hour for today"}
                         {graphViewMode === 'weekly' && "Daily focus hours over this week"}
                         {graphViewMode === 'monthly' && "Day-by-day focus performance this month"}
@@ -908,7 +753,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                           key={mode}
                           onClick={() => handleGraphModeChange(mode)}
                           className={cn(
-                            "px-3.5 py-1.5 rounded-lg text-xs font-semibold capitalize transition-all duration-200 cursor-pointer",
+                            "px-3 py-1 rounded-lg text-xs font-semibold capitalize transition-all duration-200 cursor-pointer",
                             graphViewMode === mode
                               ? "bg-[#39FF14] text-black shadow-[0_0_12px_rgba(57,255,20,0.35)]"
                               : "text-white/50 hover:text-white hover:bg-white/[0.04]"
@@ -921,30 +766,30 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                   </div>
 
                   {/* Metric Highlights for Selected View */}
-                  <div className="grid grid-cols-3 gap-3 mb-6 p-3 rounded-xl bg-white/[0.02] border border-white/[0.04]">
+                  <div className="grid grid-cols-3 gap-2.5 mb-4 p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.04]">
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40">Total Focus</div>
-                      <div className="text-base font-bold text-white font-mono mt-0.5">
-                        {activeGraphStats.totalHours} <span className="text-xs text-white/40 font-normal">hrs</span>
+                      <div className="text-[9px] uppercase tracking-wider font-semibold text-white/40">Total Focus</div>
+                      <div className="text-sm sm:text-base font-bold text-white font-mono mt-0.5">
+                        {activeGraphStats.totalHours} <span className="text-[11px] text-white/40 font-normal">hrs</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40">Sessions</div>
-                      <div className="text-base font-bold text-white font-mono mt-0.5">
-                        {activeGraphStats.sessionsCount} <span className="text-xs text-white/40 font-normal">total</span>
+                      <div className="text-[9px] uppercase tracking-wider font-semibold text-white/40">Sessions</div>
+                      <div className="text-sm sm:text-base font-bold text-white font-mono mt-0.5">
+                        {activeGraphStats.sessionsCount} <span className="text-[11px] text-white/40 font-normal">total</span>
                       </div>
                     </div>
                     <div>
-                      <div className="text-[10px] uppercase tracking-wider font-semibold text-white/40">Efficiency</div>
-                      <div className="text-base font-bold text-[#39FF14] font-mono mt-0.5">
+                      <div className="text-[9px] uppercase tracking-wider font-semibold text-white/40">Efficiency</div>
+                      <div className="text-sm sm:text-base font-bold text-[#39FF14] font-mono mt-0.5">
                         {activeGraphStats.efficiency}%
                       </div>
                     </div>
                   </div>
                   
-                  <div className="h-[260px] w-full">
+                  <div className="h-[180px] sm:h-[200px] w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={chartData} margin={{ top: 10, right: 5, left: -20, bottom: 0 }}>
+                      <BarChart data={chartData} margin={{ top: 8, right: 10, left: -15, bottom: 0 }}>
                         <defs>
                           <linearGradient id="barGradient" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="0%" stopColor="#39FF14" stopOpacity={1} />
@@ -956,16 +801,16 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                           dataKey="name" 
                           axisLine={false} 
                           tickLine={false} 
-                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: graphViewMode === 'monthly' ? 9 : 11, fontWeight: 500 }}
-                          dy={10}
-                          interval={graphViewMode === 'monthly' ? 2 : 0}
+                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: graphViewMode === 'monthly' ? 10 : 11, fontWeight: 500 }}
+                          dy={6}
+                          interval={graphViewMode === 'monthly' ? (window.innerWidth < 640 ? 3 : 1) : 0}
                         />
                         <YAxis 
                           axisLine={false} 
                           tickLine={false} 
-                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 500 }}
-                          dx={-10}
-                          tickCount={5}
+                          tick={{ fill: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: 500 }}
+                          dx={-8}
+                          tickCount={4}
                         />
                         <Tooltip 
                           cursor={{ fill: 'rgba(255,255,255,0.02)' }}
@@ -974,7 +819,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                             border: '1px solid rgba(255,255,255,0.08)',
                             borderRadius: '12px',
                             boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
-                            padding: '12px'
+                            padding: '10px'
                           }}
                           formatter={(value: any) => [`${value} hrs`, 'Focus Duration']}
                           labelFormatter={(label: any, payload: any) => {
@@ -983,14 +828,14 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                             }
                             return label;
                           }}
-                          itemStyle={{ color: '#39FF14', fontSize: '13px', fontWeight: '600' }}
-                          labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '4px', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
+                          itemStyle={{ color: '#39FF14', fontSize: '12px', fontWeight: '600' }}
+                          labelStyle={{ color: 'rgba(255,255,255,0.5)', marginBottom: '3px', fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}
                         />
                         <Bar 
                           dataKey="hours" 
                           fill="url(#barGradient)" 
                           radius={[4, 4, 0, 0]} 
-                          barSize={graphViewMode === 'daily' ? 8 : graphViewMode === 'weekly' ? 26 : 6}
+                          barSize={graphViewMode === 'daily' ? 16 : graphViewMode === 'weekly' ? 38 : 10}
                           animationDuration={800}
                         >
                           {chartData.map((entry: any, index: number) => (
@@ -1005,7 +850,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-4 mt-2 border-t border-white/[0.04]">
+                <div className="flex items-center justify-between pt-3 mt-1.5 border-t border-white/[0.04]">
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.6)]" />
                     <span className="text-[11px] font-semibold text-white/60 uppercase tracking-wider">
@@ -1021,21 +866,61 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
               {/* Detailed Session Log */}
               <motion.div 
                 initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
-                className="lg:col-span-3 bg-[#121212] border border-white/[0.06] rounded-[24px] shadow-lg shadow-black/20 overflow-hidden flex flex-col"
+                className="w-full bg-[#121212] border border-white/[0.06] rounded-[24px] shadow-lg shadow-black/20 overflow-hidden flex flex-col min-h-[420px]"
               >
-                <div className="p-6 border-b border-white/[0.06] bg-[#121212] flex items-center justify-between z-10 relative">
-                  <h3 className="text-lg font-sans font-semibold text-white">Detailed Session Log</h3>
+                <div className="p-6 border-b border-white/[0.06] bg-[#121212] flex flex-wrap items-center justify-between gap-4 z-10 relative">
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-lg font-sans font-semibold text-white">Detailed Session Log</h3>
+                    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.03] border border-white/[0.06] text-[11px] font-mono text-white/60">
+                      <Database className="w-3 h-3 text-[#39FF14]" />
+                      <span>{sessions.length} sessions</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    {/* Compact Cloud Reports Summary (Daily / Weekly / Monthly) */}
+                    <div className="hidden xl:flex items-center gap-2 text-[11px] font-mono">
+                      <span className="px-2.5 py-1 rounded-lg bg-[#171717] border border-white/[0.06] text-white/70 flex items-center gap-1.5">
+                        <span className="text-white/40">Today:</span>
+                        <strong className="text-white">{todayReportSummary.focusHours}h</strong>
+                        <span className="text-[#39FF14]">({todayReportSummary.avgScore}%)</span>
+                      </span>
+                      <span className="px-2.5 py-1 rounded-lg bg-[#171717] border border-white/[0.06] text-white/70 flex items-center gap-1.5">
+                        <span className="text-white/40">Week:</span>
+                        <strong className="text-white">{weekReportSummary.focusHours}h</strong>
+                      </span>
+                      <span className="px-2.5 py-1 rounded-lg bg-[#171717] border border-white/[0.06] text-white/70 flex items-center gap-1.5">
+                        <span className="text-white/40">Month:</span>
+                        <strong className="text-white">{monthReportSummary.focusHours}h</strong>
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={handleSyncAllToFirebase}
+                      disabled={isSyncingReports}
+                      className={cn(
+                        "flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all shadow-sm cursor-pointer",
+                        syncSuccess 
+                          ? "bg-[#39FF14]/20 text-[#39FF14] border border-[#39FF14]/40"
+                          : "bg-white/[0.05] hover:bg-white/[0.1] text-white/80 hover:text-white border border-white/[0.08]"
+                      )}
+                      title="Sync Daily, Weekly and Monthly Session Reports to Firebase Firestore"
+                    >
+                      <RefreshCw className={cn("w-3.5 h-3.5", isSyncingReports && "animate-spin")} />
+                      <span>{isSyncingReports ? "Syncing..." : syncSuccess ? "Cloud Synced" : "Sync Cloud"}</span>
+                    </button>
+                  </div>
                 </div>
                 
-                <div className="flex-1 overflow-y-auto neon-scrollbar bg-[#090909]/20 relative">
+                <div className="max-h-[460px] overflow-y-auto neon-scrollbar bg-[#090909]/20 relative">
                   <table className="w-full text-left border-collapse">
                     <thead className="sticky top-0 z-10 bg-[#121212] backdrop-blur-md border-b border-white/[0.06]">
                       <tr>
-                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Date & Time</th>
-                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Duration</th>
-                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Status</th>
-                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Detox Score</th>
-                        <th className="px-6 py-4 text-[10px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Resource</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Date & Time</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Duration</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Status</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Detox Score</th>
+                        <th className="px-6 py-4 text-[11px] font-semibold text-white/40 uppercase tracking-widest whitespace-nowrap">Focus Subject / Resource</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/[0.04]">
@@ -1045,7 +930,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex flex-col gap-0.5">
                                 <span className="text-sm font-medium text-white/90">
-                                  {session?.created_at ? new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}
+                                  {session?.created_at ? new Date(session.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'N/A'}
                                 </span>
                                 <span className="text-[11px] text-white/40 font-medium">
                                   {session?.created_at ? new Date(session.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'N/A'}
@@ -1067,7 +952,7 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center gap-3">
-                                <div className="w-16 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                                <div className="w-24 h-1.5 bg-white/10 rounded-full overflow-hidden">
                                   <div 
                                     className="h-full bg-[#39FF14] rounded-full shadow-[0_0_8px_rgba(57,255,20,0.5)]" 
                                     style={{ width: `${session?.is_productive ? 100 : 70}%` }}
@@ -1079,8 +964,8 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="flex items-center gap-2 text-white/50 group-hover:text-white/90 transition-colors">
-                                <span className="text-[13px] font-medium truncate max-w-[120px]">{session?.task_name || 'N/A'}</span>
+                              <div className="flex items-center gap-2 text-white/60 group-hover:text-white/90 transition-colors">
+                                <span className="text-[13px] font-medium">{session?.task_name || 'General Focus'}</span>
                               </div>
                             </td>
                           </tr>

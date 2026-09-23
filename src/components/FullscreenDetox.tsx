@@ -1493,8 +1493,40 @@ export const FullscreenDetox = React.memo(() => {
         className="h-16 border-b border-white/10 flex items-center justify-between px-6 bg-white/5 relative backdrop-blur-md"
         style={{ willChange: 'transform, opacity' }}
       >
-        {/* Left side empty to balance flex layout */}
-        <div className="flex-1"></div>
+        {/* Left side: Ambient Sound Control Trigger & Popover */}
+        <div className="flex-1 flex items-center justify-start">
+          <div className="relative">
+            <button 
+              onClick={() => setIsAmbientSoundOpen(prev => !prev)}
+              className={`h-10 px-3.5 rounded-xl flex items-center gap-2 border transition-all ${
+                isAmbientPlaying
+                  ? 'bg-neon-green/10 border-neon-green/40 text-neon-green shadow-[0_0_15px_rgba(57,255,20,0.25)]'
+                  : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
+              }`}
+              title="Ambient Sound Controls (White Noise, Rain, Lo-Fi)"
+            >
+              <Headphones className="w-4 h-4" />
+              <span className="text-[11px] font-mono font-bold uppercase tracking-wider hidden sm:inline">
+                {isAmbientPlaying 
+                  ? (activeAmbientType === 'white_noise' ? 'White Noise' : activeAmbientType === 'rain' ? 'Rainfall' : 'Lo-Fi') 
+                  : 'Audio'}
+              </span>
+              {isAmbientPlaying && (
+                <span className="flex items-center gap-0.5 ml-0.5">
+                  <span className="w-0.5 h-2 bg-neon-green rounded-full animate-pulse" />
+                  <span className="w-0.5 h-3.5 bg-neon-green rounded-full animate-pulse delay-75" />
+                  <span className="w-0.5 h-1.5 bg-neon-green rounded-full animate-pulse delay-150" />
+                </span>
+              )}
+            </button>
+
+            <AmbientSoundPanel 
+              isOpen={isAmbientSoundOpen} 
+              onClose={() => setIsAmbientSoundOpen(false)} 
+              align="left"
+            />
+          </div>
+        </div>
 
         {/* Center Logo & Text */}
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center justify-center mt-1">
@@ -1537,40 +1569,6 @@ export const FullscreenDetox = React.memo(() => {
           <div className="flex flex-col items-center">
             <DistractionTimerText initialTime={distractionTimeRef.current} isDistracted={isDistracted} />
             <span className="text-[8px] font-bold uppercase tracking-widest text-red-500/50">Distraction</span>
-          </div>
-
-          <div className="h-8 w-[1px] bg-white/10 mx-2"></div>
-
-          {/* Ambient Sound Control Trigger & Popover */}
-          <div className="relative">
-            <button 
-              onClick={() => setIsAmbientSoundOpen(prev => !prev)}
-              className={`h-10 px-3.5 rounded-xl flex items-center gap-2 border transition-all ${
-                isAmbientPlaying
-                  ? 'bg-neon-green/10 border-neon-green/40 text-neon-green shadow-[0_0_15px_rgba(57,255,20,0.25)]'
-                  : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white'
-              }`}
-              title="Ambient Sound Controls (White Noise, Rain, Lo-Fi)"
-            >
-              <Headphones className="w-4 h-4" />
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider hidden sm:inline">
-                {isAmbientPlaying 
-                  ? (activeAmbientType === 'white_noise' ? 'White Noise' : activeAmbientType === 'rain' ? 'Rainfall' : 'Lo-Fi') 
-                  : 'Audio'}
-              </span>
-              {isAmbientPlaying && (
-                <span className="flex items-center gap-0.5 ml-0.5">
-                  <span className="w-0.5 h-2 bg-neon-green rounded-full animate-pulse" />
-                  <span className="w-0.5 h-3.5 bg-neon-green rounded-full animate-pulse delay-75" />
-                  <span className="w-0.5 h-1.5 bg-neon-green rounded-full animate-pulse delay-150" />
-                </span>
-              )}
-            </button>
-
-            <AmbientSoundPanel 
-              isOpen={isAmbientSoundOpen} 
-              onClose={() => setIsAmbientSoundOpen(false)} 
-            />
           </div>
 
           <button 

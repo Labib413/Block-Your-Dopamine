@@ -16,9 +16,10 @@ interface AmbientSoundPanelProps {
   isOpen: boolean;
   onClose: () => void;
   className?: string;
+  align?: 'left' | 'right';
 }
 
-export const AmbientSoundPanel: React.FC<AmbientSoundPanelProps> = ({ isOpen, onClose, className = "" }) => {
+export const AmbientSoundPanel: React.FC<AmbientSoundPanelProps> = ({ isOpen, onClose, className = "", align = 'left' }) => {
   const [isPlaying, setIsPlaying] = useState<boolean>(() => ambientSound.isPlaying());
   const [activeType, setActiveType] = useState<AmbientSoundType>(() => ambientSound.getActiveType() || 'rain');
   const [volume, setVolume] = useState<number>(() => Math.round(ambientSound.getVolume() * 100));
@@ -111,7 +112,7 @@ export const AmbientSoundPanel: React.FC<AmbientSoundPanelProps> = ({ isOpen, on
       />
 
       <div
-        className={`absolute right-0 top-14 w-84 z-[250] bg-[#070707]/95 backdrop-blur-2xl border border-white/10 rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 ${className}`}
+        className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-14 w-84 z-[250] bg-[#070707]/95 backdrop-blur-2xl border border-white/10 rounded-2xl p-5 shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150 ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
