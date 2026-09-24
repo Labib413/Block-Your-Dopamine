@@ -117,8 +117,8 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
               </>
             )}
 
-            {/* Main Center Stage */}
-            <div className="relative z-20 flex flex-col items-center text-center">
+            {/* Main Center Stage - Positioned slightly higher for optical balance */}
+            <div className="relative z-20 flex flex-col items-center text-center -translate-y-5 sm:-translate-y-7">
               
               {/* Spinning Cyber Focus Orbit */}
               <div className="relative flex items-center justify-center mb-6">
@@ -187,7 +187,7 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5, duration: 0.7, ease: "easeOut" }}
-                className="mb-2 transform-gpu"
+                className="transform-gpu"
               >
                 <h2 
                   style={{ fontFamily: "'TT Bluescreens', 'TT Bluescreens Trl', 'Barlow Condensed', sans-serif" }}
@@ -197,30 +197,33 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
                   <span className="text-[#39FF14] drop-shadow-[0_0_15px_rgba(57,255,20,0.6)]">Dopamine</span>
                 </h2>
               </motion.div>
+            </div>
 
-              {/* Creator Credit Reveal */}
+            {/* Bottom Dock: Creator Credit & Loading Animation Bar at the very bottom */}
+            <div className="absolute bottom-6 sm:bottom-8 left-0 right-0 z-30 flex flex-col items-center px-4 pointer-events-none">
+              {/* Creator Credit: "Created by Tasnem Hossen Labib" */}
               <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.8, duration: 0.6 }}
-                className="text-xs sm:text-sm font-sans font-medium text-white/50 tracking-wider mb-8"
+                className="text-xs sm:text-sm font-sans font-medium text-white/50 tracking-wider mb-3.5 select-none"
               >
                 Created by <span className="text-white/85 font-semibold">Tasnem Hossen Labib</span>
               </motion.p>
 
-              {/* Progress Bar with GPU Composited Transform */}
+              {/* Loading Bar Container at bottom */}
               <motion.div
                 initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 1.1, duration: 0.4 }}
-                className="w-56 sm:w-72 flex flex-col items-center gap-2 transform-gpu"
+                className="w-64 sm:w-80 flex flex-col items-center gap-2 transform-gpu"
               >
                 <div className="flex items-center justify-between w-full text-[10px] font-mono text-white/50 px-1">
                   <span className="uppercase tracking-widest text-[#39FF14]/80 font-semibold">Loading System</span>
                   <span className="font-bold text-white tabular-nums">{progress}%</span>
                 </div>
 
-                <div className="w-full h-2 rounded-full bg-white/10 p-[1.5px] border border-white/15 overflow-hidden shadow-inner relative">
+                <div className="w-full h-1.5 sm:h-2 rounded-full bg-white/10 p-[1.5px] border border-white/15 overflow-hidden shadow-inner relative">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-[#39FF14] to-emerald-300 shadow-[0_0_12px_rgba(57,255,20,0.5)] transition-[transform] duration-75 ease-linear origin-left"
                     style={{ transform: `scaleX(${progress / 100})` }}
@@ -232,7 +235,7 @@ export const AppOpeningSplash: React.FC<AppOpeningSplashProps> = ({
             {/* Quick Skip Button in Corner */}
             <button
               onClick={onComplete}
-              className="absolute bottom-6 right-6 px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono font-medium text-white/40 hover:text-white transition-all cursor-pointer z-50 backdrop-blur-md"
+              className="absolute top-6 right-6 sm:bottom-6 sm:top-auto px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-mono font-medium text-white/40 hover:text-white transition-all cursor-pointer z-50 backdrop-blur-md"
             >
               Skip
             </button>
