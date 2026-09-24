@@ -28,7 +28,7 @@ const menuItems = [
 ];
 
 export function Sidebar({ onNavigate, currentView }: { onNavigate: (view: string) => void, currentView: string }) {
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(true);
   const { user, profile } = useApp();
 
   return (
