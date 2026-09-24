@@ -41,6 +41,7 @@ function getLocalTable(table: string): any[] {
 
   const today = new Date().toISOString().split('T')[0];
   if (table === 'profiles') {
+    const isDepex = typeof window !== 'undefined' && localStorage.getItem('byd_depex_mode') === 'true';
     return [{
       id: LOCAL_USER_ID,
       username: 'tasnem',
@@ -51,7 +52,7 @@ function getLocalTable(table: string): any[] {
       subject_group: '',
       year: '',
       gender: 'Male',
-      depex_mode: false
+      depex_mode: isDepex
     }];
   }
   if (table === 'user_streaks') {

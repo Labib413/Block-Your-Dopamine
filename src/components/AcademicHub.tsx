@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { AcademicRoutineView } from "./AcademicRoutineView";
+import { CommunityView } from "./CommunityView";
 import { useApp, AcademicChapter } from "../context/AppContext";
 import { HSC_SYLLABUS } from "../constants";
 
@@ -118,7 +119,19 @@ const SubjectCard = memo(({
 
 SubjectCard.displayName = "SubjectCard";
 
-export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyllabus }: { onBack: () => void, onSubjectClick: (id: string) => void, onStudyNow: (id: string) => void, onCustomizeSyllabus: () => void }) {
+export function AcademicHub({ 
+  onBack, 
+  onSubjectClick, 
+  onStudyNow, 
+  onCustomizeSyllabus,
+  onNavigate 
+}: { 
+  onBack: () => void; 
+  onSubjectClick: (id: string) => void; 
+  onStudyNow: (id: string) => void; 
+  onCustomizeSyllabus: () => void;
+  onNavigate?: (view: string) => void;
+}) {
   const { 
     user, 
     academicSubjects, 
@@ -330,6 +343,7 @@ export function AcademicHub({ onBack, onSubjectClick, onStudyNow, onCustomizeSyl
       )}
 
       {activeTab === 'Set Routine' && <AcademicRoutineView onStudyNow={onStudyNow} />}
+      {activeTab === 'Community' && <CommunityView onNavigate={onNavigate} />}
     </div>
   );
 }

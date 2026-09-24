@@ -1,7 +1,7 @@
 import { useState, FormEvent, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
-import { X, Mail, Lock, User, ArrowRight, Loader2, ShieldCheck } from "lucide-react";
+import { X, Mail, Lock, User, ArrowRight, Loader2, ShieldCheck, Copy, Check, AlertTriangle, UserCheck } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { GlassCard } from "./GlassCard";
 import { logger } from "../lib/logger";
@@ -24,8 +24,12 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [resending, setResending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isUnauthorizedDomain, setIsUnauthorizedDomain] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState(false);
   const [showOtpScreen, setShowOtpScreen] = useState(false);
   const [cooldown, setCooldown] = useState(0);
+
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -36,6 +40,22 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     }
     return () => clearInterval(timer);
   }, [cooldown]);
+
+  const handleCopyDomain = () => {
+    if (currentHost) {
+      navigator.clipboard.writeText(currentHost);
+      setCopiedDomain(true);
+      setTimeout(() => setCopiedDomain(false), 2000);
+    }
+  };
+
+  const handleLocalBypassLogin = () => {
+    onClose();
+    const fallbackUsername = fullName.trim() 
+      ? fullName.toLowerCase().replace(/\s+/g, '_') 
+      : (email.split('@')[0] || "tasnem");
+    navigate(`/${fallbackUsername}/dashboard`, { replace: true });
+  };
 
   const handleResendOtp = async () => {
     if (!email || cooldown > 0) return;
@@ -100,6 +120,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setIsUnauthorizedDomain(false);
 
     try {
       if (isLogin) {
@@ -145,6 +166,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const handleGoogleSignIn = async () => {
     setLoading(true);
     setError(null);
+    setIsUnauthorizedDomain(false);
     try {
       const fbUser = await signInWithGoogle();
       if (fbUser) {
@@ -154,8 +176,13 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       }
     } catch (err: any) {
       logger.error("Google Auth Error:", err);
-      if (err.code !== 'auth/popup-closed-by-user' && err.code !== 'auth/cancelled-popup-request') {
-        setError(err.message || "Google sign-in failed. Please try again.");
+      const code = err?.code || "";
+      const msg = err?.message || "";
+      if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
+        setIsUnauthorizedDomain(true);
+        setError("This domain is not authorized in your Firebase Project.");
+      } else if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        setError(msg || "Google sign-in failed. Please try again.");
       }
     } finally {
       setLoading(false);
@@ -312,7 +339,44 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
                     </div>
                   </div>
 
-                  {error && (
+                  {isUnauthorizedDomain && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: -6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2.5 text-left"
+                    >
+                      <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                        <AlertTriangle className="w-4 h-4 shrink-0" />
+                        <span>Domain Authorization Required</span>
+                      </div>
+                      <p className="text-[11px] text-white/70 leading-relaxed">
+                        To enable Google Sign-In on this deployment, add this domain to Firebase Console (<span className="text-white font-mono">Authentication &gt; Settings &gt; Authorized domains</span>):
+                      </p>
+                      <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-black/50 border border-white/10 font-mono text-[11px] text-[#39FF14]">
+                        <span className="truncate">{currentHost}</span>
+                        <button
+                          type="button"
+                          onClick={handleCopyDomain}
+                          className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white flex items-center gap-1 text-[10px] uppercase font-bold shrink-0 transition-colors"
+                        >
+                          {copiedDomain ? <Check className="w-3 h-3 text-[#39FF14]" /> : <Copy className="w-3 h-3" />}
+                          {copiedDomain ? "Copied" : "Copy"}
+                        </button>
+                      </div>
+                      <div className="pt-1 flex items-center justify-between">
+                        <span className="text-[10px] text-white/40">Want to test immediately?</span>
+                        <button
+                          type="button"
+                          onClick={handleLocalBypassLogin}
+                          className="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-[#39FF14] hover:text-black text-white text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-1.5"
+                        >
+                          <UserCheck className="w-3.5 h-3.5" /> Continue to Workspace
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {error && !isUnauthorizedDomain && (
                     <p className="text-red-400 text-xs mt-2 ml-1">{error}</p>
                   )}
 

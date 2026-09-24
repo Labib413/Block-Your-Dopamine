@@ -18,6 +18,7 @@ import { ReportsView } from "./components/ReportsView";
 import { AcademicHub } from "./components/AcademicHub";
 import { SyllabusView } from "./components/SyllabusView";
 import { CustomizeSyllabusView } from "./components/CustomizeSyllabusView";
+import { CommunityView } from "./components/CommunityView";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 import { BadgeShowroom } from "./components/BadgeShowroom";
@@ -178,10 +179,13 @@ function AppWorkspace() {
               onSubjectClick={setSelectedSubjectId} 
               onStudyNow={handleStudyNow}
               onCustomizeSyllabus={() => setIsCustomizingSyllabus(true)}
+              onNavigate={handleNavigate}
             />
           )
         ) : currentView === "Health" ? (
           <HealthHub onBack={() => handleNavigate("Dashboard")} onNavigate={handleNavigate} />
+        ) : currentView === "Community" ? (
+          <CommunityView onBack={() => handleNavigate("Dashboard")} onNavigate={handleNavigate} />
         ) : currentView === "Reports" ? (
           <ReportsView onBack={() => handleNavigate("Dashboard")} />
         ) : (
