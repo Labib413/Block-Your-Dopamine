@@ -508,7 +508,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
       academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
       academicRoutines: [],
       guardedWebsites: [],
-      depexMode: false
+      depexMode: (() => {
+        try {
+          return localStorage.getItem('byd_depex_mode') === 'true';
+        } catch {
+          return false;
+        }
+      })()
     };
   });
 
@@ -1228,6 +1234,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const toggleDepexMode = useCallback(async () => {
     setState(prev => {
       const nextDepex = !prev.depexMode;
+      try {
+        localStorage.setItem('byd_depex_mode', String(nextDepex));
+      } catch {
+        // ignore localStorage errors
+      }
+
       const next = {
         ...prev,
         depexMode: nextDepex
@@ -1240,6 +1252,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: prev.user.id,
           data: { depex_mode: nextDepex }
         });
+        // Direct eager Firestore sync for profile depex_mode
+        syncItemToFirestore(prev.user.id, 'profiles', { depex_mode: nextDepex }, 'upsert');
       }
       return next;
     });
@@ -1566,7 +1580,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
             gender: pd.gender || 'Male'
           };
           next.gender = pd.gender || prev.gender;
-          next.depexMode = pd.depex_mode || false;
+          if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
+            next.depexMode = Boolean(pd.depex_mode);
+            try {
+              localStorage.setItem('byd_depex_mode', String(next.depexMode));
+            } catch {
+              // ignore
+            }
+          } else {
+            // Keep existing state or localStorage
+            try {
+              const cached = localStorage.getItem('byd_depex_mode');
+              next.depexMode = cached !== null ? cached === 'true' : prev.depexMode;
+            } catch {
+              next.depexMode = prev.depexMode;
+            }
+          }
         }
 
         if (results.tasks?.data) next.tasks = results.tasks.data;
@@ -1904,7 +1933,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
             gender: pd.gender || prev.profile?.gender || 'Male'
           },
           gender: pd.gender || prev.gender,
-          depexMode: pd.depex_mode ?? prev.depexMode
+          depexMode: (() => {
+            if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
+              try { localStorage.setItem('byd_depex_mode', String(pd.depex_mode)); } catch {}
+              return Boolean(pd.depex_mode);
+            }
+            try {
+              const cached = localStorage.getItem('byd_depex_mode');
+              return cached !== null ? cached === 'true' : prev.depexMode;
+            } catch {
+              return prev.depexMode;
+            }
+          })()
         }));
       },
       onAcademicChapters: (cloudChapters) => {
