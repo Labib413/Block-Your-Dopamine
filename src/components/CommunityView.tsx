@@ -25,6 +25,7 @@ import {
   FlameKindling,
   Target,
   Award,
+  Shield,
   X
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
@@ -86,6 +87,90 @@ interface DetoxChallenge {
   endsInDays: number;
   goal: string;
 }
+
+interface Guild {
+  id: string;
+  name: string;
+  tag: string;
+  description: string;
+  leader: string;
+  membersCount: number;
+  maxMembers: number;
+  level: number;
+  rank: number;
+  totalXp: number;
+  weeklyGoalHours: number;
+  joined: boolean;
+  category: "Engineering" | "Medical" | "Varsity" | "General" | "HSC";
+  perks: string;
+}
+
+const INITIAL_GUILDS: Guild[] = [
+  {
+    id: "g1",
+    name: "BUET Pioneers",
+    tag: "BUET",
+    description: "Dedicated to intense problem solving, higher mathematics, and hardcore engineering entrance prep.",
+    leader: "Tanvir Hasan",
+    membersCount: 48,
+    maxMembers: 50,
+    level: 12,
+    rank: 1,
+    totalXp: 184500,
+    weeklyGoalHours: 350,
+    joined: false,
+    category: "Engineering",
+    perks: "+10% Focus XP Buff & BUET Question Bank"
+  },
+  {
+    id: "g2",
+    name: "DMC Medicos Syndicate",
+    tag: "DMC",
+    description: "Daily biology memorization, medical question bank mastery, and zero-distraction grinds.",
+    leader: "Nabila Tabassum",
+    membersCount: 42,
+    maxMembers: 50,
+    level: 10,
+    rank: 2,
+    totalXp: 162000,
+    weeklyGoalHours: 320,
+    joined: true,
+    category: "Medical",
+    perks: "+8% Bio Mastery Buff & Med Flashcards"
+  },
+  {
+    id: "g3",
+    name: "Apex Scholars (DU Ka)",
+    tag: "APEX",
+    description: "Pure science champions competing for top national varsity ranks with disciplined routines.",
+    leader: "Farhan Ahmed",
+    membersCount: 36,
+    maxMembers: 50,
+    level: 8,
+    rank: 3,
+    totalXp: 139200,
+    weeklyGoalHours: 280,
+    joined: false,
+    category: "Varsity",
+    perks: "+5% Daily Streak Protection"
+  },
+  {
+    id: "g4",
+    name: "Monk Mode Elite",
+    tag: "MONK",
+    description: "Strict dopamine detox, 6+ hours daily net focus, and extreme discipline for HSC 2026.",
+    leader: "Sabbir Hossain",
+    membersCount: 29,
+    maxMembers: 30,
+    level: 7,
+    rank: 4,
+    totalXp: 118400,
+    weeklyGoalHours: 250,
+    joined: false,
+    category: "HSC",
+    perks: "Exclusive Monk Mode Audio & Emblems"
+  }
+];
 
 const INITIAL_MEMBERS: CommunityMember[] = [
   {
@@ -239,7 +324,7 @@ const INITIAL_POSTS: CommunityPost[] = [
 export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onNavigate?: (view: string) => void }) {
   const { user, profile, streak, level, xp, totalNetFocusTime, detoxPercent, equippedBadges, isFocusing } = useApp();
   
-  const [activeTab, setActiveTab] = useState<"Leaderboard" | "Live Pods" | "Feed" | "Challenges">("Leaderboard");
+  const [activeTab, setActiveTab] = useState<"Leaderboard" | "Live Pods" | "Feed" | "Challenges" | "Guild">("Leaderboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [leaderboardFilter, setLeaderboardFilter] = useState<"All Time" | "Weekly" | "Today">("All Time");
   
@@ -253,6 +338,19 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     return saved ? JSON.parse(saved) : INITIAL_CHALLENGES;
   });
 
+  const [guilds, setGuilds] = useState<Guild[]>(() => {
+    const saved = localStorage.getItem("byd_community_guilds");
+    return saved ? JSON.parse(saved) : INITIAL_GUILDS;
+  });
+
+  const [guildFilter, setGuildFilter] = useState<string>("All");
+  const [guildSearch, setGuildSearch] = useState<string>("");
+  const [isCreateGuildOpen, setIsCreateGuildOpen] = useState(false);
+  const [newGuildName, setNewGuildName] = useState("");
+  const [newGuildTag, setNewGuildTag] = useState("");
+  const [newGuildDesc, setNewGuildDesc] = useState("");
+  const [newGuildCategory, setNewGuildCategory] = useState<Guild["category"]>("Engineering");
+
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
 
@@ -265,6 +363,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   useEffect(() => {
     localStorage.setItem("byd_community_challenges", JSON.stringify(challenges));
   }, [challenges]);
+
+  // Sync guilds to localStorage
+  useEffect(() => {
+    localStorage.setItem("byd_community_guilds", JSON.stringify(guilds));
+  }, [guilds]);
 
   const currentUsername = profile?.username || user?.user_metadata?.username || user?.email?.split("@")[0] || "you";
   const currentFullName = profile?.fullName || user?.user_metadata?.full_name || "Tasnem Hossen";
@@ -369,6 +472,60 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     }));
   };
 
+  const handleToggleGuild = (guildId: string) => {
+    setGuilds(prev => prev.map(g => {
+      if (g.id !== guildId) return g;
+      const nextJoined = !g.joined;
+      return {
+        ...g,
+        joined: nextJoined,
+        membersCount: nextJoined ? g.membersCount + 1 : Math.max(1, g.membersCount - 1)
+      };
+    }));
+  };
+
+  const handleCreateGuild = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newGuildName.trim() || !newGuildTag.trim()) return;
+
+    const newGuild: Guild = {
+      id: `g_${Date.now()}`,
+      name: newGuildName.trim(),
+      tag: newGuildTag.trim().toUpperCase(),
+      description: newGuildDesc.trim() || "A high-focus academic syndicate dedicated to zero distractions.",
+      leader: currentFullName,
+      membersCount: 1,
+      maxMembers: 50,
+      level: 1,
+      rank: guilds.length + 1,
+      totalXp: 2500,
+      weeklyGoalHours: 200,
+      joined: true,
+      category: newGuildCategory,
+      perks: "+5% Synergy Focus Boost"
+    };
+
+    setGuilds(prev => [newGuild, ...prev]);
+    setIsCreateGuildOpen(false);
+    setNewGuildName("");
+    setNewGuildTag("");
+    setNewGuildDesc("");
+  };
+
+  const filteredGuilds = useMemo(() => {
+    return guilds.filter(g => {
+      const matchesSearch = g.name.toLowerCase().includes(guildSearch.toLowerCase()) || 
+                            g.tag.toLowerCase().includes(guildSearch.toLowerCase()) ||
+                            g.description.toLowerCase().includes(guildSearch.toLowerCase());
+      const matchesCategory = guildFilter === "All" || g.category === guildFilter;
+      return matchesSearch && matchesCategory;
+    });
+  }, [guilds, guildSearch, guildFilter]);
+
+  const userJoinedGuild = useMemo(() => {
+    return guilds.find(g => g.joined);
+  }, [guilds]);
+
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide p-8 space-y-8">
       {/* Header Banner */}
@@ -419,7 +576,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
       {/* Navigation Tabs */}
       <div className="flex items-center gap-2 p-1.5 bg-[#0e0e0e] border border-white/[0.06] rounded-2xl w-fit">
-        {(["Leaderboard", "Live Pods", "Feed", "Challenges"] as const).map((tab) => (
+        {(["Leaderboard", "Live Pods", "Feed", "Challenges", "Guild"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -434,6 +591,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
             {tab === "Live Pods" && <Radio className="w-3.5 h-3.5" />}
             {tab === "Feed" && <MessageSquare className="w-3.5 h-3.5" />}
             {tab === "Challenges" && <Target className="w-3.5 h-3.5" />}
+            {tab === "Guild" && <Shield className="w-3.5 h-3.5" />}
             {tab}
             {tab === "Live Pods" && (
               <span className={cn(
@@ -876,6 +1034,280 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
           </div>
         </div>
       )}
+
+      {/* Tab 5: Guild */}
+      {activeTab === "Guild" && (
+        <div className="space-y-6">
+          {/* Active Guild Banner if Joined */}
+          {userJoinedGuild && (
+            <GlassCard className="p-6 border-[#39FF14]/30 relative overflow-hidden bg-gradient-to-r from-[#39FF14]/10 via-black to-transparent">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/40 flex items-center justify-center shadow-[0_0_20px_rgba(57,255,20,0.2)]">
+                    <Shield className="w-7 h-7 text-[#39FF14]" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-md bg-[#39FF14]/20 border border-[#39FF14]/40 text-[#39FF14] text-[10px] font-mono font-bold">
+                        [{userJoinedGuild.tag}]
+                      </span>
+                      <h3 className="text-xl font-bold text-white tracking-tight">{userJoinedGuild.name}</h3>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-semibold">
+                        Rank #{userJoinedGuild.rank}
+                      </span>
+                    </div>
+                    <p className="text-xs text-white/50 mt-1 font-sans max-w-xl">{userJoinedGuild.description}</p>
+                    <div className="flex items-center gap-4 mt-2 text-[11px] font-mono">
+                      <span className="text-[#39FF14] flex items-center gap-1 font-bold">
+                        <Zap className="w-3.5 h-3.5" /> {userJoinedGuild.perks}
+                      </span>
+                      <span className="text-white/40">•</span>
+                      <span className="text-white/60">Leader: {userJoinedGuild.leader}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-4 md:pt-0 border-white/10">
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-white/40 block">Guild Total XP</span>
+                    <span className="text-base font-bold font-mono text-[#FFD700]">{(userJoinedGuild.totalXp).toLocaleString()} XP</span>
+                  </div>
+                  <button
+                    onClick={() => handleToggleGuild(userJoinedGuild.id)}
+                    className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold uppercase tracking-wider transition-colors"
+                  >
+                    Leave Guild
+                  </button>
+                </div>
+              </div>
+            </GlassCard>
+          )}
+
+          {/* Search, Filter & Create Guild Controls */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+              <div className="relative w-full sm:w-72">
+                <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  placeholder="Search guild name or tag..."
+                  value={guildSearch}
+                  onChange={(e) => setGuildSearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                />
+              </div>
+
+              {/* Category Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                {(["All", "Engineering", "Medical", "Varsity", "HSC"] as const).map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setGuildFilter(cat)}
+                    className={cn(
+                      "px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors",
+                      guildFilter === cat
+                        ? "bg-[#39FF14]/20 border border-[#39FF14]/50 text-[#39FF14]"
+                        : "bg-white/5 border border-white/5 text-white/50 hover:text-white hover:bg-white/10"
+                    )}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Create Guild Button */}
+            <button
+              onClick={() => setIsCreateGuildOpen(true)}
+              className="px-4 py-2.5 rounded-xl bg-[#39FF14] hover:bg-[#32e012] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(57,255,20,0.25)] transition-all shrink-0 w-full sm:w-auto justify-center"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Guild</span>
+            </button>
+          </div>
+
+          {/* Guilds Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {filteredGuilds.map((guild) => (
+              <GlassCard key={guild.id} className="p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all">
+                <div className="space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-base text-[#39FF14]">
+                        [{guild.tag}]
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="text-base font-bold text-white leading-tight">{guild.name}</h4>
+                          <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60">
+                            Lv.{guild.level}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-white/40 mt-0.5">Leader: <span className="text-white/70 font-medium">{guild.leader}</span></p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col items-end">
+                      <span className="text-xs font-mono font-bold text-[#FFD700] flex items-center gap-1">
+                        <Trophy className="w-3.5 h-3.5" /> #{guild.rank}
+                      </span>
+                      <span className="text-[10px] text-white/30 uppercase font-semibold mt-0.5">{guild.category}</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-white/50 leading-relaxed font-sans">{guild.description}</p>
+
+                  <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2 text-xs text-[#39FF14]">
+                    <Zap className="w-3.5 h-3.5 shrink-0" />
+                    <span className="text-[11px] font-medium">{guild.perks}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-4 pt-4 border-t border-white/5">
+                  <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                      <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Total XP</span>
+                      <span className="text-white font-bold">{guild.totalXp.toLocaleString()} XP</span>
+                    </div>
+                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                      <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Warriors</span>
+                      <span className="text-white font-bold">{guild.membersCount}/{guild.maxMembers}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4 pt-1">
+                    <div className="flex items-center gap-1.5 text-xs text-white/40 font-mono">
+                      <Users className="w-3.5 h-3.5 text-white/30" />
+                      <span>{guild.weeklyGoalHours}h weekly goal</span>
+                    </div>
+
+                    <button
+                      onClick={() => handleToggleGuild(guild.id)}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200",
+                        guild.joined
+                          ? "bg-white/10 text-white border border-white/20 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30"
+                          : "bg-[#39FF14] hover:bg-[#32e012] text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]"
+                      )}
+                    >
+                      {guild.joined ? "Joined ✓" : "Join Guild"}
+                    </button>
+                  </div>
+                </div>
+              </GlassCard>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Create Guild Modal */}
+      <AnimatePresence>
+        {isCreateGuildOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-[#0d0d0d] border border-white/10 rounded-3xl p-6 space-y-6 shadow-2xl relative"
+            >
+              <button
+                onClick={() => setIsCreateGuildOpen(false)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/30 flex items-center justify-center shadow-[0_0_15px_rgba(57,255,20,0.2)]">
+                  <Shield className="w-6 h-6 text-[#39FF14]" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white tracking-tight">Found a New Guild</h3>
+                  <p className="text-xs text-white/40 mt-0.5 font-medium">Create a study syndicate for your batch or college.</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleCreateGuild} className="space-y-4">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Guild Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g., BUET Titan Squad, Medico Elite"
+                    value={newGuildName}
+                    onChange={(e) => setNewGuildName(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Guild Tag (Max 5 chars)</label>
+                    <input
+                      type="text"
+                      required
+                      maxLength={5}
+                      placeholder="e.g. BUET, TITAN"
+                      value={newGuildTag}
+                      onChange={(e) => setNewGuildTag(e.target.value.toUpperCase())}
+                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 font-mono uppercase focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Target Domain</label>
+                    <select
+                      value={newGuildCategory}
+                      onChange={(e) => setNewGuildCategory(e.target.value as Guild["category"])}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                    >
+                      <option value="Engineering">Engineering</option>
+                      <option value="Medical">Medical</option>
+                      <option value="Varsity">Varsity</option>
+                      <option value="HSC">HSC</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Guild Mission / Description</label>
+                  <textarea
+                    rows={3}
+                    placeholder="Describe your guild's focus, daily goals, and target exam..."
+                    value={newGuildDesc}
+                    onChange={(e) => setNewGuildDesc(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors resize-none"
+                  />
+                </div>
+
+                <div className="p-3 rounded-xl bg-[#39FF14]/5 border border-[#39FF14]/20 flex items-center gap-3">
+                  <Sparkles className="w-4 h-4 text-[#39FF14] shrink-0" />
+                  <p className="text-[11px] text-white/60 leading-relaxed">
+                    Founding members receive an immediate <span className="text-[#39FF14] font-bold">+5% Synergy Focus Boost</span> and exclusive guild leader emblem.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateGuildOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 rounded-xl bg-[#39FF14] hover:bg-[#32e012] text-black text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(57,255,20,0.25)]"
+                  >
+                    Found Guild
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Member Profile Modal */}
       <AnimatePresence>

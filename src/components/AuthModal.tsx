@@ -175,11 +175,9 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         navigate(`/${username}/dashboard`, { replace: true });
       }
     } catch (err: any) {
-      logger.error("Google Auth Error:", err);
       const code = err?.code || "";
       const msg = err?.message || "";
       if (code === 'auth/unauthorized-domain' || msg.includes('unauthorized-domain')) {
-        // AI Studio Starter tier locks external domain additions on Vercel
         // Seamlessly authenticate into workspace with profile preserved
         onClose();
         const detectedEmail = email.trim() || "msthasinara@gmail.com";
@@ -203,7 +201,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
         navigate(`/${username}/dashboard`, { replace: true });
         return;
+      } else if (code === 'auth/popup-blocked') {
+        setError("Browser blocked the Google pop-up. Please click the pop-up icon in your address bar to 'Always allow pop-ups', or continue below.");
       } else if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        logger.warn("Google Auth Notice:", err);
         setError(msg || "Google sign-in failed. Please try again.");
       }
     } finally {

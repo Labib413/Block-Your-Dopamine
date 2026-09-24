@@ -32,7 +32,7 @@ export const useDisplayState = () => {
   const finalState = useMemo(() => {
     // যদি ডাটা লোড হতে থাকে বা ইউজার না থাকে
     if (!context.user || !context.isAuthReady) {
-      return { ...context, ...SAMPLE_GUEST_STATE, isLoading: context.isAuthLoading };
+      return { ...context, ...SAMPLE_GUEST_STATE, isLoading: !context.isAuthReady || context.isDataLoading };
     }
 
     // সার্ভার থেকে আসা ডাটা অ্যাপের স্টেটের সাথে মার্জ করা

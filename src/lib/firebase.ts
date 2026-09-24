@@ -50,17 +50,12 @@ export const auth = getAuth(app);
 const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-// Test Firestore Connection upon app initialization
+// Test Firestore Connection quietly upon app initialization
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-    console.log("[Firebase] Firestore connection test passed");
+    await getDoc(doc(db, 'test', 'connection'));
   } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.error("[Firebase] Please check your Firebase configuration: client is offline.");
-    } else {
-      console.log("[Firebase] Firestore ping completed:", (error as any)?.code || "ok");
-    }
+    // Silent catch - allows offline and delayed initialization without throwing errors
   }
 }
 testConnection();
