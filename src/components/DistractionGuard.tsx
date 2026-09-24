@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { 
   ShieldAlert, 
   Plus, 
@@ -284,104 +285,112 @@ export function DistractionGuard() {
         </div>
       </div>
 
-      {/* Access Denied Overlay */}
-      <AnimatePresence>
-        {deniedSite && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md"
-            onClick={() => setDeniedSite(null)}
-          >
+      {/* Access Denied Overlay - Portaled directly to body for true center positioning and highest z-index */}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {deniedSite && (
             <motion.div 
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-black border border-red-500 rounded-[32px] p-8 max-w-sm w-full text-center shadow-[0_0_100px_rgba(239,68,68,0.3)]"
-              onClick={e => e.stopPropagation()}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-black/85 backdrop-blur-md"
+              onClick={() => setDeniedSite(null)}
             >
-              <div className="w-20 h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(239,68,68,0.4)]">
-                <Lock className="w-10 h-10 text-red-500" />
-              </div>
-              <h2 className="text-3xl font-sans font-black text-red-500 uppercase tracking-tighter mb-2 italic">ACCESS DENIED</h2>
-              <p className="text-white/60 text-sm leading-relaxed mb-6 font-medium uppercase tracking-wider">
-                BYD PROTOCOL ACTIVE.<br/>
-                <span className="text-red-500">{deniedSite.name}</span> IS LOCKED FOR ANOTHER <span className="text-white font-bold">{getRemainingTime(deniedSite)} MINUTES</span>.
-              </p>
-              <button 
-                onClick={() => setDeniedSite(null)}
-                className="w-full py-4 rounded-2xl bg-red-500 text-white font-black text-xs uppercase tracking-widest hover:bg-white hover:text-red-500 transition-all"
+              <motion.div 
+                initial={{ scale: 0.9, y: 20 }}
+                animate={{ scale: 1, y: 0 }}
+                exit={{ scale: 0.9, y: 20 }}
+                className="bg-black border border-red-500 rounded-[28px] sm:rounded-[32px] p-6 sm:p-8 max-w-sm w-full text-center shadow-[0_0_100px_rgba(239,68,68,0.35)] relative overflow-hidden"
+                onClick={e => e.stopPropagation()}
               >
-                ACKNOWLEDGE
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Depex Confirmation Modal */}
-      <AnimatePresence>
-        {showConfirmDepex && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/60 backdrop-blur-sm"
-          >
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 10 }}
-              animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className="bg-[#1a1d21] border border-gray-800 rounded-2xl p-8 max-w-md w-full shadow-2xl relative overflow-hidden"
-            >
-              <div className="flex flex-col items-center text-center">
-                <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mb-6 border border-red-500/20">
-                  <AlertTriangle className="w-7 h-7 text-red-500" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-5 shadow-[0_0_30px_rgba(239,68,68,0.4)]">
+                  <Lock className="w-8 h-8 sm:w-10 sm:h-10 text-red-500" />
                 </div>
-                
-                <h2 className="text-2xl font-sans font-bold text-white tracking-tight mb-2">Activate Depex Mode?</h2>
-                <p className="text-gray-400 text-sm mb-6 px-4">
-                  This action will apply strict, global focus restraints:
+                <h2 className="text-2xl sm:text-3xl font-sans font-black text-red-500 uppercase tracking-tighter mb-2 italic">ACCESS DENIED</h2>
+                <p className="text-white/70 text-xs sm:text-sm leading-relaxed mb-6 font-medium uppercase tracking-wider">
+                  BYD PROTOCOL ACTIVE.<br/>
+                  <span className="text-red-500 font-bold">{deniedSite.name}</span> IS LOCKED FOR ANOTHER <span className="text-white font-bold">{getRemainingTime(deniedSite)} MINUTES</span>.
                 </p>
-                
-                <div className="w-full space-y-3 mb-8 text-left bg-black/20 p-5 rounded-xl border border-white/5">
-                  <div className="flex items-start gap-3">
-                    <div className="w-1 h-1 rounded-full bg-red-500 mt-2 flex-shrink-0" />
-                    <p className="text-sm text-gray-300 leading-tight">All active website locks become permanent.</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-1 h-1 rounded-full bg-red-500 mt-2 flex-shrink-0" />
-                    <p className="text-sm text-gray-300 leading-tight">Edit and delete functions are disabled.</p>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-1 h-1 rounded-full bg-red-500 mt-2 flex-shrink-0" />
-                    <p className="text-sm text-gray-300 leading-tight">Global UI restraints are applied.</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end w-full gap-3">
-                  <button 
-                    onClick={() => setShowConfirmDepex(false)}
-                    className="px-6 py-2.5 rounded-xl border border-gray-700 text-gray-400 font-bold text-xs hover:bg-white/5 hover:text-white transition-all"
-                  >
-                    Cancel
-                  </button>
-                  <button 
-                    onClick={() => {
-                      toggleDepexMode();
-                      setShowConfirmDepex(false);
-                    }}
-                    className="px-6 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs hover:bg-red-500 transition-all shadow-[0_0_15px_rgba(220,38,38,0.3)] active:scale-95"
-                  >
-                    Confirm Depex
-                  </button>
-                </div>
-              </div>
+                <button 
+                  onClick={() => setDeniedSite(null)}
+                  className="w-full py-3.5 sm:py-4 rounded-xl sm:rounded-2xl bg-red-500 text-white font-black text-xs uppercase tracking-widest hover:bg-white hover:text-red-500 transition-all cursor-pointer shadow-[0_0_20px_rgba(239,68,68,0.3)]"
+                >
+                  ACKNOWLEDGE
+                </button>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+
+      {/* Depex Confirmation Modal - Portaled directly to body for true center positioning and highest z-index */}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {showConfirmDepex && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 bg-black/80 backdrop-blur-md"
+              onClick={() => setShowConfirmDepex(false)}
+            >
+              <motion.div 
+                initial={{ scale: 0.95, opacity: 0, y: 10 }}
+                animate={{ scale: 1, opacity: 1, y: 0 }}
+                exit={{ scale: 0.95, opacity: 0, y: 10 }}
+                className="bg-[#121417] border border-gray-700/80 rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-[0_0_60px_rgba(0,0,0,0.8)] relative overflow-hidden"
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex flex-col items-center text-center">
+                  <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center mb-5 border border-red-500/20 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+                    <AlertTriangle className="w-7 h-7 text-red-500" />
+                  </div>
+                  
+                  <h2 className="text-xl sm:text-2xl font-sans font-bold text-white tracking-tight mb-2">Activate Depex Mode?</h2>
+                  <p className="text-gray-400 text-xs sm:text-sm mb-6 px-2">
+                    This action will apply strict, global focus restraints:
+                  </p>
+                  
+                  <div className="w-full space-y-3 mb-6 text-left bg-black/40 p-4 sm:p-5 rounded-xl border border-white/5">
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">All active website locks become permanent.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Edit and delete functions are disabled.</p>
+                    </div>
+                    <div className="flex items-start gap-3">
+                      <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
+                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Global UI restraints are applied.</p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-end w-full gap-3">
+                    <button 
+                      onClick={() => setShowConfirmDepex(false)}
+                      className="px-5 py-2.5 rounded-xl border border-gray-700 text-gray-400 font-bold text-xs hover:bg-white/5 hover:text-white transition-all cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button 
+                      onClick={() => {
+                        toggleDepexMode();
+                        setShowConfirmDepex(false);
+                      }}
+                      className="px-5 py-2.5 rounded-xl bg-red-600 text-white font-bold text-xs hover:bg-red-500 transition-all shadow-[0_0_15px_rgba(220,38,38,0.3)] active:scale-95 cursor-pointer"
+                    >
+                      Confirm Depex
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </GlassCard>
   );
 }
