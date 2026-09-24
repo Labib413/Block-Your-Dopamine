@@ -31,7 +31,11 @@ import {
   Leaf,
   Cloud,
   RefreshCw,
-  Lightbulb
+  Lightbulb,
+  Download,
+  Upload,
+  Database,
+  FileCheck
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
@@ -287,6 +291,91 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
   const handleSync = async () => {
     if (isSyncing) return;
     await syncData();
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleExportData = () => {
+    try {
+      const backupData: Record<string, any> = {
+        exportedAt: new Date().toISOString(),
+        version: "1.0",
+        profile: {
+          ...formData,
+          email: user?.email || "",
+          username: user?.username || profile?.username || "user"
+        },
+        storage: {}
+      };
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('byd_') || key.startsWith('app_') || key.includes('syllabus') || key.includes('routine') || key.includes('task'))) {
+          try {
+            backupData.storage[key] = JSON.parse(localStorage.getItem(key) || 'null');
+          } catch {
+            backupData.storage[key] = localStorage.getItem(key);
+          }
+        }
+      }
+
+      const blob = new Blob([JSON.stringify(backupData, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const filename = `BYD_Backup_${formData.fullName.replace(/\s+/g, '_') || 'user'}_${new Date().toISOString().split('T')[0]}.json`;
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      addNotification("Backup Downloaded", "Your complete profile, syllabus, and progress data have been exported successfully.");
+    } catch (err) {
+      logger.error("Export failed:", err);
+      addNotification("Export Failed", "Could not create data backup. Please try again.");
+    }
+  };
+
+  const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+
+        if (parsed.storage && typeof parsed.storage === 'object') {
+          Object.entries(parsed.storage).forEach(([key, val]) => {
+            if (val !== undefined && val !== null) {
+              localStorage.setItem(key, typeof val === 'object' ? JSON.stringify(val) : String(val));
+            }
+          });
+        }
+
+        if (parsed.profile) {
+          await updateProfile({
+            fullName: parsed.profile.fullName || formData.fullName,
+            institution: parsed.profile.institution || formData.institution,
+            class: parsed.profile.class || formData.class,
+            subjectGroup: parsed.profile.subject || formData.subject,
+            year: parsed.profile.year || formData.year,
+            gender: parsed.profile.gender || formData.gender
+          });
+        }
+
+        addNotification("Data Restored", "Your backup was restored successfully. Reloading system...");
+        setTimeout(() => {
+          window.location.reload();
+        }, 1200);
+      } catch (err) {
+        logger.error("Import failed:", err);
+        addNotification("Restore Failed", "Invalid backup file format. Please check the file.");
+      }
+    };
+    reader.readAsText(file);
   };
 
   // Visual State Logic: Check if synced with system time
@@ -695,6 +784,48 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                 Your data is synced with Central Time Engine. 
                 Last synced: {lastSyncTime || "Just now"}.
               </p>
+            </div>
+          </div>
+
+          {/* Data Backup & Export Card */}
+          <div className="p-7 rounded-[32px] bg-white/[0.02] backdrop-blur-2xl border border-white/10 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-bl from-[#00ff66]/5 to-transparent pointer-events-none" />
+            
+            <div className="flex items-center gap-3 mb-3 relative z-10">
+              <Database className="w-5 h-5 text-[#00ff66]" />
+              <h3 className="text-base font-bold text-white/90">Data Backup & Export</h3>
+            </div>
+            
+            <p className="text-[11px] text-white/50 leading-relaxed mb-6 relative z-10 font-medium">
+              Export all your profile records, focus hours, syllabus completion, routines, and badges as a standalone JSON backup file.
+            </p>
+
+            <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleImportData} 
+              accept=".json,application/json" 
+              className="hidden" 
+            />
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 relative z-10">
+              <button
+                type="button"
+                onClick={handleExportData}
+                className="py-3.5 px-4 rounded-xl bg-[#00ff66]/10 hover:bg-[#00ff66]/20 border border-[#00ff66]/30 text-[#00ff66] text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98] shadow-[0_0_15px_rgba(0,255,102,0.15)]"
+              >
+                <Download className="w-4 h-4" />
+                Export JSON
+              </button>
+
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="py-3.5 px-4 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white/80 hover:text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              >
+                <Upload className="w-4 h-4" />
+                Import Backup
+              </button>
             </div>
           </div>
 

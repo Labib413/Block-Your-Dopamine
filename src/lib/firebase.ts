@@ -25,21 +25,23 @@ import {
 import localFirebaseConfig from '../../firebase-applet-config.json';
 
 const resolvedConfig = {
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (localFirebaseConfig as any)?.projectId || "strange-chord-g8chg",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (localFirebaseConfig as any)?.appId || "1:128361356379:web:14b35bce8e0b74e4c7f37e",
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (localFirebaseConfig as any)?.apiKey || "AIzaSyDK2dN8WDM5sFCeLGkUwITES3jWChxpNwE",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (localFirebaseConfig as any)?.authDomain || "strange-chord-g8chg.firebaseapp.com",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || (localFirebaseConfig as any)?.firestoreDatabaseId || "ai-studio-bydblockyourdopa-32c39fe0-3899-42d7-a769-18e607d26b2d",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (localFirebaseConfig as any)?.storageBucket || "strange-chord-g8chg.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (localFirebaseConfig as any)?.messagingSenderId || "128361356379",
-  oAuthClientId: import.meta.env.VITE_FIREBASE_OAUTH_CLIENT_ID || (localFirebaseConfig as any)?.oAuthClientId || "128361356379-7miof413g0nq7n3qq5nm91886shvg6do.apps.googleusercontent.com"
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (localFirebaseConfig as any)?.projectId || "byd-block-your-dopamine",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || (localFirebaseConfig as any)?.appId || "1:745556836846:web:78f106f621f631cdfd4eff",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (localFirebaseConfig as any)?.apiKey || "AIzaSyAKXUQRtdmZcF603nYAYhD_7qII75I_SWE",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (localFirebaseConfig as any)?.authDomain || "byd-block-your-dopamine.firebaseapp.com",
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || (localFirebaseConfig as any)?.firestoreDatabaseId || "(default)",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (localFirebaseConfig as any)?.storageBucket || "byd-block-your-dopamine.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (localFirebaseConfig as any)?.messagingSenderId || "745556836846",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (localFirebaseConfig as any)?.measurementId || "G-P4LJ3HDY7G"
 };
 
 // Initialize Firebase App
 const app = initializeApp(resolvedConfig);
 
-// Initialize Firestore Database with explicit firestoreDatabaseId
-export const db = getFirestore(app, resolvedConfig.firestoreDatabaseId); /* CRITICAL: The app will break without this line */
+// Initialize Firestore Database (handles both custom db name and standard default)
+export const db = resolvedConfig.firestoreDatabaseId && resolvedConfig.firestoreDatabaseId !== '(default)'
+  ? getFirestore(app, resolvedConfig.firestoreDatabaseId)
+  : getFirestore(app);
 
 // Initialize Authentication
 export const auth = getAuth(app);
