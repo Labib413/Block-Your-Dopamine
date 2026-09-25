@@ -71,16 +71,35 @@
     },
     "GuardedWebsite": {
       "title": "GuardedWebsite",
-      "description": "Restricted and blocked websites for dopamine control",
+      "description": "Restricted and blocked websites for dopamine control and distraction prevention",
       "type": "object",
       "properties": {
         "websiteId": { "type": "string", "maxLength": 128 },
+        "id": { "type": "string", "maxLength": 128 },
         "userId": { "type": "string", "maxLength": 128 },
         "url": { "type": "string", "maxLength": 255 },
         "name": { "type": "string", "maxLength": 100 },
-        "blocked": { "type": "boolean" }
+        "duration": { "type": "number" },
+        "start_time": { "type": "string" },
+        "is_active": { "type": "boolean" },
+        "blocked": { "type": "boolean" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["websiteId", "userId", "url"]
+      "required": ["userId", "url"]
+    },
+    "DistractionEvent": {
+      "title": "DistractionEvent",
+      "description": "Log of intercepted distraction attempts and security lock triggers",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "websiteName": { "type": "string", "maxLength": 100 },
+        "websiteUrl": { "type": "string", "maxLength": 255 },
+        "timestamp": { "type": "string" },
+        "action": { "type": "string", "maxLength": 50 }
+      },
+      "required": ["eventId", "userId", "timestamp"]
     },
     "PlannerTask": {
       "title": "PlannerTask",
@@ -175,9 +194,26 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["reportId", "userId", "periodType"]
+    },
+    "BlockedTarget": {
+      "title": "BlockedTarget",
+      "description": "Distraction guard target blocked for dopamine detox and Chrome Extension sync",
+      "type": "object",
+      "properties": {
+        "targetName": { "type": "string", "maxLength": 255 },
+        "type": { "type": "string", "maxLength": 50 },
+        "lockedUntil": { "type": "string" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["targetName", "type", "lockedUntil", "isActive", "createdAt"]
     }
   },
   "firestore": {
+    "/blocked_targets/{targetId}": {
+      "schema": "BlockedTarget",
+      "description": "Website targets blocked by the Chrome extension and Distraction Guard"
+    },
     "/users/{userId}": {
       "schema": "UserProfile",
       "description": "Stores user profile and account details"
@@ -205,6 +241,10 @@
     "/users/{userId}/guarded_websites/{websiteId}": {
       "schema": "GuardedWebsite",
       "description": "User websites under dopamine detox guard"
+    },
+    "/users/{userId}/distraction_events/{eventId}": {
+      "schema": "DistractionEvent",
+      "description": "User distraction logs and intercepted access attempts"
     },
     "/users/{userId}/planner_tasks/{taskId}": {
       "schema": "PlannerTask",

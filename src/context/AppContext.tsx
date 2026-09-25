@@ -1208,6 +1208,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           data: { ...newSite, user_id: prev.user.id },
           onConflict: 'id'
         });
+        // Realtime Firestore Direct Sync
+        syncItemToFirestore(prev.user.id, 'guarded_websites', { ...newSite, user_id: prev.user.id }, 'upsert');
       }
       return next;
     });
@@ -1226,6 +1228,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           type: 'delete',
           id: id
         });
+        // Realtime Firestore Direct Delete
+        syncItemToFirestore(prev.user.id, 'guarded_websites', { id, user_id: prev.user.id }, 'delete');
       }
       return next;
     });
@@ -1278,6 +1282,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
           data: { ...updatedSite, user_id: prev.user.id },
           onConflict: 'id'
         });
+        // Realtime Firestore Direct Update
+        syncItemToFirestore(prev.user.id, 'guarded_websites', { ...updatedSite, user_id: prev.user.id }, 'upsert');
       }
       return next;
     });
@@ -1398,16 +1404,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setState(prev => ({ ...prev, isSyncing: true }));
 
       const fetchFocusData = async () => {
-        const [logsRes, sessionsRes, guardedRes, fsSessions, fsFocusLogs] = await Promise.all([
+        const [logsRes, sessionsRes, guardedRes, fsSessions, fsFocusLogs, fsGuarded] = await Promise.all([
           supabase.from('focus_logs').select('*').eq('user_id', userId).order('start_time', { ascending: false }).limit(300),
           supabase.from('sessions').select('*').eq('user_id', userId).order('start_time', { ascending: false }).limit(300),
           supabase.from('guarded_websites').select('*').eq('user_id', userId),
           fetchFirestoreCollection(userId, 'sessions').catch(() => []),
-          fetchFirestoreCollection(userId, 'focus_logs').catch(() => [])
+          fetchFirestoreCollection(userId, 'focus_logs').catch(() => []),
+          fetchFirestoreCollection(userId, 'guarded_websites').catch(() => [])
         ]);
         
-        if (guardedRes.data) {
-          setState(prev => ({ ...prev, guardedWebsites: guardedRes.data }));
+        // Merge Supabase + Firestore guarded websites
+        const siteMap = new Map<string, GuardedWebsite>();
+        (guardedRes.data || []).forEach((w: any) => {
+          if (w.id) {
+            siteMap.set(w.id, {
+              id: w.id,
+              name: w.name || '',
+              url: w.url || '',
+              duration: Number(w.duration) || 30,
+              start_time: w.start_time || null,
+              is_active: Boolean(w.is_active)
+            });
+          }
+        });
+        (fsGuarded || []).forEach((w: any) => {
+          const id = w.id || w.website_id || w.websiteId;
+          if (id) {
+            siteMap.set(id, {
+              id,
+              name: w.name || '',
+              url: w.url || '',
+              duration: Number(w.duration) || 30,
+              start_time: w.start_time || w.startTime || null,
+              is_active: Boolean(w.is_active || w.isActive)
+            });
+          }
+        });
+        
+        if (siteMap.size > 0) {
+          setState(prev => ({ ...prev, guardedWebsites: Array.from(siteMap.values()) }));
         }
 
         const combined = new Map<string, any>();
@@ -2015,7 +2050,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       onGuardedWebsites: (websites) => {
         if (!websites) return;
-        setState(prev => ({ ...prev, guardedWebsites: websites }));
+        const mapped = websites.map((w: any) => ({
+          id: w.id || w.website_id || w.websiteId,
+          name: w.name || '',
+          url: w.url || '',
+          duration: Number(w.duration) || 30,
+          start_time: w.start_time || w.startTime || null,
+          is_active: Boolean(w.is_active !== undefined ? w.is_active : w.isActive)
+        })).filter(w => w.id && w.name && w.url);
+        setState(prev => ({ ...prev, guardedWebsites: mapped }));
       },
       onAcademicRoutines: (routines) => {
         if (!routines) return;

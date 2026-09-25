@@ -26,6 +26,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Blocked targets for Chrome Extension & Distraction Guard
+    match /blocked_targets/{targetId} {
+      allow read, write: if true;
+    }
+
     // Guilds and study groups
     match /guilds/{guildId} {
       allow read: if true;

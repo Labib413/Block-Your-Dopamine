@@ -146,6 +146,7 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     else if (table === 'user_streaks') subcollection = 'streaks';
     else if (table === 'user_preferences') subcollection = 'preferences';
     else if (table === 'guarded_websites') subcollection = 'guarded_websites';
+    else if (table === 'distraction_events') subcollection = 'distraction_events';
     else if (table === 'planner_tasks') subcollection = 'planner_tasks';
     else if (table === 'health_logs') subcollection = 'health_logs';
     else if (table === 'academic_progress') subcollection = 'academic_progress';
@@ -564,6 +565,71 @@ export async function updateUserGuildAssociation(
     console.warn('[Firestore] updateUserGuildAssociation error:', err);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Distraction Guard Realtime Operations & Event Logging
+// ---------------------------------------------------------------------------
+
+export interface DistractionLogEvent {
+  eventId: string;
+  userId: string;
+  websiteName: string;
+  websiteUrl: string;
+  timestamp: string;
+  action: 'lock_activated' | 'access_intercepted' | 'site_unlocked' | 'depex_activated';
+}
+
+/**
+ * Log intercepted distraction attempts and security lock triggers to Firestore in real-time
+ */
+export async function logDistractionEventInFirestore(
+  userId: string,
+  event: {
+    websiteName: string;
+    websiteUrl: string;
+    action: 'lock_activated' | 'access_intercepted' | 'site_unlocked' | 'depex_activated';
+  }
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const eventId = `event_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+    const eventDocRef = doc(db, 'users', userId, 'distraction_events', eventId);
+    await setDoc(eventDocRef, {
+      eventId,
+      userId,
+      websiteName: event.websiteName,
+      websiteUrl: event.websiteUrl,
+      timestamp: new Date().toISOString(),
+      action: event.action
+    });
+  } catch (err) {
+    console.warn('[Firestore] logDistractionEventInFirestore error:', err);
+  }
+}
+
+/**
+ * Realtime listener for distraction events in Firestore
+ */
+export function subscribeToDistractionEvents(
+  userId: string,
+  callback: (events: DistractionLogEvent[]) => void
+): () => void {
+  if (!userId) return () => {};
+  try {
+    const eventsCol = collection(db, 'users', userId, 'distraction_events');
+    const unsub = onSnapshot(eventsCol, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as unknown as DistractionLogEvent));
+      callback(list);
+    }, (err) => {
+      console.warn('[Firestore] subscribeToDistractionEvents error:', err);
+    });
+    return unsub;
+  } catch (err) {
+    console.warn('[Firestore] subscribeToDistractionEvents error:', err);
+    return () => {};
+  }
+}
+
 
 
 
