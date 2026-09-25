@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Users, 
@@ -27,323 +27,47 @@ import {
   Award,
   Shield,
   BookOpen,
-  X
+  X,
+  Database
 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../context/AppContext";
 import { GlassCard } from "./GlassCard";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
 import { GuildStudyRoom } from "./GuildStudyRoom";
-
-interface CommunityMember {
-  id: string;
-  username: string;
-  fullName: string;
-  avatarUrl?: string;
-  level: number;
-  xp: number;
-  streak: number;
-  netFocusMinutes: number;
-  detoxScore: number;
-  status: "focusing" | "idle" | "break";
-  currentTask?: string;
-  focusStartedAt?: string;
-  badges: string[];
-  institution?: string;
-  year?: string;
-  rank?: number;
-}
-
-interface CommunityPost {
-  id: string;
-  userId: string;
-  username: string;
-  fullName: string;
-  avatarUrl?: string;
-  timestamp: string;
-  type: "milestone" | "reflection" | "challenge_complete" | "general";
-  content: string;
-  statsHighlight?: {
-    label: string;
-    value: string;
-  };
-  reactions: {
-    fire: number;
-    boost: number;
-    shield: number;
-    diamond: number;
-  };
-  userReactions?: string[];
-}
-
-interface DetoxChallenge {
-  id: string;
-  title: string;
-  description: string;
-  category: "Detox" | "Focus" | "Monk Mode" | "Academic";
-  daysDuration: number;
-  participantsCount: number;
-  joined: boolean;
-  rewardXp: number;
-  badgeRewardId?: string;
-  endsInDays: number;
-  goal: string;
-}
-
-interface Guild {
-  id: string;
-  name: string;
-  tag: string;
-  description: string;
-  leader: string;
-  membersCount: number;
-  maxMembers: number;
-  level: number;
-  rank: number;
-  totalXp: number;
-  weeklyGoalHours: number;
-  joined: boolean;
-  category: "Engineering" | "Medical" | "Varsity" | "General" | "HSC";
-  perks: string;
-}
-
-const INITIAL_GUILDS: Guild[] = [
-  {
-    id: "g1",
-    name: "BUET Pioneers",
-    tag: "BUET",
-    description: "Dedicated to intense problem solving, higher mathematics, and hardcore engineering entrance prep.",
-    leader: "Tanvir Hasan",
-    membersCount: 48,
-    maxMembers: 50,
-    level: 12,
-    rank: 1,
-    totalXp: 184500,
-    weeklyGoalHours: 350,
-    joined: false,
-    category: "Engineering",
-    perks: "+10% Focus XP Buff & BUET Question Bank"
-  },
-  {
-    id: "g2",
-    name: "DMC Medicos Syndicate",
-    tag: "DMC",
-    description: "Daily biology memorization, medical question bank mastery, and zero-distraction grinds.",
-    leader: "Nabila Tabassum",
-    membersCount: 42,
-    maxMembers: 50,
-    level: 10,
-    rank: 2,
-    totalXp: 162000,
-    weeklyGoalHours: 320,
-    joined: true,
-    category: "Medical",
-    perks: "+8% Bio Mastery Buff & Med Flashcards"
-  },
-  {
-    id: "g3",
-    name: "Apex Scholars (DU Ka)",
-    tag: "APEX",
-    description: "Pure science champions competing for top national varsity ranks with disciplined routines.",
-    leader: "Farhan Ahmed",
-    membersCount: 36,
-    maxMembers: 50,
-    level: 8,
-    rank: 3,
-    totalXp: 139200,
-    weeklyGoalHours: 280,
-    joined: false,
-    category: "Varsity",
-    perks: "+5% Daily Streak Protection"
-  },
-  {
-    id: "g4",
-    name: "Monk Mode Elite",
-    tag: "MONK",
-    description: "Strict dopamine detox, 6+ hours daily net focus, and extreme discipline for HSC 2026.",
-    leader: "Sabbir Hossain",
-    membersCount: 29,
-    maxMembers: 30,
-    level: 7,
-    rank: 4,
-    totalXp: 118400,
-    weeklyGoalHours: 250,
-    joined: false,
-    category: "HSC",
-    perks: "Exclusive Monk Mode Audio & Emblems"
-  }
-];
-
-const INITIAL_MEMBERS: CommunityMember[] = [
-  {
-    id: "user_top_1",
-    username: "arif_focus",
-    fullName: "Arif Rahman",
-    level: 19,
-    xp: 9450,
-    streak: 42,
-    netFocusMinutes: 2840,
-    detoxScore: 98,
-    status: "focusing",
-    currentTask: "Advanced Physics Chapter 4 - Thermodynamics",
-    badges: ["f1", "f2", "f3", "f4", "h1", "h3"],
-    institution: "BUET",
-    year: "HSC 2025"
-  },
-  {
-    id: "user_top_2",
-    username: "nabil_detox",
-    fullName: "Nabil Khan",
-    level: 16,
-    xp: 7820,
-    streak: 31,
-    netFocusMinutes: 2310,
-    detoxScore: 94,
-    status: "focusing",
-    currentTask: "Monk Mode 4h Sprint - Organic Chemistry",
-    badges: ["f1", "f2", "f5", "h2"],
-    institution: "Notre Dame College",
-    year: "HSC 2026"
-  },
-  {
-    id: "user_top_3",
-    username: "sadia_study",
-    fullName: "Sadia Islam",
-    level: 15,
-    xp: 7100,
-    streak: 28,
-    netFocusMinutes: 2150,
-    detoxScore: 96,
-    status: "idle",
-    badges: ["f1", "f3", "h1", "h4"],
-    institution: "Viqarunnisa Noon",
-    year: "HSC 2025"
-  },
-  {
-    id: "user_top_4",
-    username: "tanvir_code",
-    fullName: "Tanvir Ahmed",
-    level: 13,
-    xp: 6200,
-    streak: 19,
-    netFocusMinutes: 1890,
-    detoxScore: 91,
-    status: "focusing",
-    currentTask: "Calculus Deep Flow Session",
-    badges: ["f1", "f2", "h2"],
-    institution: "Dhaka College",
-    year: "HSC 2026"
-  },
-  {
-    id: "user_top_5",
-    username: "fariha_monk",
-    fullName: "Fariha Noor",
-    level: 12,
-    xp: 5800,
-    streak: 15,
-    netFocusMinutes: 1640,
-    detoxScore: 89,
-    status: "break",
-    badges: ["f1", "h1"],
-    institution: "Holy Cross College",
-    year: "HSC 2025"
-  }
-];
-
-const INITIAL_CHALLENGES: DetoxChallenge[] = [
-  {
-    id: "c1",
-    title: "7-Day Social Media Blackout",
-    description: "Zero minutes on blocked dopamine-trap domains. Complete 5 daily focus logs without distraction strikes.",
-    category: "Monk Mode",
-    daysDuration: 7,
-    participantsCount: 428,
-    joined: true,
-    rewardXp: 1200,
-    badgeRewardId: "f3",
-    endsInDays: 3,
-    goal: "0 Distraction Strikes"
-  },
-  {
-    id: "c2",
-    title: "50-Hour Weekly Focus Marathon",
-    description: "Accumulate at least 50 hours of verified Net Focus Time across 7 days.",
-    category: "Focus",
-    daysDuration: 7,
-    participantsCount: 312,
-    joined: false,
-    rewardXp: 2000,
-    badgeRewardId: "f4",
-    endsInDays: 5,
-    goal: "50h Verified Focus"
-  },
-  {
-    id: "c3",
-    title: "Syllabus Mastery Sprint",
-    description: "Complete 10 subtopics in your Academic Hub with 100% confidence rating.",
-    category: "Academic",
-    daysDuration: 14,
-    participantsCount: 567,
-    joined: false,
-    rewardXp: 1500,
-    badgeRewardId: "f2",
-    endsInDays: 11,
-    goal: "10 Topics Mastered"
-  }
-];
-
-const INITIAL_POSTS: CommunityPost[] = [
-  {
-    id: "p1",
-    userId: "user_top_1",
-    username: "arif_focus",
-    fullName: "Arif Rahman",
-    timestamp: "12m ago",
-    type: "milestone",
-    content: "Just crossed 40 consecutive days of Monk Mode! Unlocked 'The Architect' badge. The hardest part was the first 4 days of social media withdrawal — after that, neural clarity took over.",
-    statsHighlight: {
-      label: "Detox Streak",
-      value: "42 Days"
-    },
-    reactions: { fire: 34, boost: 18, shield: 12, diamond: 9 }
-  },
-  {
-    id: "p2",
-    userId: "user_top_2",
-    username: "nabil_detox",
-    fullName: "Nabil Khan",
-    timestamp: "1h ago",
-    type: "reflection",
-    content: "Entered a 4-hour uninterrupted study block for HSC Organic Chemistry. Depex Mode and Ambient Rain sound kept my focus score locked at 98%. Let's push today!",
-    statsHighlight: {
-      label: "Net Focus",
-      value: "4h 15m"
-    },
-    reactions: { fire: 22, boost: 15, shield: 8, diamond: 5 }
-  }
-];
+import {
+  CommunityMember,
+  CommunityPost,
+  DetoxChallenge,
+  Guild,
+  INITIAL_GUILDS,
+  INITIAL_MEMBERS,
+  INITIAL_CHALLENGES,
+  INITIAL_POSTS,
+  fetchPostsFromFirebase,
+  subscribeToCommunityPosts,
+  createPostInFirebase,
+  updatePostReactionsInFirebase,
+  fetchChallengesFromFirebase,
+  subscribeToCommunityChallenges,
+  updateChallengeParticipationInFirebase,
+  fetchGuildsFromFirebase,
+  subscribeToGuilds,
+  createGuildInFirebase,
+  updateGuildMembershipInFirebase,
+  fetchMembersFromFirebase,
+  subscribeToCommunityMembers,
+  syncMemberPresenceToFirebase
+} from "../services/communityService";
 
 export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onNavigate?: (view: string) => void }) {
   const { user, profile, streak, level, xp, totalNetFocusTime, detoxPercent, equippedBadges, isFocusing } = useApp();
+  const queryClient = useQueryClient();
   
   const [activeTab, setActiveTab] = useState<"Leaderboard" | "Live Pods" | "Feed" | "Challenges" | "Guild">("Leaderboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [leaderboardFilter, setLeaderboardFilter] = useState<"All Time" | "Weekly" | "Today">("All Time");
-  
-  const [posts, setPosts] = useState<CommunityPost[]>(() => {
-    const saved = localStorage.getItem("byd_community_posts");
-    return saved ? JSON.parse(saved) : INITIAL_POSTS;
-  });
-
-  const [challenges, setChallenges] = useState<DetoxChallenge[]>(() => {
-    const saved = localStorage.getItem("byd_community_challenges");
-    return saved ? JSON.parse(saved) : INITIAL_CHALLENGES;
-  });
-
-  const [guilds, setGuilds] = useState<Guild[]>(() => {
-    const saved = localStorage.getItem("byd_community_guilds");
-    return saved ? JSON.parse(saved) : INITIAL_GUILDS;
-  });
 
   const [guildFilter, setGuildFilter] = useState<string>("All");
   const [guildSearch, setGuildSearch] = useState<string>("");
@@ -357,20 +81,63 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
 
-  // Sync posts to localStorage
-  useEffect(() => {
-    localStorage.setItem("byd_community_posts", JSON.stringify(posts));
-  }, [posts]);
+  // 1. TanStack Query for Community Posts (Feed)
+  const { data: posts = INITIAL_POSTS, isLoading: isPostsLoading } = useQuery<CommunityPost[]>({
+    queryKey: ['community', 'posts'],
+    queryFn: fetchPostsFromFirebase,
+    initialData: INITIAL_POSTS,
+    staleTime: 1000 * 60 * 2, // 2 minutes
+  });
 
-  // Sync challenges to localStorage
-  useEffect(() => {
-    localStorage.setItem("byd_community_challenges", JSON.stringify(challenges));
-  }, [challenges]);
+  // 2. TanStack Query for Challenges
+  const { data: challenges = INITIAL_CHALLENGES } = useQuery<DetoxChallenge[]>({
+    queryKey: ['community', 'challenges'],
+    queryFn: fetchChallengesFromFirebase,
+    initialData: INITIAL_CHALLENGES,
+    staleTime: 1000 * 60 * 5,
+  });
 
-  // Sync guilds to localStorage
+  // 3. TanStack Query for Guilds
+  const { data: guilds = INITIAL_GUILDS } = useQuery<Guild[]>({
+    queryKey: ['community', 'guilds'],
+    queryFn: fetchGuildsFromFirebase,
+    initialData: INITIAL_GUILDS,
+    staleTime: 1000 * 60 * 5,
+  });
+
+  // 4. TanStack Query for Community Members (Leaderboard)
+  const { data: firestoreMembers = INITIAL_MEMBERS } = useQuery<CommunityMember[]>({
+    queryKey: ['community', 'members'],
+    queryFn: fetchMembersFromFirebase,
+    initialData: INITIAL_MEMBERS,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  // Real-time Firestore subscriptions to keep TanStack Query cache in sync
   useEffect(() => {
-    localStorage.setItem("byd_community_guilds", JSON.stringify(guilds));
-  }, [guilds]);
+    const unsubPosts = subscribeToCommunityPosts((freshPosts) => {
+      queryClient.setQueryData(['community', 'posts'], freshPosts);
+    });
+
+    const unsubChallenges = subscribeToCommunityChallenges((freshChallenges) => {
+      queryClient.setQueryData(['community', 'challenges'], freshChallenges);
+    });
+
+    const unsubGuilds = subscribeToGuilds((freshGuilds) => {
+      queryClient.setQueryData(['community', 'guilds'], freshGuilds);
+    });
+
+    const unsubMembers = subscribeToCommunityMembers((freshMembers) => {
+      queryClient.setQueryData(['community', 'members'], freshMembers);
+    });
+
+    return () => {
+      unsubPosts();
+      unsubChallenges();
+      unsubGuilds();
+      unsubMembers();
+    };
+  }, [queryClient]);
 
   const currentUsername = profile?.username || user?.user_metadata?.username || user?.email?.split("@")[0] || "you";
   const currentFullName = profile?.fullName || user?.user_metadata?.full_name || "Tasnem Hossen";
@@ -378,28 +145,47 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   // Build current user entry in leaderboard
   const myNetMinutes = Math.floor((totalNetFocusTime || 0) / 60);
   const myMemberEntry: CommunityMember = useMemo(() => ({
-    id: user?.id || "local-user-001",
+    id: user?.id || `user_${currentUsername}`,
     username: currentUsername,
     fullName: currentFullName,
-    avatarUrl: profile?.avatarUrl,
+    avatarUrl: profile?.avatarUrl || "",
     level: level || 1,
     xp: xp || 0,
     streak: streak || 3,
     netFocusMinutes: myNetMinutes || 480,
     detoxScore: detoxPercent || 92,
     status: isFocusing ? "focusing" : "idle",
-    currentTask: isFocusing ? "Deep Focus Session in Progress" : undefined,
+    currentTask: isFocusing ? "Deep Focus Session in Progress" : "",
     badges: equippedBadges && equippedBadges.length > 0 ? equippedBadges : ["f1", "h1"],
     institution: profile?.institution || "BYD Academy",
     year: profile?.year || "HSC 2026"
   }), [user?.id, currentUsername, currentFullName, profile, level, xp, streak, myNetMinutes, detoxPercent, isFocusing, equippedBadges]);
 
+  // Sync current user presence and live focus status to Firestore
+  const lastSyncedRef = useRef<string>("");
+  useEffect(() => {
+    const serialized = JSON.stringify({
+      id: myMemberEntry.id,
+      xp: myMemberEntry.xp,
+      level: myMemberEntry.level,
+      streak: myMemberEntry.streak,
+      status: myMemberEntry.status,
+      isFocusing
+    });
+    if (lastSyncedRef.current !== serialized) {
+      lastSyncedRef.current = serialized;
+      syncMemberPresenceToFirebase(myMemberEntry).catch(err => {
+        console.warn("[Community] Could not sync user presence:", err);
+      });
+    }
+  }, [myMemberEntry, isFocusing]);
+
   // Combine and sort leaderboard members
   const allMembers = useMemo(() => {
-    const list = [...INITIAL_MEMBERS.filter(m => m.username !== currentUsername), myMemberEntry];
+    const list = [...firestoreMembers.filter(m => m.username !== currentUsername && m.id !== myMemberEntry.id), myMemberEntry];
     list.sort((a, b) => b.xp - a.xp);
     return list.map((m, idx) => ({ ...m, rank: idx + 1 }));
-  }, [myMemberEntry, currentUsername]);
+  }, [firestoreMembers, myMemberEntry, currentUsername]);
 
   const filteredMembers = useMemo(() => {
     return allMembers.filter(m => 
@@ -413,79 +199,187 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     return allMembers.filter(m => m.status === "focusing");
   }, [allMembers]);
 
+  // --- TanStack Mutations with Optimistic Updates ---
+
+  // 1. Create Post Mutation
+  const createPostMutation = useMutation({
+    mutationFn: createPostInFirebase,
+    onMutate: async (newPostPayload) => {
+      await queryClient.cancelQueries({ queryKey: ['community', 'posts'] });
+      const prevPosts = queryClient.getQueryData<CommunityPost[]>(['community', 'posts']) || [];
+      const optimisticPost: CommunityPost = {
+        ...newPostPayload,
+        id: newPostPayload.id || `post_${Date.now()}`
+      };
+      queryClient.setQueryData<CommunityPost[]>(['community', 'posts'], [optimisticPost, ...prevPosts]);
+      return { prevPosts };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prevPosts) {
+        queryClient.setQueryData(['community', 'posts'], context.prevPosts);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['community', 'posts'] });
+    }
+  });
+
   const handleCreatePost = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPostContent.trim()) return;
 
-    const newPost: CommunityPost = {
-      id: `post_${Date.now()}`,
-      userId: user?.id || "local-user-001",
+    createPostMutation.mutate({
+      userId: user?.id || `user_${currentUsername}`,
       username: currentUsername,
       fullName: currentFullName,
-      avatarUrl: profile?.avatarUrl,
+      avatarUrl: profile?.avatarUrl || "",
       timestamp: "Just now",
       type: "reflection",
       content: newPostContent.trim(),
-      statsHighlight: streak > 0 ? {
-        label: "Streak",
-        value: `${streak} Days`
-      } : undefined,
+      ...(streak > 0 ? {
+        statsHighlight: {
+          label: "Streak",
+          value: `${streak} Days`
+        }
+      } : {}),
       reactions: { fire: 1, boost: 0, shield: 0, diamond: 0 },
       userReactions: ["fire"]
-    };
+    });
 
-    setPosts([newPost, ...posts]);
     setNewPostContent("");
   };
 
-  const handleToggleReaction = (postId: string, reactionKey: "fire" | "boost" | "shield" | "diamond") => {
-    setPosts(prev => prev.map(post => {
-      if (post.id !== postId) return post;
-      const userReactions = post.userReactions || [];
-      const hasReacted = userReactions.includes(reactionKey);
-      
-      const newReactions = { ...post.reactions };
-      let newUserReactions = [...userReactions];
-
-      if (hasReacted) {
-        newReactions[reactionKey] = Math.max(0, newReactions[reactionKey] - 1);
-        newUserReactions = newUserReactions.filter(r => r !== reactionKey);
-      } else {
-        newReactions[reactionKey] = (newReactions[reactionKey] || 0) + 1;
-        newUserReactions.push(reactionKey);
+  // 2. Toggle Reaction Mutation
+  const toggleReactionMutation = useMutation({
+    mutationFn: ({ postId, reactions, userReactions, post }: { postId: string; reactions: CommunityPost["reactions"]; userReactions: string[]; post?: Partial<CommunityPost> }) =>
+      updatePostReactionsInFirebase(postId, reactions, userReactions, post),
+    onMutate: async ({ postId, reactions, userReactions }) => {
+      await queryClient.cancelQueries({ queryKey: ['community', 'posts'] });
+      const prevPosts = queryClient.getQueryData<CommunityPost[]>(['community', 'posts']) || [];
+      queryClient.setQueryData<CommunityPost[]>(['community', 'posts'], prev => 
+        (prev || []).map(p => p.id === postId ? { ...p, reactions, userReactions } : p)
+      );
+      return { prevPosts };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prevPosts) {
+        queryClient.setQueryData(['community', 'posts'], context.prevPosts);
       }
+    }
+  });
 
-      return {
-        ...post,
-        reactions: newReactions,
-        userReactions: newUserReactions
-      };
-    }));
+  const handleToggleReaction = (postId: string, reactionKey: "fire" | "boost" | "shield" | "diamond") => {
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+
+    const userReactions = post.userReactions || [];
+    const hasReacted = userReactions.includes(reactionKey);
+    
+    const newReactions = { ...post.reactions };
+    let newUserReactions = [...userReactions];
+
+    if (hasReacted) {
+      newReactions[reactionKey] = Math.max(0, newReactions[reactionKey] - 1);
+      newUserReactions = newUserReactions.filter(r => r !== reactionKey);
+    } else {
+      newReactions[reactionKey] = (newReactions[reactionKey] || 0) + 1;
+      newUserReactions.push(reactionKey);
+    }
+
+    toggleReactionMutation.mutate({
+      postId,
+      reactions: newReactions,
+      userReactions: newUserReactions,
+      post
+    });
   };
+
+  // 3. Toggle Challenge Mutation
+  const toggleChallengeMutation = useMutation({
+    mutationFn: ({ challengeId, joined, participantsCount, challenge }: { challengeId: string; joined: boolean; participantsCount: number; challenge?: Partial<DetoxChallenge> }) =>
+      updateChallengeParticipationInFirebase(challengeId, joined, participantsCount, challenge),
+    onMutate: async ({ challengeId, joined, participantsCount }) => {
+      await queryClient.cancelQueries({ queryKey: ['community', 'challenges'] });
+      const prevChallenges = queryClient.getQueryData<DetoxChallenge[]>(['community', 'challenges']) || [];
+      queryClient.setQueryData<DetoxChallenge[]>(['community', 'challenges'], prev =>
+        (prev || []).map(c => c.id === challengeId ? { ...c, joined, participantsCount } : c)
+      );
+      return { prevChallenges };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prevChallenges) {
+        queryClient.setQueryData(['community', 'challenges'], context.prevChallenges);
+      }
+    }
+  });
 
   const handleToggleChallenge = (challengeId: string) => {
-    setChallenges(prev => prev.map(c => {
-      if (c.id !== challengeId) return c;
-      const nextJoined = !c.joined;
-      return {
-        ...c,
-        joined: nextJoined,
-        participantsCount: nextJoined ? c.participantsCount + 1 : Math.max(0, c.participantsCount - 1)
-      };
-    }));
+    const challenge = challenges.find(c => c.id === challengeId);
+    if (!challenge) return;
+
+    const nextJoined = !challenge.joined;
+    const nextCount = nextJoined ? challenge.participantsCount + 1 : Math.max(0, challenge.participantsCount - 1);
+
+    toggleChallengeMutation.mutate({
+      challengeId,
+      joined: nextJoined,
+      participantsCount: nextCount,
+      challenge
+    });
   };
 
+  // 4. Guild Join Mutation
+  const toggleGuildMutation = useMutation({
+    mutationFn: ({ guildId, joined, membersCount, guild }: { guildId: string; joined: boolean; membersCount: number; guild?: Partial<Guild> }) =>
+      updateGuildMembershipInFirebase(guildId, joined, membersCount, guild),
+    onMutate: async ({ guildId, joined, membersCount }) => {
+      await queryClient.cancelQueries({ queryKey: ['community', 'guilds'] });
+      const prevGuilds = queryClient.getQueryData<Guild[]>(['community', 'guilds']) || [];
+      queryClient.setQueryData<Guild[]>(['community', 'guilds'], prev =>
+        (prev || []).map(g => g.id === guildId ? { ...g, joined, membersCount } : g)
+      );
+      return { prevGuilds };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prevGuilds) {
+        queryClient.setQueryData(['community', 'guilds'], context.prevGuilds);
+      }
+    }
+  });
+
   const handleToggleGuild = (guildId: string) => {
-    setGuilds(prev => prev.map(g => {
-      if (g.id !== guildId) return g;
-      const nextJoined = !g.joined;
-      return {
-        ...g,
-        joined: nextJoined,
-        membersCount: nextJoined ? g.membersCount + 1 : Math.max(1, g.membersCount - 1)
-      };
-    }));
+    const guild = guilds.find(g => g.id === guildId);
+    if (!guild) return;
+
+    const nextJoined = !guild.joined;
+    const nextCount = nextJoined ? guild.membersCount + 1 : Math.max(1, guild.membersCount - 1);
+
+    toggleGuildMutation.mutate({
+      guildId,
+      joined: nextJoined,
+      membersCount: nextCount,
+      guild
+    });
   };
+
+  // 5. Create Guild Mutation
+  const createGuildMutation = useMutation({
+    mutationFn: createGuildInFirebase,
+    onMutate: async (newGuildPayload) => {
+      await queryClient.cancelQueries({ queryKey: ['community', 'guilds'] });
+      const prevGuilds = queryClient.getQueryData<Guild[]>(['community', 'guilds']) || [];
+      queryClient.setQueryData<Guild[]>(['community', 'guilds'], [newGuildPayload, ...prevGuilds]);
+      return { prevGuilds };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prevGuilds) {
+        queryClient.setQueryData(['community', 'guilds'], context.prevGuilds);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['community', 'guilds'] });
+    }
+  });
 
   const handleCreateGuild = (e: React.FormEvent) => {
     e.preventDefault();
@@ -508,7 +402,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       perks: "+5% Synergy Focus Boost"
     };
 
-    setGuilds(prev => [newGuild, ...prev]);
+    createGuildMutation.mutate(newGuild);
     setIsCreateGuildOpen(false);
     setNewGuildName("");
     setNewGuildTag("");
@@ -564,6 +458,14 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
         {/* Global Summary Stats */}
         <div className="flex items-center gap-3">
+          <div className="px-3 py-2 rounded-2xl bg-[#39FF14]/5 border border-[#39FF14]/20 backdrop-blur-md flex items-center gap-2.5">
+            <span className="w-2 h-2 rounded-full bg-[#39FF14] shadow-[0_0_8px_#39FF14] animate-pulse" />
+            <div className="text-left">
+              <span className="text-[9px] uppercase font-bold text-[#39FF14]/60 block leading-none">Database</span>
+              <span className="text-xs font-mono font-bold text-white">Firebase Connected</span>
+            </div>
+          </div>
+
           <div className="px-4 py-2 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex items-center gap-3">
             <Radio className="w-4 h-4 text-[#39FF14] animate-pulse" />
             <div className="text-left">

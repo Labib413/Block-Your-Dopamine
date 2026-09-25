@@ -34,7 +34,35 @@ service cloud.firestore {
     // Guilds and study groups
     match /guilds/{guildId} {
       allow read: if true;
-      allow create, update: if isSignedIn() || true; // allows app users to browse, create, join and sync study guilds
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+
+      match /cheers/{cheerId} {
+        allow read: if true;
+        allow create: if true;
+        allow update, delete: if isSignedIn();
+      }
+    }
+
+    // Community Feed Posts
+    match /community_posts/{postId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    // Community Challenges
+    match /community_challenges/{challengeId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+    }
+
+    // Community Members & Live Pods Presence
+    match /community_members/{memberId} {
+      allow read: if true;
+      allow create, update: if true;
       allow delete: if isSignedIn();
     }
 

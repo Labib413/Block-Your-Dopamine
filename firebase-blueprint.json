@@ -155,16 +155,98 @@
         "category": { "type": "string", "maxLength": 50 },
         "leaderId": { "type": "string", "maxLength": 128 },
         "leaderName": { "type": "string", "maxLength": 100 },
+        "leader": { "type": "string", "maxLength": 100 },
         "membersCount": { "type": "number" },
         "maxMembers": { "type": "number" },
         "level": { "type": "number" },
+        "rank": { "type": "number" },
         "totalXp": { "type": "number" },
         "weeklyGoalHours": { "type": "number" },
         "perks": { "type": "string", "maxLength": 200 },
+        "joined": { "type": "boolean" },
+        "memberIds": { "type": "string", "maxLength": 1000 },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },
-      "required": ["id", "name", "tag", "leaderId"]
+      "required": ["id", "name", "tag"]
+    },
+    "CommunityPost": {
+      "title": "CommunityPost",
+      "description": "Social feed post shared by warriors in the community hub",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 60 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string", "maxLength": 50 },
+        "content": { "type": "string", "maxLength": 2000 },
+        "statsHighlightLabel": { "type": "string", "maxLength": 50 },
+        "statsHighlightValue": { "type": "string", "maxLength": 50 },
+        "reactionsFire": { "type": "number" },
+        "reactionsBoost": { "type": "number" },
+        "reactionsShield": { "type": "number" },
+        "reactionsDiamond": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "content"]
+    },
+    "CommunityChallenge": {
+      "title": "CommunityChallenge",
+      "description": "Detox and focus challenges available in the academic hub",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 150 },
+        "description": { "type": "string", "maxLength": 500 },
+        "category": { "type": "string", "maxLength": 50 },
+        "daysDuration": { "type": "number" },
+        "participantsCount": { "type": "number" },
+        "rewardXp": { "type": "number" },
+        "badgeRewardId": { "type": "string", "maxLength": 50 },
+        "endsInDays": { "type": "number" },
+        "goal": { "type": "string", "maxLength": 100 }
+      },
+      "required": ["id", "title", "daysDuration"]
+    },
+    "CommunityMember": {
+      "title": "CommunityMember",
+      "description": "Community leaderboard participant and live focus pod member",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 60 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "level": { "type": "number" },
+        "xp": { "type": "number" },
+        "streak": { "type": "number" },
+        "netFocusMinutes": { "type": "number" },
+        "detoxScore": { "type": "number" },
+        "status": { "type": "string", "maxLength": 20 },
+        "currentTask": { "type": "string", "maxLength": 200 },
+        "institution": { "type": "string", "maxLength": 100 },
+        "year": { "type": "string", "maxLength": 50 },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "username", "fullName"]
+    },
+    "GuildCheer": {
+      "title": "GuildCheer",
+      "description": "Live cheering and motivational message in guild study room",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "guildId": { "type": "string", "maxLength": 128 },
+        "senderId": { "type": "string", "maxLength": 128 },
+        "sender": { "type": "string", "maxLength": 100 },
+        "text": { "type": "string", "maxLength": 300 },
+        "emoji": { "type": "string", "maxLength": 10 },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "sender", "text"]
     },
     "TestConnection": {
       "title": "TestConnection",
@@ -261,6 +343,22 @@
     "/guilds/{guildId}": {
       "schema": "Guild",
       "description": "Community study guilds, syndicate leaderboards, and member records"
+    },
+    "/guilds/{guildId}/cheers/{cheerId}": {
+      "schema": "GuildCheer",
+      "description": "Motivational messages and cheers in the guild study room"
+    },
+    "/community_posts/{postId}": {
+      "schema": "CommunityPost",
+      "description": "Posts and milestone reflections shared in the community feed"
+    },
+    "/community_challenges/{challengeId}": {
+      "schema": "CommunityChallenge",
+      "description": "Detox and academic challenges for community members"
+    },
+    "/community_members/{memberId}": {
+      "schema": "CommunityMember",
+      "description": "Global leaderboard rankings and live focus pods presence"
     },
     "/test/{docId}": {
       "schema": "TestConnection",

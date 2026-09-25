@@ -27,6 +27,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
 import { cn } from "@/src/lib/utils";
+import { subscribeToGuildCheers, sendGuildCheerInFirebase, GuildCheer } from "../services/communityService";
 
 export interface GuildMemberDesk {
   id: string;
@@ -135,11 +136,22 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
   const [ambientAudio, setAmbientAudio] = useState(false);
   const [ambientSoundType, setAmbientSoundType] = useState<"Rain" | "Library" | "WhiteNoise" | "Cafe">("Rain");
   const [cheerMsg, setCheerMsg] = useState("");
-  const [guildCheers, setGuildCheers] = useState<{ id: string; sender: string; text: string; time: string; emoji: string }[]>([
+  const [guildCheers, setGuildCheers] = useState<GuildCheer[]>([
     { id: "c1", sender: "sinha✨", text: "Pushing for 6 hours today! Let's conquer HSC!", time: "5m ago", emoji: "🔥" },
     { id: "c2", sender: "mkshaon7", text: "Engineering Math sprint in session. Stay disciplined guys!", time: "18m ago", emoji: "⚡" },
     { id: "c3", sender: "shahnewazkamal", text: "Finished 17 hours study pot yesterday. Keep going!", time: "1h ago", emoji: "👑" }
   ]);
+
+  // Real-time cheer wall subscription from Firestore
+  useEffect(() => {
+    if (!guild?.id) return;
+    const unsub = subscribeToGuildCheers(guild.id, (freshCheers) => {
+      if (freshCheers && freshCheers.length > 0) {
+        setGuildCheers(freshCheers);
+      }
+    });
+    return () => unsub();
+  }, [guild?.id]);
 
   // Sync user focusing status to desk
   useEffect(() => {
@@ -198,21 +210,32 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
     }));
   };
 
-  const handlePostCheerMsg = (e: React.FormEvent) => {
+  const handlePostCheerMsg = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cheerMsg.trim()) return;
 
+    const cheerPayload = {
+      sender: currentUsername,
+      text: cheerMsg.trim(),
+      time: "Just now",
+      emoji: "🔥"
+    };
+
+    // Optimistic update
     setGuildCheers(prev => [
       {
         id: `c_${Date.now()}`,
-        sender: currentUsername,
-        text: cheerMsg.trim(),
-        time: "Just now",
-        emoji: "🔥"
+        ...cheerPayload
       },
       ...prev
     ]);
     setCheerMsg("");
+
+    try {
+      await sendGuildCheerInFirebase(guild.id, cheerPayload);
+    } catch (err) {
+      console.warn("[GuildStudyRoom] Failed to sync cheer to Firebase:", err);
+    }
   };
 
   return (
