@@ -7,6 +7,7 @@ import {
   setDoc, 
   addDoc, 
   updateDoc, 
+  deleteDoc,
   query, 
   orderBy, 
   onSnapshot,
@@ -712,6 +713,42 @@ export async function sendGuildCheerInFirebase(guildId: string, cheer: Omit<Guil
    4. Community Members (Leaderboard & Live Pods Presence)
    ========================================================================= */
 
+/**
+ * 100% Deterministic multi-tier comparator for leaderboard ranking across all clients
+ */
+export function compareCommunityMembers(a: CommunityMember, b: CommunityMember): number {
+  // 1. Highest XP first
+  const xpA = Number(a.xp) || 0;
+  const xpB = Number(b.xp) || 0;
+  if (xpB !== xpA) return xpB - xpA;
+
+  // 2. Highest Level
+  const lvlA = Number(a.level) || 1;
+  const lvlB = Number(b.level) || 1;
+  if (lvlB !== lvlA) return lvlB - lvlA;
+
+  // 3. More Net Focus Minutes
+  const focusA = Number(a.netFocusMinutes) || 0;
+  const focusB = Number(b.netFocusMinutes) || 0;
+  if (focusB !== focusA) return focusB - focusA;
+
+  // 4. Higher Streak
+  const streakA = Number(a.streak) || 0;
+  const streakB = Number(b.streak) || 0;
+  if (streakB !== streakA) return streakB - streakA;
+
+  // 5. Higher Detox Score
+  const scoreA = Number(a.detoxScore) || 0;
+  const scoreB = Number(b.detoxScore) || 0;
+  if (scoreB !== scoreA) return scoreB - scoreA;
+
+  // 6. 100% Deterministic tie-breaker:
+  // Sort alphabetically by clean username / ID so EVERY browser computes the identical rank
+  const keyA = (a.username || a.fullName || a.id || "").toLowerCase();
+  const keyB = (b.username || b.fullName || b.id || "").toLowerCase();
+  return keyA.localeCompare(keyB);
+}
+
 export async function fetchMembersFromFirebase(): Promise<CommunityMember[]> {
   const firestore = getFirestoreInstance();
   const path = "community_members";
@@ -726,15 +763,21 @@ export async function fetchMembersFromFirebase(): Promise<CommunityMember[]> {
           updatedAt: new Date().toISOString()
         }));
       }
-      return INITIAL_MEMBERS;
+      return [...INITIAL_MEMBERS].sort(compareCommunityMembers);
     }
 
     const members: CommunityMember[] = [];
     snapshot.forEach(docSnap => {
-      members.push({ id: docSnap.id, ...(docSnap.data() as Omit<CommunityMember, "id">) });
+      const data = docSnap.data() as any;
+      // Filter out and remove legacy dummy "user_you" / "you" placeholder
+      if (docSnap.id === "user_you" || data.username === "you") {
+        deleteDoc(doc(firestore, path, docSnap.id)).catch(() => {});
+        return;
+      }
+      members.push({ id: docSnap.id, ...(data as Omit<CommunityMember, "id">) });
     });
 
-    members.sort((a, b) => b.xp - a.xp);
+    members.sort(compareCommunityMembers);
     return members;
   } catch (error) {
     console.error("[Community] fetchMembers error:", error);
@@ -752,14 +795,20 @@ export function subscribeToCommunityMembers(
     collection(firestore, path),
     (snapshot) => {
       if (snapshot.empty) {
-        onUpdate(INITIAL_MEMBERS);
+        onUpdate([...INITIAL_MEMBERS].sort(compareCommunityMembers));
         return;
       }
       const members: CommunityMember[] = [];
       snapshot.forEach(docSnap => {
-        members.push({ id: docSnap.id, ...(docSnap.data() as Omit<CommunityMember, "id">) });
+        const data = docSnap.data() as any;
+        // Filter out and clean up legacy dummy "user_you" / "you" placeholder
+        if (docSnap.id === "user_you" || data.username === "you") {
+          deleteDoc(doc(firestore, path, docSnap.id)).catch(() => {});
+          return;
+        }
+        members.push({ id: docSnap.id, ...(data as Omit<CommunityMember, "id">) });
       });
-      members.sort((a, b) => b.xp - a.xp);
+      members.sort(compareCommunityMembers);
       onUpdate(members);
     },
     (error) => {
@@ -770,7 +819,8 @@ export function subscribeToCommunityMembers(
 }
 
 export async function syncMemberPresenceToFirebase(member: CommunityMember): Promise<void> {
-  if (!member.id) return;
+  // Never write dummy or unauthenticated mock accounts
+  if (!member.id || member.id === "user_you" || member.username === "you") return;
   const firestore = getFirestoreInstance();
   const path = `community_members/${member.id}`;
   try {

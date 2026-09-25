@@ -58,7 +58,8 @@ import {
   updateGuildMembershipInFirebase,
   fetchMembersFromFirebase,
   subscribeToCommunityMembers,
-  syncMemberPresenceToFirebase
+  syncMemberPresenceToFirebase,
+  compareCommunityMembers
 } from "../services/communityService";
 
 export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onNavigate?: (view: string) => void }) {
@@ -164,11 +165,15 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   // Sync current user presence and live focus status to Firestore
   const lastSyncedRef = useRef<string>("");
   useEffect(() => {
+    // Only sync real signed-in users (not default guest placeholders)
+    if (!user?.id || currentUsername === "you") return;
     const serialized = JSON.stringify({
       id: myMemberEntry.id,
       xp: myMemberEntry.xp,
       level: myMemberEntry.level,
       streak: myMemberEntry.streak,
+      netFocusMinutes: myMemberEntry.netFocusMinutes,
+      detoxScore: myMemberEntry.detoxScore,
       status: myMemberEntry.status,
       isFocusing
     });
@@ -178,14 +183,47 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
         console.warn("[Community] Could not sync user presence:", err);
       });
     }
-  }, [myMemberEntry, isFocusing]);
+  }, [myMemberEntry, isFocusing, user?.id, currentUsername]);
 
-  // Combine and sort leaderboard members
+  // Combine and sort leaderboard members with 100% deterministic ranking
   const allMembers = useMemo(() => {
-    const list = [...firestoreMembers.filter(m => m.username !== currentUsername && m.id !== myMemberEntry.id), myMemberEntry];
-    list.sort((a, b) => b.xp - a.xp);
+    const memberMap = new Map<string, CommunityMember>();
+
+    // 1. Populate all real Firestore members
+    for (const m of firestoreMembers) {
+      if (m.id === "user_you" || m.username === "you") continue;
+      const key = m.id || m.username;
+      if (key) {
+        memberMap.set(key, m);
+      }
+    }
+
+    // 2. If user is authenticated, reflect their current session in the map without duplicates
+    if (user?.id && currentUsername !== "you") {
+      const myKey = user.id;
+      const existing = memberMap.get(myKey) || memberMap.get(currentUsername) || memberMap.get(`user_${currentUsername}`);
+      const merged: CommunityMember = {
+        ...existing,
+        ...myMemberEntry,
+        id: myKey,
+        xp: Math.max(existing?.xp || 0, myMemberEntry.xp || 0),
+        netFocusMinutes: Math.max(existing?.netFocusMinutes || 0, myMemberEntry.netFocusMinutes || 0),
+        streak: Math.max(existing?.streak || 0, myMemberEntry.streak || 0),
+      };
+      memberMap.set(myKey, merged);
+      if (memberMap.has(currentUsername) && currentUsername !== myKey) {
+        memberMap.delete(currentUsername);
+      }
+      if (memberMap.has(`user_${currentUsername}`) && `user_${currentUsername}` !== myKey) {
+        memberMap.delete(`user_${currentUsername}`);
+      }
+    }
+
+    // 3. Sort deterministically using compareCommunityMembers so all clients display identical ranks
+    const list = Array.from(memberMap.values());
+    list.sort(compareCommunityMembers);
     return list.map((m, idx) => ({ ...m, rank: idx + 1 }));
-  }, [firestoreMembers, myMemberEntry, currentUsername]);
+  }, [firestoreMembers, myMemberEntry, currentUsername, user?.id]);
 
   const filteredMembers = useMemo(() => {
     return allMembers.filter(m => 
