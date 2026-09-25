@@ -307,51 +307,17 @@ export const supabase: any = {
         }
       };
     },
-    async signInWithPassword(credentials: any = {}) {
-      const email = credentials?.email || 'tasnem@byd.local';
-      const username = email.split('@')[0] || 'tasnem';
-      const user = {
-        ...localUser,
-        email,
-        uniqueId: username,
-        user_metadata: {
-          ...localUser.user_metadata,
-          username,
-          full_name: credentials?.full_name || username
-        }
+    async signInWithPassword(_credentials: any = {}) {
+      return { 
+        data: { user: null, session: null }, 
+        error: { message: "Invalid credentials. Please use Firebase Authentication to sign in." } 
       };
-      const session = {
-        ...localSession,
-        user
-      };
-      try {
-        localStorage.setItem('byd_auth_session', JSON.stringify(session));
-      } catch (e) {}
-      authListeners.forEach(cb => cb('SIGNED_IN', session));
-      return { data: { user, session }, error: null };
     },
-    async signUp(credentials: any = {}) {
-      const email = credentials?.email || 'tasnem@byd.local';
-      const username = email.split('@')[0] || 'tasnem';
-      const user = {
-        ...localUser,
-        email,
-        uniqueId: username,
-        user_metadata: {
-          ...localUser.user_metadata,
-          username,
-          full_name: credentials?.options?.data?.full_name || username
-        }
+    async signUp(_credentials: any = {}) {
+      return { 
+        data: { user: null, session: null }, 
+        error: { message: "Please use Firebase Authentication to create an account." } 
       };
-      const session = {
-        ...localSession,
-        user
-      };
-      try {
-        localStorage.setItem('byd_auth_session', JSON.stringify(session));
-      } catch (e) {}
-      authListeners.forEach(cb => cb('SIGNED_IN', session));
-      return { data: { user, session }, error: null };
     },
     async signInWithOAuth() {
       return { data: {}, error: null };

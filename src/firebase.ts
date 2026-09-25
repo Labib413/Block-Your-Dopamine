@@ -20,6 +20,10 @@ import {
 import { 
   getAuth, 
   signInWithPopup, 
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  sendPasswordResetEmail,
   GoogleAuthProvider, 
   signOut as firebaseSignOut, 
   onAuthStateChanged,
@@ -83,6 +87,45 @@ export async function signInWithGoogle(): Promise<FirebaseUser> {
     return result.user;
   } catch (error) {
     console.error("[Firebase Auth] Google Sign-In Error:", error);
+    throw error;
+  }
+}
+
+// Sign In with Email & Password via Firebase Auth
+export async function signInWithFirebaseEmail(email: string, password: string): Promise<FirebaseUser> {
+  try {
+    const cred = await signInWithEmailAndPassword(auth, email, password);
+    return cred.user;
+  } catch (error) {
+    console.error("[Firebase Auth] Email Sign-In Error:", error);
+    throw error;
+  }
+}
+
+// Sign Up / Create Account with Email & Password via Firebase Auth
+export async function signUpWithFirebaseEmail(email: string, password: string, fullName?: string): Promise<FirebaseUser> {
+  try {
+    const cred = await createUserWithEmailAndPassword(auth, email, password);
+    if (fullName && cred.user) {
+      try {
+        await updateProfile(cred.user, { displayName: fullName });
+      } catch (profileErr) {
+        console.warn("[Firebase Auth] Failed to update displayName:", profileErr);
+      }
+    }
+    return cred.user;
+  } catch (error) {
+    console.error("[Firebase Auth] Email Sign-Up Error:", error);
+    throw error;
+  }
+}
+
+// Password Reset via Firebase Auth
+export async function sendFirebasePasswordReset(email: string): Promise<void> {
+  try {
+    await sendPasswordResetEmail(auth, email);
+  } catch (error) {
+    console.error("[Firebase Auth] Password Reset Error:", error);
     throw error;
   }
 }

@@ -22,6 +22,7 @@ export interface User {
   lastActiveDate: string;
   user_metadata: {
     full_name: string;
+    username?: string;
     avatar_url?: string;
   };
 }
@@ -1785,34 +1786,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Auth & Sync
   useEffect(() => {
-    // Supabase disconnected / offline mode connection check
-    const testConnection = async () => {
-      setIsSupabaseConnected(null);
-      setConnectionError(null);
-    };
-    testConnection();
-
-    // Initial session check
-    supabase.auth.getSession().then(({ data: { session } }: any) => {
-      if (session?.user) {
-        const user = session.user as unknown as User;
-        const profile = { 
-          fullName: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          avatarUrl: user.user_metadata?.avatar_url 
-        };
-        stateRef.current.user = user;
-        stateRef.current.profile = profile;
-        setState(prev => ({ ...prev, user, profile }));
-        masterSync(undefined, user);
-      } else {
-        setIsDataLoading(false);
+    // Clean up any stale legacy mock sessions from localStorage
+    try {
+      const raw = localStorage.getItem('byd_auth_session');
+      if (raw && (raw.includes('local-user-001') || raw.includes('@byd.local') || raw.includes('tasnem@byd.local'))) {
+        localStorage.removeItem('byd_auth_session');
       }
-      setIsAuthReady(true);
-    });
+    } catch {}
 
-    // Listen for Firebase auth changes
+    // Listen for Firebase auth changes as primary source of truth
     const unregisterFirebase = onFirebaseAuthStateChanged(firebaseAuth, (fbUser) => {
       if (fbUser) {
+        const username = fbUser.displayName?.toLowerCase().replace(/\s+/g, '_') || fbUser.email?.split('@')[0] || 'user';
         const user: User = {
           id: fbUser.uid,
           email: fbUser.email || '',
@@ -1821,11 +1806,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           lastActiveDate: new Date().toISOString(),
           user_metadata: {
             full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+            username,
             avatar_url: fbUser.photoURL || undefined,
           },
         };
         const profile = { 
           fullName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+          username,
           avatarUrl: fbUser.photoURL || undefined 
         };
         stateRef.current.user = user;
@@ -1834,15 +1821,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
         masterSync(undefined, user);
         setIsAuthReady(true);
       } else {
-        supabase.auth.getSession().then(({ data: { session } }: any) => {
-          if (!session?.user) {
-            stateRef.current.user = null;
-            stateRef.current.profile = null;
-            setState(prev => ({ ...prev, user: null, profile: null }));
-            setIsDataLoading(false);
-          }
-          setIsAuthReady(true);
-        });
+        // No Firebase user authenticated -> ensure state.user is null
+        stateRef.current.user = null;
+        stateRef.current.profile = null;
+        setState(prev => ({ ...prev, user: null, profile: null }));
+        setIsDataLoading(false);
+        setIsAuthReady(true);
       }
     });
 
