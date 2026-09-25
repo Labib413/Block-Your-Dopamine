@@ -427,14 +427,6 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
       {/* Tab 1: Virtual Study Desks Room (Replicating exact user-provided visual reference) */}
       {activeTab === "Room" && (
         <div className="space-y-6">
-          <div className="flex items-center justify-between text-xs text-white/40 px-1 font-mono">
-            <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#FF8C00] animate-ping inline-block" />
-              <span className="text-[#FF8C00] font-bold">Orange = Active Study Session</span>
-            </span>
-            <span>Dim = Inactive / Daily Total Logged</span>
-          </div>
-
           {/* Virtual Desks Grid (Compact 4-6 columns matching user reference) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-3.5 bg-[#0a0a0a]/90 border border-white/[0.06] p-3.5 sm:p-5 rounded-2xl backdrop-blur-xl relative overflow-hidden">
             {desks.map((desk) => {
