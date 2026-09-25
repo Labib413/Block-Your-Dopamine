@@ -26,12 +26,14 @@ import {
   Target,
   Award,
   Shield,
+  BookOpen,
   X
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { GlassCard } from "./GlassCard";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
+import { GuildStudyRoom } from "./GuildStudyRoom";
 
 interface CommunityMember {
   id: string;
@@ -345,6 +347,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
   const [guildFilter, setGuildFilter] = useState<string>("All");
   const [guildSearch, setGuildSearch] = useState<string>("");
+  const [selectedGuildRoomId, setSelectedGuildRoomId] = useState<string | null>(null);
   const [isCreateGuildOpen, setIsCreateGuildOpen] = useState(false);
   const [newGuildName, setNewGuildName] = useState("");
   const [newGuildTag, setNewGuildTag] = useState("");
@@ -510,6 +513,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     setNewGuildName("");
     setNewGuildTag("");
     setNewGuildDesc("");
+    setSelectedGuildRoomId(newGuild.id);
   };
 
   const filteredGuilds = useMemo(() => {
@@ -525,6 +529,10 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const userJoinedGuild = useMemo(() => {
     return guilds.find(g => g.joined);
   }, [guilds]);
+
+  const activeGuildForRoom = useMemo(() => {
+    return guilds.find(g => g.id === selectedGuildRoomId);
+  }, [guilds, selectedGuildRoomId]);
 
   return (
     <div className="flex-1 overflow-y-auto scrollbar-hide p-8 space-y-8">
@@ -1037,167 +1045,194 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
       {/* Tab 5: Guild */}
       {activeTab === "Guild" && (
-        <div className="space-y-6">
-          {/* Active Guild Banner if Joined */}
-          {userJoinedGuild && (
-            <GlassCard className="p-6 border-[#39FF14]/30 relative overflow-hidden bg-gradient-to-r from-[#39FF14]/10 via-black to-transparent">
-              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/40 flex items-center justify-center shadow-[0_0_20px_rgba(57,255,20,0.2)]">
-                    <Shield className="w-7 h-7 text-[#39FF14]" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded-md bg-[#39FF14]/20 border border-[#39FF14]/40 text-[#39FF14] text-[10px] font-mono font-bold">
-                        [{userJoinedGuild.tag}]
-                      </span>
-                      <h3 className="text-xl font-bold text-white tracking-tight">{userJoinedGuild.name}</h3>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-semibold">
-                        Rank #{userJoinedGuild.rank}
-                      </span>
+        selectedGuildRoomId && activeGuildForRoom ? (
+          <GuildStudyRoom 
+            guild={activeGuildForRoom} 
+            onBack={() => setSelectedGuildRoomId(null)} 
+            onToggleJoin={handleToggleGuild} 
+          />
+        ) : (
+          <div className="space-y-6">
+            {/* Active Guild Banner if Joined */}
+            {userJoinedGuild && (
+              <GlassCard className="p-6 border-[#39FF14]/30 relative overflow-hidden bg-gradient-to-r from-[#39FF14]/10 via-black to-transparent">
+                <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
+                  <div className="flex items-center gap-4">
+                    <div className="w-14 h-14 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/40 flex items-center justify-center shadow-[0_0_20px_rgba(57,255,20,0.2)]">
+                      <Shield className="w-7 h-7 text-[#39FF14]" />
                     </div>
-                    <p className="text-xs text-white/50 mt-1 font-sans max-w-xl">{userJoinedGuild.description}</p>
-                    <div className="flex items-center gap-4 mt-2 text-[11px] font-mono">
-                      <span className="text-[#39FF14] flex items-center gap-1 font-bold">
-                        <Zap className="w-3.5 h-3.5" /> {userJoinedGuild.perks}
-                      </span>
-                      <span className="text-white/40">•</span>
-                      <span className="text-white/60">Leader: {userJoinedGuild.leader}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-4 md:pt-0 border-white/10">
-                  <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-white/40 block">Guild Total XP</span>
-                    <span className="text-base font-bold font-mono text-[#FFD700]">{(userJoinedGuild.totalXp).toLocaleString()} XP</span>
-                  </div>
-                  <button
-                    onClick={() => handleToggleGuild(userJoinedGuild.id)}
-                    className="px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold uppercase tracking-wider transition-colors"
-                  >
-                    Leave Guild
-                  </button>
-                </div>
-              </div>
-            </GlassCard>
-          )}
-
-          {/* Search, Filter & Create Guild Controls */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              <div className="relative w-full sm:w-72">
-                <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search guild name or tag..."
-                  value={guildSearch}
-                  onChange={(e) => setGuildSearch(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors"
-                />
-              </div>
-
-              {/* Category Pills */}
-              <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
-                {(["All", "Engineering", "Medical", "Varsity", "HSC"] as const).map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => setGuildFilter(cat)}
-                    className={cn(
-                      "px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors",
-                      guildFilter === cat
-                        ? "bg-[#39FF14]/20 border border-[#39FF14]/50 text-[#39FF14]"
-                        : "bg-white/5 border border-white/5 text-white/50 hover:text-white hover:bg-white/10"
-                    )}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Create Guild Button */}
-            <button
-              onClick={() => setIsCreateGuildOpen(true)}
-              className="px-4 py-2.5 rounded-xl bg-[#39FF14] hover:bg-[#32e012] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(57,255,20,0.25)] transition-all shrink-0 w-full sm:w-auto justify-center"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create Guild</span>
-            </button>
-          </div>
-
-          {/* Guilds Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {filteredGuilds.map((guild) => (
-              <GlassCard key={guild.id} className="p-6 flex flex-col justify-between space-y-6 hover:border-white/20 transition-all">
-                <div className="space-y-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-base text-[#39FF14]">
-                        [{guild.tag}]
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded-md bg-[#39FF14]/20 border border-[#39FF14]/40 text-[#39FF14] text-[10px] font-mono font-bold">
+                          [{userJoinedGuild.tag}]
+                        </span>
+                        <h3 className="text-xl font-bold text-white tracking-tight">{userJoinedGuild.name}</h3>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-semibold">
+                          Rank #{userJoinedGuild.rank}
+                        </span>
                       </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h4 className="text-base font-bold text-white leading-tight">{guild.name}</h4>
-                          <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60">
-                            Lv.{guild.level}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-white/40 mt-0.5">Leader: <span className="text-white/70 font-medium">{guild.leader}</span></p>
+                      <p className="text-xs text-white/50 mt-1 font-sans max-w-xl">{userJoinedGuild.description}</p>
+                      <div className="flex items-center gap-4 mt-2 text-[11px] font-mono">
+                        <span className="text-[#39FF14] flex items-center gap-1 font-bold">
+                          <Zap className="w-3.5 h-3.5" /> {userJoinedGuild.perks}
+                        </span>
+                        <span className="text-white/40">•</span>
+                        <span className="text-white/60">Leader: {userJoinedGuild.leader}</span>
                       </div>
                     </div>
-
-                    <div className="flex flex-col items-end">
-                      <span className="text-xs font-mono font-bold text-[#FFD700] flex items-center gap-1">
-                        <Trophy className="w-3.5 h-3.5" /> #{guild.rank}
-                      </span>
-                      <span className="text-[10px] text-white/30 uppercase font-semibold mt-0.5">{guild.category}</span>
-                    </div>
                   </div>
 
-                  <p className="text-xs text-white/50 leading-relaxed font-sans">{guild.description}</p>
-
-                  <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2 text-xs text-[#39FF14]">
-                    <Zap className="w-3.5 h-3.5 shrink-0" />
-                    <span className="text-[11px] font-medium">{guild.perks}</span>
-                  </div>
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-white/5">
-                  <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
-                      <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Total XP</span>
-                      <span className="text-white font-bold">{guild.totalXp.toLocaleString()} XP</span>
-                    </div>
-                    <div className="p-2 rounded-lg bg-white/5 border border-white/5">
-                      <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Warriors</span>
-                      <span className="text-white font-bold">{guild.membersCount}/{guild.maxMembers}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-4 pt-1">
-                    <div className="flex items-center gap-1.5 text-xs text-white/40 font-mono">
-                      <Users className="w-3.5 h-3.5 text-white/30" />
-                      <span>{guild.weeklyGoalHours}h weekly goal</span>
-                    </div>
-
+                  <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-4 md:pt-0 border-white/10 flex-wrap">
                     <button
-                      onClick={() => handleToggleGuild(guild.id)}
-                      className={cn(
-                        "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200",
-                        guild.joined
-                          ? "bg-white/10 text-white border border-white/20 hover:bg-red-500/20 hover:text-red-400 hover:border-red-500/30"
-                          : "bg-[#39FF14] hover:bg-[#32e012] text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]"
-                      )}
+                      onClick={() => setSelectedGuildRoomId(userJoinedGuild.id)}
+                      className="px-4 py-2.5 rounded-xl bg-[#FF8C00] hover:bg-[#ff9d26] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(255,140,0,0.25)] transition-all"
                     >
-                      {guild.joined ? "Joined ✓" : "Join Guild"}
+                      <BookOpen className="w-4 h-4" />
+                      <span>Enter Study Room</span>
+                    </button>
+                    <button
+                      onClick={() => handleToggleGuild(userJoinedGuild.id)}
+                      className="px-3.5 py-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold uppercase tracking-wider transition-colors"
+                    >
+                      Leave
                     </button>
                   </div>
                 </div>
               </GlassCard>
-            ))}
+            )}
+
+            {/* Search, Filter & Create Guild Controls */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                <div className="relative w-full sm:w-72">
+                  <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search guild name or tag..."
+                    value={guildSearch}
+                    onChange={(e) => setGuildSearch(e.target.value)}
+                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                  />
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+                  {(["All", "Engineering", "Medical", "Varsity", "HSC"] as const).map((cat) => (
+                    <button
+                      key={cat}
+                      onClick={() => setGuildFilter(cat)}
+                      className={cn(
+                        "px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-colors",
+                        guildFilter === cat
+                          ? "bg-[#39FF14]/20 border border-[#39FF14]/50 text-[#39FF14]"
+                          : "bg-white/5 border border-white/5 text-white/50 hover:text-white hover:bg-white/10"
+                      )}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Create Guild Button */}
+              <button
+                onClick={() => setIsCreateGuildOpen(true)}
+                className="px-4 py-2.5 rounded-xl bg-[#39FF14] hover:bg-[#32e012] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(57,255,20,0.25)] transition-all shrink-0 w-full sm:w-auto justify-center"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create Guild</span>
+              </button>
+            </div>
+
+            {/* Guilds Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredGuilds.map((guild) => (
+                <GlassCard 
+                  key={guild.id} 
+                  onClick={() => {
+                    if (!guild.joined) {
+                      handleToggleGuild(guild.id);
+                    }
+                    setSelectedGuildRoomId(guild.id);
+                  }}
+                  className="p-6 flex flex-col justify-between space-y-6 hover:border-[#39FF14]/40 cursor-pointer group transition-all"
+                >
+                  <div className="space-y-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-base text-[#39FF14] group-hover:scale-105 transition-transform">
+                          [{guild.tag}]
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="text-base font-bold text-white group-hover:text-[#39FF14] transition-colors leading-tight">{guild.name}</h4>
+                            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60">
+                              Lv.{guild.level}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-white/40 mt-0.5">Leader: <span className="text-white/70 font-medium">{guild.leader}</span></p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs font-mono font-bold text-[#FFD700] flex items-center gap-1">
+                          <Trophy className="w-3.5 h-3.5" /> #{guild.rank}
+                        </span>
+                        <span className="text-[10px] text-white/30 uppercase font-semibold mt-0.5">{guild.category}</span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-white/50 leading-relaxed font-sans">{guild.description}</p>
+
+                    <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2 text-xs text-[#39FF14]">
+                      <Zap className="w-3.5 h-3.5 shrink-0" />
+                      <span className="text-[11px] font-medium">{guild.perks}</span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4 border-t border-white/5">
+                    <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                      <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                        <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Total XP</span>
+                        <span className="text-white font-bold">{guild.totalXp.toLocaleString()} XP</span>
+                      </div>
+                      <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                        <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Warriors</span>
+                        <span className="text-white font-bold">{guild.membersCount}/{guild.maxMembers}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4 pt-1">
+                      <div className="flex items-center gap-1.5 text-xs text-white/40 font-mono">
+                        <Users className="w-3.5 h-3.5 text-white/30" />
+                        <span>{guild.weeklyGoalHours}h weekly goal</span>
+                      </div>
+
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (!guild.joined) {
+                            handleToggleGuild(guild.id);
+                          }
+                          setSelectedGuildRoomId(guild.id);
+                        }}
+                        className={cn(
+                          "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                          guild.joined
+                            ? "bg-[#FF8C00] hover:bg-[#ff9d26] text-black shadow-[0_0_15px_rgba(255,140,0,0.25)]"
+                            : "bg-[#39FF14] hover:bg-[#32e012] text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]"
+                        )}
+                      >
+                        <BookOpen className="w-3.5 h-3.5" />
+                        <span>{guild.joined ? "Enter Room" : "Join & Enter"}</span>
+                      </button>
+                    </div>
+                  </div>
+                </GlassCard>
+              ))}
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* Create Guild Modal */}

@@ -16,7 +16,11 @@ import {
   Globe,
   Quote,
   AlertCircle,
-  Link as LinkIcon
+  Link as LinkIcon,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  RotateCcw
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { getDailyQuote, getAIInsight } from "../services/gemini";
@@ -244,7 +248,8 @@ const TrendsChart = memo(({ displayChartData, visibleLines }: { displayChartData
 export function Dashboard() {
   const [quote, setQuote] = useState({ text: "Loading inspiration...", author: "" });
   const [aiInsight, setAiInsight] = useState("Analyzing your performance...");
-  const [activeTab, setActiveTab] = useState("Week");
+  const [activeTab, setActiveTab] = useState<"Day" | "Week" | "Month" | "Year">("Week");
+  const [periodOffset, setPeriodOffset] = useState(0);
 
   const { 
     user,
@@ -291,6 +296,27 @@ export function Dashboard() {
     }).format(date);
   };
 
+  const handleDatePick = (dateStr: string) => {
+    const picked = new Date(dateStr);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    picked.setHours(0, 0, 0, 0);
+    
+    if (activeTab === "Day") {
+      const diffDays = Math.round((picked.getTime() - today.getTime()) / (1000 * 3600 * 24));
+      setPeriodOffset(diffDays);
+    } else if (activeTab === "Week") {
+      const diffWeeks = Math.floor((picked.getTime() - today.getTime()) / (1000 * 3600 * 24 * 7));
+      setPeriodOffset(diffWeeks);
+    } else if (activeTab === "Month") {
+      const diffMonths = (picked.getFullYear() - today.getFullYear()) * 12 + (picked.getMonth() - today.getMonth());
+      setPeriodOffset(diffMonths);
+    } else {
+      const diffYears = picked.getFullYear() - today.getFullYear();
+      setPeriodOffset(diffYears);
+    }
+  };
+
   const requiredXP = getRequiredXP(level);
   const progressPercent = (xp / requiredXP) * 100;
 
@@ -308,111 +334,281 @@ export function Dashboard() {
     }
   }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey, isDataLoading]); // Only trigger on task change or every minute of focus
 
-  const displayChartData = useMemo(() => {
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
-    
-    let numPoints = 7;
-    let labelFormat: (d: Date) => string;
-    let mapKey: (d: Date) => string;
+  const { displayChartData, periodLabel } = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    if (activeTab === "Week") {
-      numPoints = 7;
-      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-      labelFormat = (d) => dayNames[d.getDay()];
-      mapKey = (d) => getLocalDateString(d);
-    } else if (activeTab === "Month") {
-      numPoints = 30;
-      labelFormat = (d) => `${d.getDate()}`;
-      mapKey = (d) => getLocalDateString(d);
-    } else { // Year
-      numPoints = 12;
-      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      labelFormat = (d) => monthNames[d.getMonth()];
-      mapKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    }
+    let dataPoints: any[] = [];
+    let label = "";
 
-    const dataPoints = Array.from({ length: numPoints }, (_, i) => {
-      const d = new Date(todayDate);
-      if (activeTab === "Year") {
-        d.setMonth(d.getMonth() - (11 - i));
-        d.setDate(1); // Standardize on first of month to avoid overflow issues
-      } else {
-        d.setDate(d.getDate() - (numPoints - 1 - i));
-      }
+    if (activeTab === "Day") {
+      const targetDate = new Date(today);
+      targetDate.setDate(targetDate.getDate() + periodOffset);
+      const targetDateStr = getLocalDateString(targetDate);
       
-      return {
-        key: mapKey(d),
-        name: labelFormat(d),
-        focus: 0,
-        planner: 0,
-        health: 0,
-        focusRaw: 0,
-        plannerRaw: 0,
-        healthRaw: 0
-      };
-    });
+      const isToday = periodOffset === 0;
+      const isYesterday = periodOffset === -1;
+      label = targetDate.toLocaleDateString("en-US", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+      if (isToday) label += " (Today)";
+      else if (isYesterday) label += " (Yesterday)";
 
-    // Aggregate Focus (Net focus time)
-    (focusHistory || []).forEach(s => {
-      const sDate = new Date(s.start_time || s.timestamp);
-      const k = activeTab === "Year" 
-        ? `${sDate.getFullYear()}-${String(sDate.getMonth() + 1).padStart(2, '0')}`
-        : getLocalDateString(sDate);
-      const dp = dataPoints.find(d => d.key === k);
-      if (dp) {
-        const dur = s.session_duration || 0;
-        const score = s.growth_percentage || 0;
-        dp.focusRaw += (score / 100) * dur;
-      }
-    });
+      // 24 Hours of the target day
+      dataPoints = Array.from({ length: 24 }, (_, hour) => {
+        const hourLabel = `${String(hour).padStart(2, '0')}:00`;
+        return {
+          key: `${targetDateStr}_${hour}`,
+          name: hour % 3 === 0 ? hourLabel : (hour === 23 ? "23:00" : ""),
+          focus: 0,
+          planner: 0,
+          health: 0,
+          focusRaw: 0,
+          plannerRaw: 0,
+          healthRaw: 0
+        };
+      });
 
-    // Aggregate Health Metrics
-    (healthHistory || []).forEach(h => {
-      const k = activeTab === "Year" 
-        ? h.entry_date.substring(0, 7)
-        : h.entry_date;
-      const dp = dataPoints.find(d => d.key === k);
-      if (dp) {
-        const sleep = h.sleep_hours || 0;
-        const hydration = h.hydration || 0;
-        const score = (sleep * 0.6 + hydration * 0.4);
-        if (activeTab === "Year") {
-          dp.healthRaw += score;
-        } else {
-          dp.healthRaw = Math.max(dp.healthRaw, score);
+      // Filter and aggregate focus sessions for this day and hour
+      (focusHistory || []).forEach(s => {
+        const sDate = new Date(s.start_time || s.timestamp);
+        if (getLocalDateString(sDate) === targetDateStr) {
+          const hour = sDate.getHours();
+          const dp = dataPoints[hour];
+          if (dp) {
+            const dur = s.session_duration || 0;
+            const score = s.growth_percentage || 0;
+            dp.focusRaw += (score / 100) * dur;
+          }
         }
-      }
-    });
+      });
 
-    // Aggregate Planner Tasks
-    tasks.forEach(t => {
-      if (t.status === 'Done') {
-        const k = activeTab === "Year" 
-          ? t.date.substring(0, 7)
-          : t.date;
+      // Health for this day
+      (healthHistory || []).forEach(h => {
+        if (h.entry_date === targetDateStr) {
+          const sleep = h.sleep_hours || 0;
+          const hydration = h.hydration || 0;
+          const score = (sleep * 0.6 + hydration * 0.4);
+          dataPoints.forEach(dp => {
+            dp.healthRaw = score;
+          });
+        }
+      });
+
+      // Tasks completed on this day
+      tasks.forEach(t => {
+        if (t.status === 'Done' && t.date === targetDateStr) {
+          const hour = 12;
+          if (dataPoints[hour]) {
+            dataPoints[hour].plannerRaw += 1;
+          }
+        }
+      });
+
+      dataPoints = dataPoints.map(d => ({
+        ...d,
+        focus: Math.min(100, (d.focusRaw / 3600) * 100),
+        health: Math.min(100, (d.healthRaw / 6) * 100),
+        planner: Math.min(100, (d.plannerRaw / 1) * 100),
+        focusRawValue: (d.focusRaw / 3600).toFixed(1),
+        healthRawValue: d.healthRaw.toFixed(1),
+        plannerRawValue: d.plannerRaw
+      }));
+
+    } else if (activeTab === "Week") {
+      const endDate = new Date(today);
+      endDate.setDate(endDate.getDate() + (periodOffset * 7));
+      const startDate = new Date(endDate);
+      startDate.setDate(startDate.getDate() - 6);
+
+      const isCurrentWeek = periodOffset === 0;
+      label = `${startDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })} - ${endDate.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}`;
+      if (isCurrentWeek) label += " (Current)";
+
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      dataPoints = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(startDate);
+        d.setDate(d.getDate() + i);
+        return {
+          key: getLocalDateString(d),
+          name: `${dayNames[d.getDay()]} ${d.getDate()}`,
+          focus: 0,
+          planner: 0,
+          health: 0,
+          focusRaw: 0,
+          plannerRaw: 0,
+          healthRaw: 0
+        };
+      });
+
+      (focusHistory || []).forEach(s => {
+        const sDate = new Date(s.start_time || s.timestamp);
+        const k = getLocalDateString(sDate);
         const dp = dataPoints.find(d => d.key === k);
         if (dp) {
-          dp.plannerRaw += 1;
+          const dur = s.session_duration || 0;
+          const score = s.growth_percentage || 0;
+          dp.focusRaw += (score / 100) * dur;
         }
-      }
-    });
+      });
 
-    // Normalize
-    const focusGoal = activeTab === "Year" ? 28800 * 30 : 28800; // 8h/day goal
-    const healthGoal = activeTab === "Year" ? 6 * 30 : 6;
-    const plannerGoal = activeTab === "Year" ? 5 * 30 : 5;
+      (healthHistory || []).forEach(h => {
+        const dp = dataPoints.find(d => d.key === h.entry_date);
+        if (dp) {
+          const sleep = h.sleep_hours || 0;
+          const hydration = h.hydration || 0;
+          dp.healthRaw = Math.max(dp.healthRaw, sleep * 0.6 + hydration * 0.4);
+        }
+      });
 
-    return dataPoints.map(d => ({
-      ...d,
-      focus: Math.min(100, (d.focusRaw / focusGoal) * 100),
-      health: Math.min(100, (d.healthRaw / healthGoal) * 100),
-      planner: Math.min(100, (d.plannerRaw / plannerGoal) * 100),
-      focusRawValue: (d.focusRaw / 3600).toFixed(1),
-      healthRawValue: d.healthRaw.toFixed(1),
-      plannerRawValue: d.plannerRaw
-    }));
-  }, [focusHistory, healthHistory, tasks, activeTab]);
+      tasks.forEach(t => {
+        if (t.status === 'Done') {
+          const dp = dataPoints.find(d => d.key === t.date);
+          if (dp) {
+            dp.plannerRaw += 1;
+          }
+        }
+      });
+
+      dataPoints = dataPoints.map(d => ({
+        ...d,
+        focus: Math.min(100, (d.focusRaw / 28800) * 100),
+        health: Math.min(100, (d.healthRaw / 6) * 100),
+        planner: Math.min(100, (d.plannerRaw / 5) * 100),
+        focusRawValue: (d.focusRaw / 3600).toFixed(1),
+        healthRawValue: d.healthRaw.toFixed(1),
+        plannerRawValue: d.plannerRaw
+      }));
+
+    } else if (activeTab === "Month") {
+      const anchorDate = new Date(today);
+      anchorDate.setDate(1);
+      anchorDate.setMonth(anchorDate.getMonth() + periodOffset);
+      
+      const year = anchorDate.getFullYear();
+      const month = anchorDate.getMonth();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const isCurrentMonth = periodOffset === 0;
+      label = anchorDate.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+      if (isCurrentMonth) label += " (Current)";
+
+      dataPoints = Array.from({ length: daysInMonth }, (_, i) => {
+        const d = new Date(year, month, i + 1);
+        return {
+          key: getLocalDateString(d),
+          name: (i === 0 || (i + 1) % 5 === 0 || i === daysInMonth - 1) ? `${i + 1}` : "",
+          focus: 0,
+          planner: 0,
+          health: 0,
+          focusRaw: 0,
+          plannerRaw: 0,
+          healthRaw: 0
+        };
+      });
+
+      (focusHistory || []).forEach(s => {
+        const sDate = new Date(s.start_time || s.timestamp);
+        const k = getLocalDateString(sDate);
+        const dp = dataPoints.find(d => d.key === k);
+        if (dp) {
+          const dur = s.session_duration || 0;
+          const score = s.growth_percentage || 0;
+          dp.focusRaw += (score / 100) * dur;
+        }
+      });
+
+      (healthHistory || []).forEach(h => {
+        const dp = dataPoints.find(d => d.key === h.entry_date);
+        if (dp) {
+          const sleep = h.sleep_hours || 0;
+          const hydration = h.hydration || 0;
+          dp.healthRaw = Math.max(dp.healthRaw, sleep * 0.6 + hydration * 0.4);
+        }
+      });
+
+      tasks.forEach(t => {
+        if (t.status === 'Done') {
+          const dp = dataPoints.find(d => d.key === t.date);
+          if (dp) {
+            dp.plannerRaw += 1;
+          }
+        }
+      });
+
+      dataPoints = dataPoints.map(d => ({
+        ...d,
+        focus: Math.min(100, (d.focusRaw / 28800) * 100),
+        health: Math.min(100, (d.healthRaw / 6) * 100),
+        planner: Math.min(100, (d.plannerRaw / 5) * 100),
+        focusRawValue: (d.focusRaw / 3600).toFixed(1),
+        healthRawValue: d.healthRaw.toFixed(1),
+        plannerRawValue: d.plannerRaw
+      }));
+
+    } else { // Year
+      const targetYear = today.getFullYear() + periodOffset;
+      const isCurrentYear = periodOffset === 0;
+      label = `${targetYear}`;
+      if (isCurrentYear) label += " (Current Year)";
+
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      dataPoints = Array.from({ length: 12 }, (_, i) => {
+        const monthKey = `${targetYear}-${String(i + 1).padStart(2, '0')}`;
+        return {
+          key: monthKey,
+          name: monthNames[i],
+          focus: 0,
+          planner: 0,
+          health: 0,
+          focusRaw: 0,
+          plannerRaw: 0,
+          healthRaw: 0
+        };
+      });
+
+      (focusHistory || []).forEach(s => {
+        const sDate = new Date(s.start_time || s.timestamp);
+        const k = `${sDate.getFullYear()}-${String(sDate.getMonth() + 1).padStart(2, '0')}`;
+        const dp = dataPoints.find(d => d.key === k);
+        if (dp) {
+          const dur = s.session_duration || 0;
+          const score = s.growth_percentage || 0;
+          dp.focusRaw += (score / 100) * dur;
+        }
+      });
+
+      (healthHistory || []).forEach(h => {
+        const k = h.entry_date.substring(0, 7);
+        const dp = dataPoints.find(d => d.key === k);
+        if (dp) {
+          const sleep = h.sleep_hours || 0;
+          const hydration = h.hydration || 0;
+          dp.healthRaw += (sleep * 0.6 + hydration * 0.4);
+        }
+      });
+
+      tasks.forEach(t => {
+        if (t.status === 'Done') {
+          const k = t.date.substring(0, 7);
+          const dp = dataPoints.find(d => d.key === k);
+          if (dp) {
+            dp.plannerRaw += 1;
+          }
+        }
+      });
+
+      dataPoints = dataPoints.map(d => ({
+        ...d,
+        focus: Math.min(100, (d.focusRaw / (28800 * 30)) * 100),
+        health: Math.min(100, (d.healthRaw / (6 * 30)) * 100),
+        planner: Math.min(100, (d.plannerRaw / (5 * 30)) * 100),
+        focusRawValue: (d.focusRaw / 3600).toFixed(1),
+        healthRawValue: d.healthRaw.toFixed(1),
+        plannerRawValue: d.plannerRaw
+      }));
+    }
+
+    return { displayChartData: dataPoints, periodLabel: label };
+  }, [focusHistory, healthHistory, tasks, activeTab, periodOffset]);
 
   const handleAIAction = async (type: 'consistency' | 'peak') => {
     setAiInsight("AI is thinking...");
@@ -528,55 +724,118 @@ export function Dashboard() {
       {/* Quick Access & Productivity Graph */}
       <div className="grid grid-cols-12 gap-8 overflow-visible p-4 -m-4">
         <GlassCard className="col-span-8">
-          <div className="flex items-center justify-between mb-8">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-xl font-sans font-bold">Productivity Trends</h3>
-              <div className="flex gap-4 mt-2">
-                <button 
-                  onClick={() => setVisibleLines(prev => ({ ...prev, focus: !prev.focus }))}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
-                    visibleLines.focus ? "bg-[#39FF14]/10 border-[#39FF14]/30 text-[#39FF14]" : "bg-white/5 border-white/10 text-white/20"
+          <div className="flex flex-col gap-4 mb-8">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex flex-wrap items-center gap-3">
+                <h3 className="text-xl font-sans font-bold text-white tracking-tight">Productivity Trends</h3>
+                
+                {/* Date / History Navigator Controls */}
+                <div className="flex items-center gap-1.5 bg-white/5 border border-white/10 px-2 py-1 rounded-xl">
+                  <button 
+                    onClick={() => setPeriodOffset(prev => prev - 1)}
+                    className="p-1 rounded-lg hover:bg-white/10 text-white/60 hover:text-white transition-colors"
+                    title="Previous Period (See past data)"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+
+                  <span className="text-xs font-mono font-bold text-white px-2 select-none text-center">
+                    {periodLabel}
+                  </span>
+
+                  <button 
+                    onClick={() => setPeriodOffset(prev => Math.min(0, prev + 1))}
+                    disabled={periodOffset >= 0}
+                    className={cn(
+                      "p-1 rounded-lg transition-colors",
+                      periodOffset >= 0 
+                        ? "text-white/20 cursor-not-allowed" 
+                        : "hover:bg-white/10 text-white/60 hover:text-white"
+                    )}
+                    title="Next Period"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+
+                  {periodOffset !== 0 && (
+                    <button
+                      onClick={() => setPeriodOffset(0)}
+                      className="ml-1 px-2 py-0.5 rounded-md bg-[#39FF14]/15 border border-[#39FF14]/30 text-[#39FF14] text-[10px] font-bold tracking-wider uppercase hover:bg-[#39FF14]/25 transition-colors"
+                      title="Jump to Current / Today"
+                    >
+                      Today
+                    </button>
                   )}
-                >
-                  <div className={cn("w-2 h-2 rounded-full", visibleLines.focus ? "bg-[#39FF14] shadow-[0_0_8px_#39FF14]" : "bg-white/20")} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Focus</span>
-                </button>
-                <button 
-                  onClick={() => setVisibleLines(prev => ({ ...prev, planner: !prev.planner }))}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
-                    visibleLines.planner ? "bg-[#a855f7]/10 border-[#a855f7]/30 text-[#a855f7]" : "bg-white/5 border-white/10 text-white/20"
-                  )}
-                >
-                  <div className={cn("w-2 h-2 rounded-full", visibleLines.planner ? "bg-[#a855f7] shadow-[0_0_8px_#a855f7]" : "bg-white/20")} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Planner</span>
-                </button>
-                <button 
-                  onClick={() => setVisibleLines(prev => ({ ...prev, health: !prev.health }))}
-                  className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
-                    visibleLines.health ? "bg-[#60a5fa]/10 border-[#60a5fa]/30 text-[#60a5fa]" : "bg-white/5 border-white/10 text-white/20"
-                  )}
-                >
-                  <div className={cn("w-2 h-2 rounded-full", visibleLines.health ? "bg-[#60a5fa] shadow-[0_0_8px_#60a5fa]" : "bg-white/20")} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">Health</span>
-                </button>
+
+                  {/* Date Picker Jump */}
+                  <label className="cursor-pointer ml-1 p-1 rounded-lg hover:bg-white/10 text-white/50 hover:text-[#39FF14] transition-colors relative" title="Pick Specific Historical Date">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <input
+                      type="date"
+                      max={getLocalDateString(new Date())}
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          handleDatePick(e.target.value);
+                        }
+                      }}
+                      className="sr-only"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Day / Week / Month / Year Tabs */}
+              <div className="flex gap-1.5 bg-white/5 p-1 rounded-xl border border-white/10 w-fit">
+                {(["Day", "Week", "Month", "Year"] as const).map((t) => (
+                  <button 
+                    key={t} 
+                    onClick={() => {
+                      setActiveTab(t);
+                      setPeriodOffset(0);
+                    }}
+                    className={cn(
+                      "px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-wider transition-all",
+                      activeTab === t ? "bg-neon-green/15 border border-neon-green/40 text-neon-green shadow-[0_0_10px_rgba(57,255,20,0.2)]" : "text-white/40 hover:text-white"
+                    )}
+                  >
+                    {t}
+                  </button>
+                ))}
               </div>
             </div>
-            <div className="flex gap-2">
-              {["Week", "Month", "Year"].map((t) => (
-                <button 
-                  key={t} 
-                  onClick={() => setActiveTab(t)}
-                  className={cn(
-                    "px-3 py-1 rounded-lg text-xs font-bold uppercase tracking-widest border transition-all",
-                    activeTab === t ? "bg-neon-green/10 border-neon-green/30 text-neon-green" : "border-white/10 text-white/40 hover:text-white"
-                  )}
-                >
-                  {t}
-                </button>
-              ))}
+
+            {/* Line Toggles */}
+            <div className="flex gap-4">
+              <button 
+                onClick={() => setVisibleLines(prev => ({ ...prev, focus: !prev.focus }))}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
+                  visibleLines.focus ? "bg-[#39FF14]/10 border-[#39FF14]/30 text-[#39FF14]" : "bg-white/5 border-white/10 text-white/20"
+                )}
+              >
+                <div className={cn("w-2 h-2 rounded-full", visibleLines.focus ? "bg-[#39FF14] shadow-[0_0_8px_#39FF14]" : "bg-white/20")} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Focus</span>
+              </button>
+              <button 
+                onClick={() => setVisibleLines(prev => ({ ...prev, planner: !prev.planner }))}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
+                  visibleLines.planner ? "bg-[#a855f7]/10 border-[#a855f7]/30 text-[#a855f7]" : "bg-white/5 border-white/10 text-white/20"
+                )}
+              >
+                <div className={cn("w-2 h-2 rounded-full", visibleLines.planner ? "bg-[#a855f7] shadow-[0_0_8px_#a855f7]" : "bg-white/20")} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Planner</span>
+              </button>
+              <button 
+                onClick={() => setVisibleLines(prev => ({ ...prev, health: !prev.health }))}
+                className={cn(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all duration-300",
+                  visibleLines.health ? "bg-[#60a5fa]/10 border-[#60a5fa]/30 text-[#60a5fa]" : "bg-white/5 border-white/10 text-white/20"
+                )}
+              >
+                <div className={cn("w-2 h-2 rounded-full", visibleLines.health ? "bg-[#60a5fa] shadow-[0_0_8px_#60a5fa]" : "bg-white/20")} />
+                <span className="text-[10px] font-black uppercase tracking-widest">Health</span>
+              </button>
             </div>
           </div>
           <div className="h-72 w-full">

@@ -124,6 +124,29 @@
       },
       "required": ["progressId", "userId"]
     },
+    "Guild": {
+      "title": "Guild",
+      "description": "Collaborative study group and academic syndicate in the community",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "name": { "type": "string", "maxLength": 100 },
+        "tag": { "type": "string", "maxLength": 10 },
+        "description": { "type": "string", "maxLength": 500 },
+        "category": { "type": "string", "maxLength": 50 },
+        "leaderId": { "type": "string", "maxLength": 128 },
+        "leaderName": { "type": "string", "maxLength": 100 },
+        "membersCount": { "type": "number" },
+        "maxMembers": { "type": "number" },
+        "level": { "type": "number" },
+        "totalXp": { "type": "number" },
+        "weeklyGoalHours": { "type": "number" },
+        "perks": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "tag", "leaderId"]
+    },
     "TestConnection": {
       "title": "TestConnection",
       "description": "Ping document used to test Firestore connectivity",
@@ -194,6 +217,10 @@
     "/users/{userId}/academic_progress/{progressId}": {
       "schema": "AcademicProgress",
       "description": "Academic subjects and chapter preparation tracking"
+    },
+    "/guilds/{guildId}": {
+      "schema": "Guild",
+      "description": "Community study guilds, syndicate leaderboards, and member records"
     },
     "/test/{docId}": {
       "schema": "TestConnection",

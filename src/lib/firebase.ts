@@ -371,4 +371,199 @@ export function subscribeToFirestoreUserData(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Guilds Database Operations & User Association Logic
+// ---------------------------------------------------------------------------
+
+export interface FirestoreGuildMember {
+  userId: string;
+  username: string;
+  fullName: string;
+  avatarUrl?: string;
+  role: 'leader' | 'officer' | 'member';
+  level: number;
+  xp: number;
+  streak: number;
+  detoxScore: number;
+  joinedAt: string;
+  status?: 'focusing' | 'idle' | 'break';
+  currentTask?: string;
+}
+
+export interface FirestoreGuild {
+  id: string;
+  name: string;
+  tag: string;
+  description: string;
+  category: "Engineering" | "Medical" | "Varsity" | "General" | "HSC";
+  leaderId: string;
+  leaderName: string;
+  membersCount: number;
+  maxMembers: number;
+  level: number;
+  rank?: number;
+  totalXp: number;
+  weeklyGoalHours: number;
+  perks: string;
+  members?: FirestoreGuildMember[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Fetch all guilds from Firestore
+ */
+export async function fetchGuildsFromFirestore(): Promise<FirestoreGuild[]> {
+  try {
+    const colRef = collection(db, 'guilds');
+    const snap = await getDocs(colRef);
+    if (snap.empty) return [];
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as FirestoreGuild));
+  } catch (err) {
+    console.warn('[Firestore] fetchGuildsFromFirestore error:', err);
+    return [];
+  }
+}
+
+/**
+ * Subscribe in realtime to all community guilds
+ */
+export function subscribeToGuilds(callback: (guilds: FirestoreGuild[]) => void): () => void {
+  try {
+    const colRef = collection(db, 'guilds');
+    const unsub = onSnapshot(colRef, (snap) => {
+      const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as FirestoreGuild));
+      callback(list);
+    }, (err) => {
+      console.warn('[Firestore] subscribeToGuilds error:', err);
+    });
+    return unsub;
+  } catch (err) {
+    console.warn('[Firestore] subscribeToGuilds init error:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Create a new guild in Firestore and associate creator
+ */
+export async function createGuildInFirestore(
+  guildData: Omit<FirestoreGuild, 'id' | 'createdAt' | 'updatedAt' | 'members'>,
+  creator: FirestoreGuildMember
+): Promise<FirestoreGuild> {
+  const guildId = `guild_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const now = new Date().toISOString();
+
+  const newGuild: FirestoreGuild = {
+    ...guildData,
+    id: guildId,
+    membersCount: 1,
+    members: [{ ...creator, role: 'leader', joinedAt: now }],
+    createdAt: now,
+    updatedAt: now
+  };
+
+  try {
+    const docRef = doc(db, 'guilds', guildId);
+    await setDoc(docRef, newGuild);
+
+    // Associate user in user's profile
+    if (creator.userId) {
+      await updateUserGuildAssociation(creator.userId, guildId, newGuild.name, newGuild.tag, 'leader');
+    }
+  } catch (err) {
+    console.warn('[Firestore] createGuildInFirestore error:', err);
+  }
+
+  return newGuild;
+}
+
+/**
+ * Associate a user with a guild in database and update guild members list
+ */
+export async function joinGuildInFirestore(guildId: string, member: FirestoreGuildMember): Promise<void> {
+  try {
+    const guildRef = doc(db, 'guilds', guildId);
+    const snap = await getDoc(guildRef);
+    if (!snap.exists()) return;
+
+    const existingGuild = snap.data() as FirestoreGuild;
+    const currentMembers = existingGuild.members || [];
+    
+    // Filter out if already in list to avoid duplicates
+    const filteredMembers = currentMembers.filter(m => m.userId !== member.userId);
+    const updatedMembers = [...filteredMembers, { ...member, joinedAt: new Date().toISOString() }];
+
+    await setDoc(guildRef, {
+      ...existingGuild,
+      members: updatedMembers,
+      membersCount: updatedMembers.length,
+      totalXp: (existingGuild.totalXp || 0) + (member.xp || 500),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // Update user profile document in Firestore
+    if (member.userId) {
+      await updateUserGuildAssociation(member.userId, guildId, existingGuild.name, existingGuild.tag, member.role || 'member');
+    }
+  } catch (err) {
+    console.warn('[Firestore] joinGuildInFirestore error:', err);
+  }
+}
+
+/**
+ * Leave a guild in Firestore and disassociate user
+ */
+export async function leaveGuildInFirestore(guildId: string, userId: string): Promise<void> {
+  try {
+    const guildRef = doc(db, 'guilds', guildId);
+    const snap = await getDoc(guildRef);
+    if (!snap.exists()) return;
+
+    const existingGuild = snap.data() as FirestoreGuild;
+    const currentMembers = existingGuild.members || [];
+    const updatedMembers = currentMembers.filter(m => m.userId !== userId);
+
+    await setDoc(guildRef, {
+      ...existingGuild,
+      members: updatedMembers,
+      membersCount: Math.max(0, updatedMembers.length),
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+
+    // Clear guild association in user profile
+    if (userId) {
+      await updateUserGuildAssociation(userId, null, null, null, null);
+    }
+  } catch (err) {
+    console.warn('[Firestore] leaveGuildInFirestore error:', err);
+  }
+}
+
+/**
+ * Update user document in Firestore to persist their guild ID and role
+ */
+export async function updateUserGuildAssociation(
+  userId: string,
+  guildId: string | null,
+  guildName?: string | null,
+  guildTag?: string | null,
+  guildRole?: string | null
+): Promise<void> {
+  if (!userId) return;
+  try {
+    const userRef = doc(db, 'users', userId);
+    await setDoc(userRef, {
+      guildId: guildId || null,
+      guildName: guildName || null,
+      guildTag: guildTag || null,
+      guildRole: guildRole || null,
+      updatedAt: new Date().toISOString()
+    }, { merge: true });
+  } catch (err) {
+    console.warn('[Firestore] updateUserGuildAssociation error:', err);
+  }
+}
+
+
 

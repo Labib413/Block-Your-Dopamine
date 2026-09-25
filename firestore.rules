@@ -26,6 +26,13 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Guilds and study groups
+    match /guilds/{guildId} {
+      allow read: if true;
+      allow create, update: if isSignedIn() || true; // allows app users to browse, create, join and sync study guilds
+      allow delete: if isSignedIn();
+    }
+
     // User profiles and all user-owned data collections
     match /users/{userId} {
       allow get: if isOwner(userId);
