@@ -1627,6 +1627,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
             next.equippedBadges = remoteEquipped;
           }
 
+          // Auto-initialize badges and equipped_badges fields in Firestore if they don't exist yet
+          if (pd.badges === undefined || pd.equipped_badges === undefined) {
+            syncItemToFirestore(userId, 'profiles', {
+              badges: next.unlockedBadgeIds || [],
+              equipped_badges: next.equippedBadges || [null, null, null]
+            }, 'upsert');
+          }
+
           if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
             next.depexMode = Boolean(pd.depex_mode);
             try {
