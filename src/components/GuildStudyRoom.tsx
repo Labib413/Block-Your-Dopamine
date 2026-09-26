@@ -287,11 +287,15 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
 
   const filteredManagementDesks = useMemo(() => {
     return desks.filter(d => {
-      // 1. Search Query filter
-      const searchMatch = !managementSearch.trim() || 
-        d.fullName.toLowerCase().includes(managementSearch.toLowerCase()) ||
-        d.username.toLowerCase().includes(managementSearch.toLowerCase()) ||
-        (d.currentSubject && d.currentSubject.toLowerCase().includes(managementSearch.toLowerCase()));
+      // 1. Search Query filter (matches Name, Username, Subject, and UID / userId)
+      const q = managementSearch.trim().toLowerCase();
+      const searchMatch = !q || 
+        d.fullName.toLowerCase().includes(q) ||
+        d.username.toLowerCase().includes(q) ||
+        (d.currentSubject && d.currentSubject.toLowerCase().includes(q)) ||
+        (d.userId && d.userId.toLowerCase().includes(q)) ||
+        (d.id && d.id.toLowerCase().includes(q)) ||
+        ((d as any).uniqueId && (d as any).uniqueId.toLowerCase().includes(q));
 
       if (!searchMatch) return false;
 

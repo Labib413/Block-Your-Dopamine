@@ -19,6 +19,7 @@ import {
 
 export interface CommunityMember {
   id: string;
+  uniqueId?: string;
   username: string;
   fullName: string;
   avatarUrl?: string;
