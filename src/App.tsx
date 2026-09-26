@@ -185,7 +185,9 @@ function AppWorkspace() {
         ) : currentView === "Health" ? (
           <HealthHub onBack={() => handleNavigate("Dashboard")} onNavigate={handleNavigate} />
         ) : currentView === "Community" ? (
-          <CommunityView onBack={() => handleNavigate("Dashboard")} onNavigate={handleNavigate} />
+          <ErrorBoundary>
+            <CommunityView onBack={() => handleNavigate("Dashboard")} onNavigate={handleNavigate} />
+          </ErrorBoundary>
         ) : currentView === "Reports" ? (
           <ReportsView onBack={() => handleNavigate("Dashboard")} />
         ) : (

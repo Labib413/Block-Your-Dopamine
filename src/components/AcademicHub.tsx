@@ -18,6 +18,7 @@ import {
 import { GlassCard } from "./GlassCard";
 import { AcademicRoutineView } from "./AcademicRoutineView";
 import { CommunityView } from "./CommunityView";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { useApp, AcademicChapter } from "../context/AppContext";
 import { HSC_SYLLABUS } from "../constants";
 
@@ -226,7 +227,13 @@ export function AcademicHub({
         {['Overview', 'Set Routine', 'Community'].map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              if (tab === 'Community' && onNavigate) {
+                onNavigate('Community');
+              } else {
+                setActiveTab(tab);
+              }
+            }}
             className={`px-6 py-2.5 rounded-xl border flex items-center gap-2.5 transition-all duration-300 ${
               activeTab === tab 
                 ? "bg-neon-green/10 border-neon-green/50 text-neon-green shadow-[0_0_20px_rgba(57,255,20,0.1)]" 
@@ -343,7 +350,11 @@ export function AcademicHub({
       )}
 
       {activeTab === 'Set Routine' && <AcademicRoutineView onStudyNow={onStudyNow} />}
-      {activeTab === 'Community' && <CommunityView onNavigate={onNavigate} />}
+      {activeTab === 'Community' && (
+        <ErrorBoundary>
+          <CommunityView onBack={() => setActiveTab('Overview')} onNavigate={onNavigate} />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }
