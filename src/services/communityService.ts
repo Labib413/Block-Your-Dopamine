@@ -102,6 +102,7 @@ export interface Guild {
   membersCount: number;
   maxMembers: number;
   level: number;
+  minLevel?: number;
   rank: number;
   totalXp: number;
   weeklyGoalHours: number;
@@ -917,6 +918,43 @@ export async function leaveGuildInFirebase(
   } catch (error) {
     console.error("[Community] leaveGuildInFirebase error:", error);
     handleFirestoreError(error, OperationType.WRITE, `guilds/${guildId}`);
+  }
+}
+
+// Kick a Guild Member (Guild Leader Authority)
+export async function kickGuildMemberInFirebase(
+  guildId: string,
+  memberDeskId: string,
+  memberUsername: string,
+  memberUserId?: string
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  try {
+    // 1. Remove member desk from subcollection
+    await deleteDoc(doc(firestore, "guilds", guildId, "members", memberDeskId));
+
+    // 2. Remove member ID/username from parent guild doc
+    const guildRef = doc(firestore, "guilds", guildId);
+    const snap = await getDoc(guildRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const currentIds = Array.isArray(data.memberUserIds) ? data.memberUserIds : [];
+      const updatedIds = currentIds.filter((id: string) => 
+        id !== memberUserId && 
+        id !== memberUsername && 
+        id !== memberDeskId &&
+        id.toLowerCase() !== memberUsername.toLowerCase()
+      );
+      await setDoc(guildRef, cleanFirestoreData({
+        ...data,
+        memberUserIds: updatedIds,
+        membersCount: Math.max(1, updatedIds.length),
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+    }
+  } catch (error) {
+    console.error("[Community] kickGuildMemberInFirebase error:", error);
+    handleFirestoreError(error, OperationType.DELETE, `guilds/${guildId}/members/${memberDeskId}`);
   }
 }
 

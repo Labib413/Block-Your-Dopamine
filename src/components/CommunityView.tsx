@@ -82,11 +82,19 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const [newGuildTag, setNewGuildTag] = useState("");
   const [newGuildDesc, setNewGuildDesc] = useState("");
   const [newGuildCategory, setNewGuildCategory] = useState<Guild["category"]>("Engineering");
+  const [newGuildMinLevel, setNewGuildMinLevel] = useState<number>(1);
 
   const [pendingGuildSwitch, setPendingGuildSwitch] = useState<{
     currentGuild: Guild;
     targetGuild: Guild;
     autoEnter?: boolean;
+  } | null>(null);
+
+  const [levelRestrictionModal, setLevelRestrictionModal] = useState<{
+    guildName: string;
+    guildTag: string;
+    requiredLevel: number;
+    currentLevel: number;
   } | null>(null);
 
   const [newPostContent, setNewPostContent] = useState("");
@@ -494,6 +502,19 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       return;
     }
 
+    // Check minimum user level requirement set by Guild Leader
+    const userLevel = level || 1;
+    const requiredLevel = targetGuild.minLevel || 1;
+    if (userLevel < requiredLevel) {
+      setLevelRestrictionModal({
+        guildName: targetGuild.name,
+        guildTag: targetGuild.tag,
+        requiredLevel,
+        currentLevel: userLevel
+      });
+      return;
+    }
+
     // Check if user is currently joined in another guild
     const activeCurrentGuild = guilds.find(g => g.id !== targetGuild.id && isGuildJoinedByMe(g));
     if (activeCurrentGuild) {
@@ -602,6 +623,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       membersCount: 1,
       maxMembers: 50,
       level: 1,
+      minLevel: Number(newGuildMinLevel) || 1,
       rank: guilds.length + 1,
       totalXp: 2500,
       weeklyGoalHours: 200,
@@ -616,6 +638,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     setNewGuildName("");
     setNewGuildTag("");
     setNewGuildDesc("");
+    setNewGuildMinLevel(1);
     setSelectedGuildRoomId(newGuild.id);
   };
 
@@ -1282,11 +1305,16 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                             [{guild.tag}]
                           </div>
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="text-base font-bold text-white group-hover:text-[#39FF14] transition-colors leading-tight">{guild.name}</h4>
                               <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60">
                                 Lv.{guild.level}
                               </span>
+                              {guild.minLevel && guild.minLevel > 1 && (
+                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-mono font-bold text-amber-400">
+                                  Min Lv.{guild.minLevel}
+                                </span>
+                              )}
                             </div>
                             <p className="text-[11px] text-white/40 mt-0.5">Leader: <span className="text-white/70 font-medium">{guild.leader}</span></p>
                           </div>
@@ -1484,20 +1512,20 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Guild Tag (Max 5 chars)</label>
-                    <input
-                      type="text"
-                      required
-                      maxLength={5}
-                      placeholder="e.g. BUET, TITAN"
-                      value={newGuildTag}
-                      onChange={(e) => setNewGuildTag(e.target.value.toUpperCase())}
-                      className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 font-mono uppercase focus:outline-none focus:border-[#39FF14]/50 transition-colors"
-                    />
-                  </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Guild Tag (Max 5 chars)</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={5}
+                    placeholder="e.g. BUET, TITAN"
+                    value={newGuildTag}
+                    onChange={(e) => setNewGuildTag(e.target.value.toUpperCase())}
+                    className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 font-mono uppercase focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                  />
+                </div>
 
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Target Domain</label>
                     <select
@@ -1510,6 +1538,21 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                       <option value="Varsity">Varsity</option>
                       <option value="HSC">HSC</option>
                       <option value="General">General</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Minimum Level Required</label>
+                    <select
+                      value={newGuildMinLevel}
+                      onChange={(e) => setNewGuildMinLevel(Number(e.target.value))}
+                      className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                    >
+                      <option value={1}>Level 1+ (Open for All)</option>
+                      <option value={2}>Level 2+ (Apprentice Rank)</option>
+                      <option value={3}>Level 3+ (Disciplined)</option>
+                      <option value={5}>Level 5+ (Detox Elite)</option>
+                      <option value={10}>Level 10+ (Monk Grandmaster)</option>
                     </select>
                   </div>
                 </div>
@@ -1627,6 +1670,74 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                   className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10"
                 >
                   Close Profile
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Minimum Level Requirement Modal */}
+      <AnimatePresence>
+        {levelRestrictionModal && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-[#0d0d0d] border border-amber-500/30 rounded-3xl p-6 space-y-5 shadow-[0_0_50px_rgba(245,158,11,0.15)] relative overflow-hidden"
+            >
+              <button
+                onClick={() => setLevelRestrictionModal(null)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.2)] shrink-0">
+                  <Lock className="w-6 h-6 text-amber-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Level Requirement Not Met</h3>
+                  <span className="text-[11px] text-amber-400/80 font-mono uppercase tracking-wider font-semibold">
+                    Guild Leader Qualification Gate
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-white/70 leading-relaxed font-sans">
+                The leader of <span className="text-white font-bold">[{levelRestrictionModal.guildTag}] {levelRestrictionModal.guildName}</span> requires all members to be at least <span className="text-amber-400 font-bold font-mono">Level {levelRestrictionModal.requiredLevel}</span>.
+              </p>
+
+              {/* Level Comparison Metric Box */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-center">
+                  <span className="text-[10px] uppercase font-bold text-white/40 block">Required Level</span>
+                  <span className="text-xl font-bold font-mono text-amber-400 block mt-0.5">
+                    Lv. {levelRestrictionModal.requiredLevel}
+                  </span>
+                </div>
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/[0.06] text-center">
+                  <span className="text-[10px] uppercase font-bold text-white/40 block">Your Current Level</span>
+                  <span className="text-xl font-bold font-mono text-white/80 block mt-0.5">
+                    Lv. {levelRestrictionModal.currentLevel}
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-white/[0.02] border border-white/5 flex items-center gap-2.5 text-xs text-white/50">
+                <Flame className="w-4 h-4 text-[#39FF14] shrink-0" />
+                <span>Complete focus sprints and earn XP to level up your warrior rank!</span>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setLevelRestrictionModal(null)}
+                  className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(245,158,11,0.25)] flex items-center justify-center gap-2"
+                >
+                  <span>Understood</span>
                 </button>
               </div>
             </motion.div>

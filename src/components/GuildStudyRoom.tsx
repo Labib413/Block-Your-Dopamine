@@ -22,7 +22,9 @@ import {
   X,
   Target,
   MessageSquare,
-  Send
+  Send,
+  UserX,
+  ShieldAlert
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
@@ -34,7 +36,8 @@ import {
   GuildMemberDesk,
   subscribeToGuildMembers,
   joinGuildInFirebase,
-  updateGuildMemberFocusInFirebase
+  updateGuildMemberFocusInFirebase,
+  kickGuildMemberInFirebase
 } from "../services/communityService";
 
 export type { GuildMemberDesk };
@@ -48,6 +51,7 @@ export interface GuildData {
   membersCount: number;
   maxMembers: number;
   level: number;
+  minLevel?: number;
   rank: number;
   totalXp: number;
   weeklyGoalHours: number;
@@ -115,6 +119,7 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
 
   const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall">("Room");
   const [selectedDesk, setSelectedDesk] = useState<GuildMemberDesk | null>(null);
+  const [isConfirmingKick, setIsConfirmingKick] = useState(false);
   const [floatingCheers, setFloatingCheers] = useState<{ id: number; deskId: string; emoji: string }[]>([]);
   const [ambientAudio, setAmbientAudio] = useState(false);
   const [ambientSoundType, setAmbientSoundType] = useState<"Rain" | "Library" | "WhiteNoise" | "Cafe">("Rain");
@@ -286,6 +291,25 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
       await sendGuildCheerInFirebase(guild.id, cheerPayload);
     } catch (err) {
       console.warn("[GuildStudyRoom] Failed to sync cheer to Firebase:", err);
+    }
+  };
+
+  const handleKickMember = async (targetDesk: GuildMemberDesk) => {
+    if (!isMeLeader) return;
+    try {
+      // Optimistically remove desk locally
+      setDesks(prev => prev.filter(d => d.id !== targetDesk.id));
+      setSelectedDesk(null);
+      setIsConfirmingKick(false);
+
+      await kickGuildMemberInFirebase(
+        guild.id, 
+        targetDesk.id, 
+        targetDesk.username, 
+        targetDesk.userId
+      );
+    } catch (err) {
+      console.error("[GuildStudyRoom] Failed to kick member:", err);
     }
   };
 
@@ -680,13 +704,30 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
                     </span>
                   </div>
 
-                  <button
-                    onClick={() => handleSendCheer(member.id, "🔥")}
-                    className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors border border-white/10 text-xs flex items-center gap-1"
-                  >
-                    <span>🔥</span>
-                    <span className="font-mono text-[11px]">{member.cheersCount}</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleSendCheer(member.id, "🔥")}
+                      className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white transition-colors border border-white/10 text-xs flex items-center gap-1"
+                      title="Send Fire"
+                    >
+                      <span>🔥</span>
+                      <span className="font-mono text-[11px]">{member.cheersCount}</span>
+                    </button>
+
+                    {isMeLeader && !member.isCurrentUser && member.role !== 'leader' && (
+                      <button
+                        onClick={() => {
+                          setSelectedDesk(member);
+                          setIsConfirmingKick(true);
+                        }}
+                        className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs transition-colors flex items-center gap-1"
+                        title="Guild Leader: Kick Member"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                        <span className="text-[10px] uppercase font-bold">Kick</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               </GlassCard>
             ))}
@@ -820,9 +861,56 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
                 </div>
               </div>
 
+              {/* Guild Leader Kick Controls */}
+              {isMeLeader && !selectedDesk.isCurrentUser && selectedDesk.role !== 'leader' && (
+                <div className="p-3.5 rounded-2xl bg-red-500/[0.06] border border-red-500/20 space-y-3">
+                  <div className="flex items-center gap-2 text-red-400">
+                    <ShieldAlert className="w-4 h-4" />
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Guild Leader Authority</span>
+                  </div>
+
+                  {!isConfirmingKick ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingKick(true)}
+                      className="w-full py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+                    >
+                      <UserX className="w-4 h-4" />
+                      <span>Kick Warrior from Guild</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-[11px] text-white/70">
+                        Are you sure you want to kick <span className="text-white font-bold">@{selectedDesk.username}</span>? Their desk will be immediately removed from the study room.
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsConfirmingKick(false)}
+                          className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold uppercase transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleKickMember(selectedDesk)}
+                          className="flex-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-colors flex items-center justify-center gap-1"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span>Confirm Kick</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="pt-2">
                 <button
-                  onClick={() => setSelectedDesk(null)}
+                  onClick={() => {
+                    setSelectedDesk(null);
+                    setIsConfirmingKick(false);
+                  }}
                   className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10"
                 >
                   Close Desk
