@@ -77,6 +77,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const [guildFilter, setGuildFilter] = useState<string>("All");
   const [guildSearch, setGuildSearch] = useState<string>("");
   const [selectedGuildRoomId, setSelectedGuildRoomId] = useState<string | null>(null);
+  const [selectedGuildRoomTab, setSelectedGuildRoomTab] = useState<"Room" | "Leaderboard" | "CheerWall" | "Management">("Room");
   const [isCreateGuildOpen, setIsCreateGuildOpen] = useState(false);
   const [newGuildName, setNewGuildName] = useState("");
   const [newGuildTag, setNewGuildTag] = useState("");
@@ -1187,7 +1188,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
         selectedGuildRoomId && activeGuildForRoom ? (
           <GuildStudyRoom 
             guild={activeGuildForRoom} 
-            onBack={() => setSelectedGuildRoomId(null)} 
+            initialTab={selectedGuildRoomTab}
+            onBack={() => {
+              setSelectedGuildRoomId(null);
+              setSelectedGuildRoomTab("Room");
+            }} 
             onToggleJoin={handleToggleGuild} 
           />
         ) : (
@@ -1222,8 +1227,30 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                   </div>
 
                   <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end border-t md:border-t-0 pt-4 md:pt-0 border-white/10 flex-wrap">
+                    {/* If current user is the leader, give quick access to Manage Guild */}
+                    {Boolean(
+                      userJoinedGuild && (
+                        (currentUsername && userJoinedGuild.leader?.toLowerCase() === currentUsername.toLowerCase()) ||
+                        (currentFullName && userJoinedGuild.leader?.toLowerCase() === currentFullName.toLowerCase())
+                      )
+                    ) && (
+                      <button
+                        onClick={() => {
+                          setSelectedGuildRoomTab("Management");
+                          setSelectedGuildRoomId(userJoinedGuild.id);
+                        }}
+                        className="px-3.5 py-2.5 rounded-xl bg-[#FFD700]/10 hover:bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/30 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shadow-[0_0_15px_rgba(255,215,0,0.15)]"
+                      >
+                        <Crown className="w-4 h-4" />
+                        <span>Manage Guild</span>
+                      </button>
+                    )}
+
                     <button
-                      onClick={() => setSelectedGuildRoomId(userJoinedGuild.id)}
+                      onClick={() => {
+                        setSelectedGuildRoomTab("Room");
+                        setSelectedGuildRoomId(userJoinedGuild.id);
+                      }}
                       className="px-4 py-2.5 rounded-xl bg-[#FF8C00] hover:bg-[#ff9d26] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(255,140,0,0.25)] transition-all"
                     >
                       <BookOpen className="w-4 h-4" />

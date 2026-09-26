@@ -958,6 +958,42 @@ export async function kickGuildMemberInFirebase(
   }
 }
 
+// Assign Rank / Role to a Guild Member (Leader Authority)
+export async function updateGuildMemberRoleInFirebase(
+  guildId: string,
+  memberDeskId: string,
+  role: 'leader' | 'officer' | 'member'
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  try {
+    await setDoc(doc(firestore, "guilds", guildId, "members", memberDeskId), cleanFirestoreData({
+      role,
+      updatedAt: new Date().toISOString()
+    }), { merge: true });
+  } catch (error) {
+    console.error("[Community] updateGuildMemberRoleInFirebase error:", error);
+    handleFirestoreError(error, OperationType.WRITE, `guilds/${guildId}/members/${memberDeskId}`);
+  }
+}
+
+// Update Guild Settings & Mission Goals (Leader Authority)
+export async function updateGuildSettingsInFirebase(
+  guildId: string,
+  settings: Partial<Guild>
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  try {
+    const guildRef = doc(firestore, "guilds", guildId);
+    await setDoc(guildRef, cleanFirestoreData({
+      ...settings,
+      updatedAt: new Date().toISOString()
+    }), { merge: true });
+  } catch (error) {
+    console.error("[Community] updateGuildSettingsInFirebase error:", error);
+    handleFirestoreError(error, OperationType.WRITE, `guilds/${guildId}`);
+  }
+}
+
 // Update focus state of a member in guild desk
 export async function updateGuildMemberFocusInFirebase(
   guildId: string,

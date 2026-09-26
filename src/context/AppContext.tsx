@@ -1616,6 +1616,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
             gender: pd.gender || 'Male'
           };
           next.gender = pd.gender || prev.gender;
+
+          // Sync unlocked & equipped badges from Firestore / Supabase database
+          const remoteBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
+          if (Array.isArray(remoteBadges)) {
+            next.unlockedBadgeIds = Array.from(new Set([...(prev.unlockedBadgeIds || []), ...remoteBadges]));
+          }
+          const remoteEquipped = pd.equipped_badges || pd.equippedBadges;
+          if (Array.isArray(remoteEquipped)) {
+            next.equippedBadges = remoteEquipped;
+          }
+
           if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
             next.depexMode = Boolean(pd.depex_mode);
             try {
@@ -1939,32 +1950,42 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const unsubscribeFirestore = subscribeToFirestoreUserData(uId, {
       onProfile: (pd) => {
         if (!pd) return;
-        setState(prev => ({
-          ...prev,
-          profile: {
-            username: pd.username || prev.profile?.username || '',
-            fullName: pd.full_name || pd.fullName || prev.profile?.fullName || '',
-            avatarUrl: pd.avatar_url || pd.avatarUrl || prev.profile?.avatarUrl,
-            institution: pd.institution || prev.profile?.institution || '',
-            class: pd.class || prev.profile?.class || '',
-            subjectGroup: pd.subject_group || prev.profile?.subjectGroup || '',
-            year: pd.year || prev.profile?.year || '',
-            gender: pd.gender || prev.profile?.gender || 'Male'
-          },
-          gender: pd.gender || prev.gender,
-          depexMode: (() => {
-            if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
-              try { localStorage.setItem('byd_depex_mode', String(pd.depex_mode)); } catch {}
-              return Boolean(pd.depex_mode);
-            }
-            try {
-              const cached = localStorage.getItem('byd_depex_mode');
-              return cached !== null ? cached === 'true' : prev.depexMode;
-            } catch {
-              return prev.depexMode;
-            }
-          })()
-        }));
+        setState(prev => {
+          const remoteBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
+          const remoteEquipped = pd.equipped_badges || pd.equippedBadges;
+          return {
+            ...prev,
+            profile: {
+              username: pd.username || prev.profile?.username || '',
+              fullName: pd.full_name || pd.fullName || prev.profile?.fullName || '',
+              avatarUrl: pd.avatar_url || pd.avatarUrl || prev.profile?.avatarUrl,
+              institution: pd.institution || prev.profile?.institution || '',
+              class: pd.class || prev.profile?.class || '',
+              subjectGroup: pd.subject_group || prev.profile?.subjectGroup || '',
+              year: pd.year || prev.profile?.year || '',
+              gender: pd.gender || prev.profile?.gender || 'Male'
+            },
+            unlockedBadgeIds: Array.isArray(remoteBadges)
+              ? Array.from(new Set([...(prev.unlockedBadgeIds || []), ...remoteBadges]))
+              : prev.unlockedBadgeIds,
+            equippedBadges: Array.isArray(remoteEquipped)
+              ? remoteEquipped
+              : prev.equippedBadges,
+            gender: pd.gender || prev.gender,
+            depexMode: (() => {
+              if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
+                try { localStorage.setItem('byd_depex_mode', String(pd.depex_mode)); } catch {}
+                return Boolean(pd.depex_mode);
+              }
+              try {
+                const cached = localStorage.getItem('byd_depex_mode');
+                return cached !== null ? cached === 'true' : prev.depexMode;
+              } catch {
+                return prev.depexMode;
+              }
+            })()
+          };
+        });
       },
       onAcademicChapters: (cloudChapters) => {
         if (!cloudChapters || cloudChapters.length === 0) return;

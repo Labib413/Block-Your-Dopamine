@@ -24,7 +24,21 @@ import {
   MessageSquare,
   Send,
   UserX,
-  ShieldAlert
+  ShieldAlert,
+  Crown,
+  Award,
+  Settings,
+  Search,
+  SlidersHorizontal,
+  AlertTriangle,
+  UserCheck,
+  Check,
+  UserPlus,
+  ChevronRight,
+  Edit3,
+  Save,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
@@ -37,7 +51,9 @@ import {
   subscribeToGuildMembers,
   joinGuildInFirebase,
   updateGuildMemberFocusInFirebase,
-  kickGuildMemberInFirebase
+  kickGuildMemberInFirebase,
+  updateGuildMemberRoleInFirebase,
+  updateGuildSettingsInFirebase
 } from "../services/communityService";
 
 export type { GuildMemberDesk };
@@ -63,6 +79,7 @@ export interface GuildData {
 
 interface GuildStudyRoomProps {
   guild: GuildData;
+  initialTab?: "Room" | "Leaderboard" | "CheerWall" | "Management";
   onBack: () => void;
   onToggleJoin: (guildId: string) => void;
 }
@@ -78,7 +95,7 @@ function formatTimer(seconds: number, showHoursAlways = false): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomProps) {
+export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: GuildStudyRoomProps) {
   const { 
     user, 
     profile, 
@@ -117,7 +134,7 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
     }
   ]);
 
-  const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall">("Room");
+  const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall" | "Management">(initialTab || "Room");
   const [selectedDesk, setSelectedDesk] = useState<GuildMemberDesk | null>(null);
   const [isConfirmingKick, setIsConfirmingKick] = useState(false);
   const [floatingCheers, setFloatingCheers] = useState<{ id: number; deskId: string; emoji: string }[]>([]);
@@ -127,6 +144,18 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
   const [guildCheers, setGuildCheers] = useState<GuildCheer[]>([
     { id: "c1", sender: leaderKey, text: `Welcome to [${guild.tag}] ${guild.name}! Push for focus and zero distractions.`, time: "Just now", emoji: "🔥" }
   ]);
+
+  // Management Sub-view State
+  const [managementFilter, setManagementFilter] = useState<"All" | "Underperforming" | "Active" | "Officers">("All");
+  const [managementSearch, setManagementSearch] = useState("");
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [editMinLevel, setEditMinLevel] = useState<number>(guild.minLevel || 1);
+  const [editGoalHours, setEditGoalHours] = useState<number>(guild.weeklyGoalHours || 200);
+  const [editDesc, setEditDesc] = useState<string>(guild.description || "");
+  const [settingsSuccessMsg, setSettingsSuccessMsg] = useState("");
+  const [memberToKick, setMemberToKick] = useState<GuildMemberDesk | null>(null);
+  const [kickReason, setKickReason] = useState("Underperforming / Inactive");
+  const [actionNotice, setActionNotice] = useState<string | null>(null);
 
   // Real-time guild desks subscription from Firestore
   useEffect(() => {
@@ -244,6 +273,42 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
     return desks.filter(d => d.isFocusing).length;
   }, [desks]);
 
+  const activeTodayMembersCount = useMemo(() => {
+    return desks.filter(d => d.isFocusing || d.focusSecondsToday > 0).length;
+  }, [desks]);
+
+  const underperformingCount = useMemo(() => {
+    return desks.filter(d => d.focusSecondsToday === 0 && !d.isFocusing).length;
+  }, [desks]);
+
+  const officerMembersCount = useMemo(() => {
+    return desks.filter(d => d.role === 'leader' || d.role === 'officer').length;
+  }, [desks]);
+
+  const filteredManagementDesks = useMemo(() => {
+    return desks.filter(d => {
+      // 1. Search Query filter
+      const searchMatch = !managementSearch.trim() || 
+        d.fullName.toLowerCase().includes(managementSearch.toLowerCase()) ||
+        d.username.toLowerCase().includes(managementSearch.toLowerCase()) ||
+        (d.currentSubject && d.currentSubject.toLowerCase().includes(managementSearch.toLowerCase()));
+
+      if (!searchMatch) return false;
+
+      // 2. Tab Filter
+      if (managementFilter === "Active") {
+        return d.isFocusing || d.focusSecondsToday > 0;
+      }
+      if (managementFilter === "Underperforming") {
+        return d.focusSecondsToday === 0 && !d.isFocusing;
+      }
+      if (managementFilter === "Officers") {
+        return d.role === 'leader' || d.role === 'officer';
+      }
+      return true;
+    });
+  }, [desks, managementSearch, managementFilter]);
+
   const totalGuildFocusTodayFormatted = useMemo(() => {
     const totalSec = desks.reduce((acc, d) => acc + d.focusSecondsToday, 0);
     const hours = Math.floor(totalSec / 3600);
@@ -301,6 +366,7 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
       setDesks(prev => prev.filter(d => d.id !== targetDesk.id));
       setSelectedDesk(null);
       setIsConfirmingKick(false);
+      setMemberToKick(null);
 
       await kickGuildMemberInFirebase(
         guild.id, 
@@ -308,9 +374,57 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
         targetDesk.username, 
         targetDesk.userId
       );
+
+      setActionNotice(`@${targetDesk.username} was removed from the guild.`);
+      setTimeout(() => setActionNotice(null), 3500);
     } catch (err) {
       console.error("[GuildStudyRoom] Failed to kick member:", err);
     }
+  };
+
+  const handleAssignRole = async (memberDeskId: string, targetRole: 'leader' | 'officer' | 'member') => {
+    if (!isMeLeader) return;
+    try {
+      setDesks(prev => prev.map(d => d.id === memberDeskId ? { ...d, role: targetRole } : d));
+      await updateGuildMemberRoleInFirebase(guild.id, memberDeskId, targetRole);
+      
+      const targetDesk = desks.find(d => d.id === memberDeskId);
+      const roleName = targetRole === 'officer' ? 'Officer / Co-Leader ⚔️' : 'Member 🛡️';
+      setActionNotice(`Rank updated: @${targetDesk?.username || 'Warrior'} is now ${roleName}`);
+      setTimeout(() => setActionNotice(null), 3500);
+    } catch (err) {
+      console.error("[GuildStudyRoom] Failed to update member role:", err);
+    }
+  };
+
+  const handleSaveGuildSettings = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!isMeLeader) return;
+    try {
+      await updateGuildSettingsInFirebase(guild.id, {
+        minLevel: Number(editMinLevel) || 1,
+        weeklyGoalHours: Number(editGoalHours) || 200,
+        description: editDesc.trim() || guild.description
+      });
+      setSettingsSuccessMsg("Guild policy & settings updated successfully!");
+      setTimeout(() => setSettingsSuccessMsg(""), 3500);
+    } catch (err) {
+      console.error("[GuildStudyRoom] Failed to save guild settings:", err);
+    }
+  };
+
+  const handleNudgeUnderperforming = async (idleCount: number) => {
+    if (!isMeLeader) return;
+    const nudgeMsg = {
+      sender: currentUsername,
+      text: `⚔️ [COMMANDER NOTICE] Attention ${idleCount} idle warriors with 0 focus today: Begin a focus sprint now or report your status! Let's hit our weekly ${guild.weeklyGoalHours}h target! 🔥`,
+      time: "Just now",
+      emoji: "⚡"
+    };
+    setGuildCheers(prev => [{ id: `c_${Date.now()}`, ...nudgeMsg }, ...prev]);
+    setActionNotice(`Broadcast alert sent to ${idleCount} inactive warriors on Cheer Wall! ⚡`);
+    setTimeout(() => setActionNotice(null), 3500);
+    sendGuildCheerInFirebase(guild.id, nudgeMsg).catch(() => {});
   };
 
   return (
@@ -483,6 +597,28 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
           >
             <Flame className="w-3.5 h-3.5" />
             <span>Cheer Wall</span>
+          </button>
+
+          {/* Guild Management Tab (Available for all to view squad stats; Leader gets full authority) */}
+          <button
+            onClick={() => setActiveTab("Management")}
+            className={cn(
+              "px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+              activeTab === "Management"
+                ? "bg-[#FFD700] text-black shadow-[0_0_20px_rgba(255,215,0,0.3)] font-bold"
+                : "text-white/50 hover:text-white hover:bg-white/5"
+            )}
+          >
+            <Crown className="w-3.5 h-3.5 text-current" />
+            <span>Guild Management</span>
+            {isMeLeader && (
+              <span className={cn(
+                "px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold",
+                activeTab === "Management" ? "bg-black/20 text-black" : "bg-[#FFD700]/20 text-[#FFD700]"
+              )}>
+                Leader HQ
+              </span>
+            )}
           </button>
         </div>
 
@@ -780,6 +916,420 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
           </div>
         </div>
       )}
+
+      {/* Tab 4: Guild Management Sub-View */}
+      {activeTab === "Management" && (
+        <div className="space-y-6">
+          {/* Action Notice Toast */}
+          <AnimatePresence>
+            {actionNotice && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                className="p-3.5 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/30 text-[#39FF14] text-xs font-semibold flex items-center gap-2.5 shadow-[0_0_20px_rgba(57,255,20,0.15)]"
+              >
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                <span>{actionNotice}</span>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Header & Quick Management Stats */}
+          <GlassCard className="p-6 space-y-6 border-[#FFD700]/20 bg-[#FFD700]/[0.02]">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-[#FFD700]/10 border border-[#FFD700]/30 flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.2)]">
+                  <Crown className="w-6 h-6 text-[#FFD700]" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-white tracking-tight">Guild Leader Command Center</h3>
+                    <span className="px-2 py-0.5 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700] text-[10px] font-bold font-mono">
+                      HQ
+                    </span>
+                  </div>
+                  <p className="text-xs text-white/50 mt-0.5 font-medium">
+                    Manage squad ranks, enforce minimum qualification requirements, and monitor warrior focus stats.
+                  </p>
+                </div>
+              </div>
+
+              {isMeLeader && (
+                <button
+                  onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                  className={cn(
+                    "px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all",
+                    isSettingsOpen
+                      ? "bg-white/15 text-white border border-white/20"
+                      : "bg-[#FFD700]/10 hover:bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/30"
+                  )}
+                >
+                  <Settings className="w-4 h-4" />
+                  <span>{isSettingsOpen ? "Hide Governance Rules" : "Guild Rules & Settings"}</span>
+                  {isSettingsOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+              )}
+            </div>
+
+            {/* Quick Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono">
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                <span className="text-[10px] uppercase font-bold text-white/40 block font-sans">Squad Capacity</span>
+                <span className="text-base font-bold text-white block mt-0.5">{desks.length} / {guild.maxMembers} Warriors</span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                <span className="text-[10px] uppercase font-bold text-white/40 block font-sans">Active Warriors Today</span>
+                <span className="text-base font-bold text-[#39FF14] block mt-0.5">{activeTodayMembersCount} Online / Studied</span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                <span className="text-[10px] uppercase font-bold text-white/40 block font-sans">Underperforming (0h)</span>
+                <span className={cn(
+                  "text-base font-bold block mt-0.5",
+                  underperformingCount > 0 ? "text-amber-400" : "text-white/60"
+                )}>
+                  {underperformingCount} Inactive
+                </span>
+              </div>
+
+              <div className="p-3 rounded-xl bg-white/[0.03] border border-white/5">
+                <span className="text-[10px] uppercase font-bold text-white/40 block font-sans">Min Join Requirement</span>
+                <span className="text-base font-bold text-[#FFD700] block mt-0.5">Lv. {editMinLevel} Required</span>
+              </div>
+            </div>
+
+            {/* Expandable Governance & Settings Panel */}
+            <AnimatePresence>
+              {isSettingsOpen && isMeLeader && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden pt-4 border-t border-white/10"
+                >
+                  <form onSubmit={handleSaveGuildSettings} className="space-y-4 p-4 rounded-2xl bg-black/40 border border-white/10">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                        <SlidersHorizontal className="w-4 h-4 text-[#FFD700]" />
+                        <span>Guild Governance & Joining Policies</span>
+                      </h4>
+                      {settingsSuccessMsg && (
+                        <span className="text-xs font-semibold text-[#39FF14] flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> {settingsSuccessMsg}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">
+                          Minimum Required User Level to Join
+                        </label>
+                        <select
+                          value={editMinLevel}
+                          onChange={(e) => setEditMinLevel(Number(e.target.value))}
+                          className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-[#FFD700]/50 transition-colors"
+                        >
+                          <option value={1}>Level 1+ (Open for All Warriors)</option>
+                          <option value={2}>Level 2+ (Apprentice Rank)</option>
+                          <option value={3}>Level 3+ (Disciplined Warriors)</option>
+                          <option value={5}>Level 5+ (Detox Elite Warriors)</option>
+                          <option value={10}>Level 10+ (Monk Grandmasters Only)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">
+                          Weekly Squad Focus Goal (Hours)
+                        </label>
+                        <input
+                          type="number"
+                          min={50}
+                          max={1000}
+                          value={editGoalHours}
+                          onChange={(e) => setEditGoalHours(Number(e.target.value))}
+                          className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 font-mono focus:outline-none focus:border-[#FFD700]/50 transition-colors"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">
+                        Guild Mission Statement & Rules
+                      </label>
+                      <textarea
+                        rows={2}
+                        value={editDesc}
+                        onChange={(e) => setEditDesc(e.target.value)}
+                        className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#FFD700]/50 transition-colors resize-none"
+                      />
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button
+                        type="submit"
+                        className="px-5 py-2.5 rounded-xl bg-[#FFD700] hover:bg-[#ffdf33] text-black text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(255,215,0,0.25)] flex items-center gap-1.5"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        <span>Save Governance Policies</span>
+                      </button>
+                    </div>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </GlassCard>
+
+          {/* Underperforming Alert Banner */}
+          {underperformingCount > 0 && isMeLeader && (
+            <div className="p-4 rounded-2xl bg-amber-500/[0.05] border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
+                <div>
+                  <span className="text-xs font-bold text-white block">
+                    {underperformingCount} warrior(s) have logged 0 focus minutes today.
+                  </span>
+                  <span className="text-[11px] text-white/50 block mt-0.5">
+                    Send an instant broadcast nudge or review their participation below.
+                  </span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => handleNudgeUnderperforming(underperformingCount)}
+                className="px-4 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5" />
+                <span>Nudge Inactive Warriors</span>
+              </button>
+            </div>
+          )}
+
+          {/* Member Roster Filters & Search */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+              {(["All", "Active", "Underperforming", "Officers"] as const).map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => setManagementFilter(filter)}
+                  className={cn(
+                    "px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors",
+                    managementFilter === filter
+                      ? "bg-[#FFD700] text-black shadow-[0_0_15px_rgba(255,215,0,0.25)]"
+                      : "bg-white/5 border border-white/5 text-white/50 hover:text-white hover:bg-white/10"
+                  )}
+                >
+                  {filter === "All" && `All Warriors (${desks.length})`}
+                  {filter === "Active" && `Active Today (${activeTodayMembersCount})`}
+                  {filter === "Underperforming" && `Idle (0h) (${underperformingCount})`}
+                  {filter === "Officers" && `Leadership (${officerMembersCount})`}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search warrior or task..."
+                value={managementSearch}
+                onChange={(e) => setManagementSearch(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#FFD700]/50 transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Member Contribution Roster Cards */}
+          <div className="space-y-3">
+            {filteredManagementDesks.map((member) => {
+              const isLeader = member.role === 'leader';
+              const isOfficer = member.role === 'officer';
+              const isIdle = member.focusSecondsToday === 0 && !member.isFocusing;
+
+              return (
+                <GlassCard
+                  key={member.id}
+                  className={cn(
+                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all",
+                    isLeader ? "border-[#FFD700]/30 bg-[#FFD700]/[0.02]" :
+                    isOfficer ? "border-cyan-500/30 bg-cyan-500/[0.02]" :
+                    isIdle ? "border-amber-500/10 hover:border-amber-500/30" : "hover:border-white/20"
+                  )}
+                >
+                  {/* Member Identity & Status */}
+                  <div className="flex items-center gap-3.5">
+                    <div className={cn(
+                      "w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border",
+                      isLeader ? "bg-[#FFD700]/10 border-[#FFD700]/40 text-[#FFD700]" :
+                      isOfficer ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400" :
+                      "bg-white/5 border-white/10 text-white/70"
+                    )}>
+                      {isLeader ? "👑" : isOfficer ? "⚔️" : member.username.charAt(0).toUpperCase()}
+                    </div>
+
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-bold text-white">{member.fullName}</span>
+                        <span className="text-xs text-white/40 font-mono">@{member.username}</span>
+                        
+                        {/* Role Badge */}
+                        <span className={cn(
+                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono",
+                          isLeader ? "bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/30" :
+                          isOfficer ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" :
+                          "bg-white/5 text-white/50 border border-white/5"
+                        )}>
+                          {isLeader ? "Leader" : isOfficer ? "Officer" : "Member"}
+                        </span>
+
+                        {member.isFocusing && (
+                          <span className="px-2 py-0.5 rounded-full bg-[#FF8C00]/20 text-[#FF8C00] text-[9px] font-bold uppercase font-mono animate-pulse">
+                            Studying Now
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-xs text-white/40 mt-1 flex items-center gap-2 font-mono">
+                        <span className="text-white/70 font-sans">Task: {member.currentSubject}</span>
+                        <span>•</span>
+                        <span className="text-orange-400">{member.streak}d Streak</span>
+                        <span>•</span>
+                        <span className="text-[#39FF14]">Lv.{member.level}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Contribution Stats & Management Power Tools */}
+                  <div className="flex items-center justify-between md:justify-end gap-5 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-white/5 flex-wrap">
+                    <div className="text-left md:text-right">
+                      <span className="text-[10px] uppercase font-bold text-white/40 block">Today's Focus</span>
+                      <span className={cn(
+                        "text-base font-bold font-mono block",
+                        member.isFocusing ? "text-[#FF8C00]" :
+                        member.focusSecondsToday > 0 ? "text-[#39FF14]" : "text-white/40"
+                      )}>
+                        {formatTimer(member.focusSecondsToday, true)}
+                      </span>
+                    </div>
+
+                    {/* Leader Power Tools */}
+                    {isMeLeader && !member.isCurrentUser && (
+                      <div className="flex items-center gap-2">
+                        {/* Assign Rank Button */}
+                        <button
+                          onClick={() => handleAssignRole(member.id, isOfficer ? 'member' : 'officer')}
+                          className={cn(
+                            "px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors border",
+                            isOfficer 
+                              ? "bg-white/5 hover:bg-white/10 text-white/60 border-white/10" 
+                              : "bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
+                          )}
+                          title={isOfficer ? "Demote to Member" : "Promote to Officer"}
+                        >
+                          {isOfficer ? (
+                            <>
+                              <UserCheck className="w-3.5 h-3.5" />
+                              <span className="text-[10px]">Demote</span>
+                            </>
+                          ) : (
+                            <>
+                              <Award className="w-3.5 h-3.5" />
+                              <span className="text-[10px]">Make Officer</span>
+                            </>
+                          )}
+                        </button>
+
+                        {/* Kick Member Button */}
+                        <button
+                          onClick={() => setMemberToKick(member)}
+                          className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                          title="Kick from Guild"
+                        >
+                          <UserX className="w-3.5 h-3.5" />
+                          <span className="text-[10px]">Kick</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </GlassCard>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Expel / Kick Member Confirmation Modal */}
+      <AnimatePresence>
+        {memberToKick && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-[#0d0d0d] border border-red-500/30 rounded-3xl p-6 space-y-5 shadow-[0_0_50px_rgba(239,68,68,0.2)] relative overflow-hidden"
+            >
+              <button
+                onClick={() => setMemberToKick(null)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center shadow-[0_0_20px_rgba(239,68,68,0.2)] shrink-0">
+                  <UserX className="w-6 h-6 text-red-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Expel Warrior from Guild?</h3>
+                  <span className="text-[11px] text-red-400/80 font-mono uppercase tracking-wider font-semibold">
+                    Commander Disciplinary Action
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-white/70 leading-relaxed font-sans">
+                You are about to kick <span className="text-white font-bold">{memberToKick.fullName}</span> (<span className="text-red-400 font-mono">@{memberToKick.username}</span>) from <span className="text-white font-semibold">[{guild.tag}] {guild.name}</span>. Their study desk will be removed from the virtual room.
+              </p>
+
+              <div>
+                <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">
+                  Reason for Removal
+                </label>
+                <select
+                  value={kickReason}
+                  onChange={(e) => setKickReason(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-red-500/50 transition-colors"
+                >
+                  <option value="Underperforming / 0 Focus Today">Underperforming / 0 Net Focus Logged</option>
+                  <option value="Inactive for Multiple Days">Inactive / Missing Focus Sprints</option>
+                  <option value="Squad Quota Rebalancing">Squad Capacity Rebalancing</option>
+                  <option value="Violated Study Room Code">Disruptive on Cheer Wall</option>
+                </select>
+              </div>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setMemberToKick(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleKickMember(memberToKick)}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(239,68,68,0.3)] flex items-center justify-center gap-1.5"
+                >
+                  <UserX className="w-3.5 h-3.5" />
+                  <span>Confirm Kick</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Member Desk Modal on click */}
       <AnimatePresence>
