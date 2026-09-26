@@ -434,6 +434,43 @@ const getDayDifference = (date1: string, date2: string) => {
   }
 };
 
+export const sanitizeEquippedBadges = (raw: any): (string | null)[] => {
+  if (!Array.isArray(raw)) return [null, null, null];
+  const sanitized: (string | null)[] = [null, null, null];
+  for (let i = 0; i < 3; i++) {
+    const val = raw[i];
+    if (typeof val === 'string' && val.trim().length > 0) {
+      sanitized[i] = val.trim();
+    } else if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') {
+      sanitized[i] = val[0].trim();
+    } else if (val && typeof val === 'object' && typeof val[0] === 'string') {
+      sanitized[i] = val[0].trim();
+    } else {
+      sanitized[i] = null;
+    }
+  }
+  return sanitized;
+};
+
+export const sanitizeUnlockedBadges = (raw: any): string[] => {
+  if (!Array.isArray(raw)) return [];
+  const result: string[] = [];
+  raw.forEach(item => {
+    if (typeof item === 'string' && item.trim().length > 0) {
+      result.push(item.trim());
+    } else if (Array.isArray(item)) {
+      item.forEach(sub => {
+        if (typeof sub === 'string' && sub.trim().length > 0) result.push(sub.trim());
+      });
+    } else if (item && typeof item === 'object') {
+      Object.values(item).forEach(sub => {
+        if (typeof sub === 'string' && sub.trim().length > 0) result.push(sub.trim());
+      });
+    }
+  });
+  return Array.from(new Set(result));
+};
+
 
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AppState>(() => {
@@ -1617,21 +1654,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
           };
           next.gender = pd.gender || prev.gender;
 
-          // Sync unlocked & equipped badges from Firestore / Supabase database
-          const remoteBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
-          if (Array.isArray(remoteBadges)) {
-            next.unlockedBadgeIds = Array.from(new Set([...(prev.unlockedBadgeIds || []), ...remoteBadges]));
-          }
-          const remoteEquipped = pd.equipped_badges || pd.equippedBadges;
-          if (Array.isArray(remoteEquipped)) {
-            next.equippedBadges = remoteEquipped;
-          }
+          // Sync & sanitize unlocked & equipped badges from Firestore / Supabase database
+          const sanitizedEquipped = sanitizeEquippedBadges(pd.equipped_badges || pd.equippedBadges);
+          const rawBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
+          const sanitizedBadges = sanitizeUnlockedBadges(rawBadges);
+          const combinedBadges = Array.from(new Set([
+            ...sanitizedBadges,
+            ...(prev.unlockedBadgeIds || []),
+            ...sanitizedEquipped.filter(Boolean) as string[]
+          ]));
 
-          // Auto-initialize badges and equipped_badges fields in Firestore if they don't exist yet
-          if (pd.badges === undefined || pd.equipped_badges === undefined) {
+          next.unlockedBadgeIds = combinedBadges;
+          next.equippedBadges = sanitizedEquipped;
+
+          // Auto-repair / normalize Firestore fields if any broken/nested structure exists or missing
+          const needsRepair = !Array.isArray(pd.equipped_badges) ||
+            pd.badges === undefined ||
+            pd.equipped_badges === undefined ||
+            JSON.stringify(pd.equipped_badges) !== JSON.stringify(sanitizedEquipped) ||
+            JSON.stringify(pd.badges) !== JSON.stringify(combinedBadges);
+
+          if (needsRepair) {
             syncItemToFirestore(userId, 'profiles', {
-              badges: next.unlockedBadgeIds || [],
-              equipped_badges: next.equippedBadges || [null, null, null]
+              badges: combinedBadges,
+              equipped_badges: sanitizedEquipped
             }, 'upsert');
           }
 
@@ -1959,8 +2005,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onProfile: (pd) => {
         if (!pd) return;
         setState(prev => {
-          const remoteBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
-          const remoteEquipped = pd.equipped_badges || pd.equippedBadges;
+          const sanitizedEquipped = sanitizeEquippedBadges(pd.equipped_badges || pd.equippedBadges);
+          const rawBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
+          const sanitizedBadges = sanitizeUnlockedBadges(rawBadges);
+          const combinedBadges = Array.from(new Set([
+            ...sanitizedBadges,
+            ...(prev.unlockedBadgeIds || []),
+            ...sanitizedEquipped.filter(Boolean) as string[]
+          ]));
+
           return {
             ...prev,
             profile: {
@@ -1973,12 +2026,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
               year: pd.year || prev.profile?.year || '',
               gender: pd.gender || prev.profile?.gender || 'Male'
             },
-            unlockedBadgeIds: Array.isArray(remoteBadges)
-              ? Array.from(new Set([...(prev.unlockedBadgeIds || []), ...remoteBadges]))
-              : prev.unlockedBadgeIds,
-            equippedBadges: Array.isArray(remoteEquipped)
-              ? remoteEquipped
-              : prev.equippedBadges,
+            unlockedBadgeIds: combinedBadges,
+            equippedBadges: sanitizedEquipped,
             gender: pd.gender || prev.gender,
             depexMode: (() => {
               if (pd.depex_mode !== undefined && pd.depex_mode !== null) {

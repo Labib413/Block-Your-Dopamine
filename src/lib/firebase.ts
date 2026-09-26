@@ -201,7 +201,22 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     else if (table === 'macro_data') subcollection = 'macro_data';
     else if (table === 'profiles') {
       const userRef = doc(db, 'users', userId);
-      await setDoc(userRef, { ...data, userId }, { merge: true });
+      const cleanPayload = { ...data, userId };
+      if (cleanPayload.equipped_badges && Array.isArray(cleanPayload.equipped_badges)) {
+        cleanPayload.equipped_badges = [
+          (typeof cleanPayload.equipped_badges[0] === 'string' ? cleanPayload.equipped_badges[0] : (Array.isArray(cleanPayload.equipped_badges[0]) ? cleanPayload.equipped_badges[0][0] : null)) || null,
+          (typeof cleanPayload.equipped_badges[1] === 'string' ? cleanPayload.equipped_badges[1] : (Array.isArray(cleanPayload.equipped_badges[1]) ? cleanPayload.equipped_badges[1][0] : null)) || null,
+          (typeof cleanPayload.equipped_badges[2] === 'string' ? cleanPayload.equipped_badges[2] : (Array.isArray(cleanPayload.equipped_badges[2]) ? cleanPayload.equipped_badges[2][0] : null)) || null,
+        ];
+      }
+      if (cleanPayload.badges && Array.isArray(cleanPayload.badges)) {
+        cleanPayload.badges = Array.from(new Set(
+          cleanPayload.badges
+            .flat(2)
+            .filter((b: any) => typeof b === 'string' && b.trim().length > 0)
+        ));
+      }
+      await setDoc(userRef, cleanPayload, { merge: true });
       return;
     }
 
