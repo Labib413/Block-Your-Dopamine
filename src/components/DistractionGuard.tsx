@@ -83,6 +83,7 @@ export function DistractionGuard() {
 
   // Form State
   const [domainInput, setDomainInput] = useState("");
+  const [durationInput, setDurationInput] = useState<string>("30");
   const [selectedDuration, setSelectedDuration] = useState<number>(30);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -194,7 +195,15 @@ export function DistractionGuard() {
 
     try {
       // Calculate expiration time (lockedUntil) in ISO string format
-      const minutes = selectedDuration;
+      const parsedMinutes = parseInt(durationInput, 10);
+      const minutes = !isNaN(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : selectedDuration;
+
+      if (!minutes || minutes <= 0) {
+        setErrorMessage("Please enter a valid duration in minutes (e.g. 15, 30, 45).");
+        setIsSubmitting(false);
+        return;
+      }
+
       const lockedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
 
       // Required payload structure for Chrome Extension & Backend
@@ -202,6 +211,7 @@ export function DistractionGuard() {
         targetName: cleanDomain,
         type: "website",
         lockedUntil: lockedUntil,
+        duration: minutes,
         isActive: true,
         createdAt: new Date().toISOString()
       };
@@ -439,25 +449,32 @@ export function DistractionGuard() {
           )}
         </div>
 
-        {/* Duration Dropdown & Action Button */}
+        {/* Duration Input (Keyboard + Quick Presets) & Action Button */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/30">
               <Clock className="w-3.5 h-3.5" />
             </div>
-            <select
-              value={selectedDuration}
-              onChange={(e) => setSelectedDuration(Number(e.target.value))}
+            <input
+              type="number"
+              min="1"
+              max="10080"
+              placeholder="Duration in mins"
+              value={durationInput}
+              onChange={(e) => {
+                const val = e.target.value;
+                setDurationInput(val);
+                const num = parseInt(val, 10);
+                if (!isNaN(num) && num > 0) {
+                  setSelectedDuration(num);
+                }
+              }}
               disabled={isSubmitting}
-              className="w-full bg-black/50 border border-white/10 rounded-xl pl-9 pr-8 py-2.5 text-xs text-white font-medium appearance-none focus:outline-none focus:border-red-500/60 transition-all cursor-pointer disabled:opacity-50"
-            >
-              {DURATION_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value} className="bg-[#181a1f] text-white">
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-white/30 pointer-events-none" />
+              className="w-full bg-black/50 border border-white/10 rounded-xl pl-9 pr-14 py-2.5 text-xs text-white font-mono placeholder:text-white/25 focus:outline-none focus:border-red-500/60 transition-all disabled:opacity-50 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-red-400/80 uppercase pointer-events-none">
+              MINS
+            </span>
           </div>
 
           <button 
@@ -477,6 +494,29 @@ export function DistractionGuard() {
               </>
             )}
           </button>
+        </div>
+
+        {/* Quick Duration Preset Chips */}
+        <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+          <span className="text-[9px] font-mono text-white/30 uppercase tracking-wider mr-1">Quick:</span>
+          {[15, 30, 45, 60, 120, 240].map((preset) => (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => {
+                setDurationInput(String(preset));
+                setSelectedDuration(preset);
+              }}
+              className={cn(
+                "px-2 py-0.5 rounded-md text-[10px] font-mono transition-all border cursor-pointer",
+                (durationInput === String(preset) || selectedDuration === preset)
+                  ? "bg-red-500/20 border-red-500/50 text-red-300 font-bold shadow-[0_0_8px_rgba(239,68,68,0.2)]"
+                  : "bg-white/5 border-white/5 text-white/40 hover:text-white hover:bg-white/10"
+              )}
+            >
+              {preset >= 60 ? `${preset / 60}h` : `${preset}m`}
+            </button>
+          ))}
         </div>
       </form>
 
