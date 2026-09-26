@@ -27,22 +27,17 @@ import {
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
 import { cn } from "@/src/lib/utils";
-import { subscribeToGuildCheers, sendGuildCheerInFirebase, GuildCheer } from "../services/communityService";
+import { 
+  subscribeToGuildCheers, 
+  sendGuildCheerInFirebase, 
+  GuildCheer,
+  GuildMemberDesk,
+  subscribeToGuildMembers,
+  joinGuildInFirebase,
+  updateGuildMemberFocusInFirebase
+} from "../services/communityService";
 
-export interface GuildMemberDesk {
-  id: string;
-  username: string;
-  fullName: string;
-  avatarUrl?: string;
-  isFocusing: boolean;
-  focusSecondsToday: number;
-  currentSessionSeconds: number;
-  currentSubject?: string;
-  streak: number;
-  level: number;
-  cheersCount: number;
-  isCurrentUser?: boolean;
-}
+export type { GuildMemberDesk };
 
 export interface GuildData {
   id: string;
@@ -57,6 +52,7 @@ export interface GuildData {
   totalXp: number;
   weeklyGoalHours: number;
   joined: boolean;
+  memberUserIds?: string[];
   category: "Engineering" | "Medical" | "Varsity" | "General" | "HSC";
   perks: string;
 }
@@ -66,42 +62,6 @@ interface GuildStudyRoomProps {
   onBack: () => void;
   onToggleJoin: (guildId: string) => void;
 }
-
-// Generate realistic dynamic desks for the Guild
-const GENERATE_INITIAL_DESKS = (guild: GuildData, currentUsername: string, isUserFocusing: boolean): GuildMemberDesk[] => {
-  const mockNames = [
-    { username: currentUsername || "you", fullName: "You (Warrior)", isCurrentUser: true, isFocusing: isUserFocusing, baseSec: 355, todaySec: 21600, subject: "Physics 1st Paper" },
-    { username: "mkshaon7", fullName: "Shaon Ahmed", isFocusing: true, baseSec: 355, todaySec: 18450, subject: "Higher Math 2nd" },
-    { username: "sinha✨", fullName: "Sinha Rahman", isFocusing: true, baseSec: 895, todaySec: 53734, subject: "Organic Chemistry" },
-    { username: "shahnewazkamal", fullName: "Shahnewaz Kamal", isFocusing: false, baseSec: 0, todaySec: 64199, subject: "Botany" },
-    { username: "motivationhubd5", fullName: "Fahim Faysal", isFocusing: false, baseSec: 0, todaySec: 43074, subject: "Biology 1st" },
-    { username: "Mohammed", fullName: "Mohammed Ali", isFocusing: false, baseSec: 0, todaySec: 17130, subject: "Chemistry" },
-    { username: "Tahira", fullName: "Tahira Khanom", isFocusing: false, baseSec: 0, todaySec: 13959, subject: "English & ICT" },
-    { username: "Lighter", fullName: "Rashedul Islam", isFocusing: false, baseSec: 0, todaySec: 13534, subject: "Vector Calculus" },
-    { username: "shihabmahmud8f17", fullName: "Shihab Mahmud", isFocusing: false, baseSec: 0, todaySec: 11864, subject: "Dynamics" },
-    { username: "muhammadanaye", fullName: "Anayet Hossain", isFocusing: false, baseSec: 0, todaySec: 10925, subject: "Electrochemistry" },
-    { username: "Md", fullName: "Md. Tanvir", isFocusing: false, baseSec: 0, todaySec: 10371, subject: "Wave & Optics" },
-    { username: "Koushik", fullName: "Koushik Roy", isFocusing: false, baseSec: 0, todaySec: 10276, subject: "Integration" },
-    { username: "Mehedi Antor", fullName: "Mehedi Hasan", isFocusing: false, baseSec: 0, todaySec: 9000, subject: "Zoology" },
-    { username: "lodhha", fullName: "Subrata Lodh", isFocusing: false, baseSec: 0, todaySec: 8520, subject: "Genetics" },
-    { username: "sahinjatuba54c5", fullName: "Sahinur Islam", isFocusing: false, baseSec: 0, todaySec: 7420, subject: "Thermodynamics" },
-    { username: "nironchak", fullName: "Niron Chakma", isFocusing: false, baseSec: 0, todaySec: 6300, subject: "Static Electricity" }
-  ];
-
-  return mockNames.map((m, idx) => ({
-    id: `desk_${idx}_${m.username}`,
-    username: m.username,
-    fullName: m.fullName,
-    isFocusing: m.isFocusing,
-    currentSessionSeconds: m.baseSec,
-    focusSecondsToday: m.todaySec,
-    currentSubject: m.subject,
-    streak: Math.max(3, 30 - idx),
-    level: Math.max(2, 20 - idx),
-    cheersCount: Math.floor(Math.random() * 25) + 5,
-    isCurrentUser: m.isCurrentUser
-  }));
-};
 
 function formatTimer(seconds: number, showHoursAlways = false): string {
   const h = Math.floor(seconds / 3600);
@@ -121,14 +81,37 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
     isFocusing, 
     startFocusSession, 
     stopFocusSession,
-    totalNetFocusTime
+    totalNetFocusTime,
+    level,
+    streak
   } = useApp();
 
   const currentUsername = profile?.username || user?.user_metadata?.username || user?.email?.split("@")[0] || "you";
+  const currentFullName = profile?.fullName || user?.user_metadata?.full_name || currentUsername;
   
-  const [desks, setDesks] = useState<GuildMemberDesk[]>(() => {
-    return GENERATE_INITIAL_DESKS(guild, currentUsername, isFocusing);
-  });
+  // Real-time guild desks loaded from Firestore
+  const leaderKey = (guild.leader || "Leader").trim();
+  const isMeLeader = Boolean(
+    (currentUsername && leaderKey.toLowerCase() === currentUsername.toLowerCase()) || 
+    (currentFullName && leaderKey.toLowerCase() === currentFullName.toLowerCase())
+  );
+
+  const [desks, setDesks] = useState<GuildMemberDesk[]>([
+    {
+      id: `desk_leader_${leaderKey.replace(/\s+/g, '_').toLowerCase()}`,
+      username: leaderKey,
+      fullName: leaderKey,
+      role: 'leader',
+      isFocusing: isMeLeader ? isFocusing : false,
+      focusSecondsToday: isMeLeader ? (totalNetFocusTime || 0) : 21600,
+      currentSessionSeconds: 0,
+      currentSubject: "Guild Mission",
+      streak: isMeLeader ? (streak || 5) : 5,
+      level: isMeLeader ? (level || 1) : 1,
+      cheersCount: 15,
+      isCurrentUser: isMeLeader
+    }
+  ]);
 
   const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall">("Room");
   const [selectedDesk, setSelectedDesk] = useState<GuildMemberDesk | null>(null);
@@ -137,10 +120,78 @@ export function GuildStudyRoom({ guild, onBack, onToggleJoin }: GuildStudyRoomPr
   const [ambientSoundType, setAmbientSoundType] = useState<"Rain" | "Library" | "WhiteNoise" | "Cafe">("Rain");
   const [cheerMsg, setCheerMsg] = useState("");
   const [guildCheers, setGuildCheers] = useState<GuildCheer[]>([
-    { id: "c1", sender: "sinha✨", text: "Pushing for 6 hours today! Let's conquer HSC!", time: "5m ago", emoji: "🔥" },
-    { id: "c2", sender: "mkshaon7", text: "Engineering Math sprint in session. Stay disciplined guys!", time: "18m ago", emoji: "⚡" },
-    { id: "c3", sender: "shahnewazkamal", text: "Finished 17 hours study pot yesterday. Keep going!", time: "1h ago", emoji: "👑" }
+    { id: "c1", sender: leaderKey, text: `Welcome to [${guild.tag}] ${guild.name}! Push for focus and zero distractions.`, time: "Just now", emoji: "🔥" }
   ]);
+
+  // Real-time guild desks subscription from Firestore
+  useEffect(() => {
+    if (!guild?.id) return;
+
+    const unsub = subscribeToGuildMembers(guild.id, guild.leader, (firestoreDesks) => {
+      const mapped: GuildMemberDesk[] = firestoreDesks.map(d => {
+        const isMe = 
+          (currentUsername && d.username?.toLowerCase() === currentUsername.toLowerCase()) ||
+          (currentFullName && d.fullName?.toLowerCase() === currentFullName.toLowerCase()) ||
+          (user?.id && d.userId === user.id);
+
+        if (isMe) {
+          return {
+            ...d,
+            isCurrentUser: true,
+            isFocusing: isFocusing || d.isFocusing,
+            focusSecondsToday: totalNetFocusTime || d.focusSecondsToday
+          };
+        }
+        return {
+          ...d,
+          isCurrentUser: false
+        };
+      });
+
+      // If user is joined to this guild, ensure their desk is included
+      const hasMyDesk = mapped.some(d => d.isCurrentUser);
+      if (guild.joined && !hasMyDesk && currentUsername && currentUsername !== "you") {
+        const isThisUserLeader = (guild.leader && (guild.leader.toLowerCase() === currentUsername.toLowerCase() || guild.leader.toLowerCase() === currentFullName.toLowerCase()));
+        const myDesk: GuildMemberDesk = {
+          id: `desk_${currentUsername.replace(/\s+/g, '_').toLowerCase()}`,
+          userId: user?.id,
+          username: currentUsername,
+          fullName: currentFullName,
+          avatarUrl: profile?.avatarUrl || "",
+          role: isThisUserLeader ? 'leader' : 'member',
+          isFocusing,
+          focusSecondsToday: totalNetFocusTime || 0,
+          currentSessionSeconds: 0,
+          currentSubject: "Deep Focus Session",
+          streak: streak || 3,
+          level: level || 1,
+          cheersCount: 0,
+          isCurrentUser: true
+        };
+        mapped.push(myDesk);
+        joinGuildInFirebase(guild.id, {
+          id: user?.id || `user_${currentUsername}`,
+          username: currentUsername,
+          fullName: currentFullName,
+          avatarUrl: profile?.avatarUrl || "",
+          level: level || 1,
+          streak: streak || 3,
+          totalNetFocusTime,
+          isFocusing
+        }).catch(() => {});
+      }
+
+      setDesks(mapped);
+    });
+
+    return () => unsub();
+  }, [guild?.id, guild.leader, guild.joined, currentUsername, currentFullName, user?.id, isFocusing, totalNetFocusTime, streak, level, profile?.avatarUrl]);
+
+  // Sync current user's live focus status to Firestore so other members see it live
+  useEffect(() => {
+    if (!guild?.id || !currentUsername || currentUsername === "you") return;
+    updateGuildMemberFocusInFirebase(guild.id, currentUsername, isFocusing, totalNetFocusTime);
+  }, [guild?.id, currentUsername, isFocusing, totalNetFocusTime]);
 
   // Real-time cheer wall subscription from Firestore
   useEffect(() => {

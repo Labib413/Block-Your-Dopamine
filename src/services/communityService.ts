@@ -3,6 +3,7 @@ import {
   standardDb,
   collection, 
   doc, 
+  getDoc,
   getDocs, 
   setDoc, 
   addDoc, 
@@ -73,6 +74,25 @@ export interface DetoxChallenge {
   goal: string;
 }
 
+export interface GuildMemberDesk {
+  id: string;
+  userId?: string;
+  username: string;
+  fullName: string;
+  avatarUrl?: string;
+  role?: 'leader' | 'officer' | 'member';
+  isFocusing: boolean;
+  focusSecondsToday: number;
+  currentSessionSeconds: number;
+  currentSubject?: string;
+  streak: number;
+  level: number;
+  cheersCount: number;
+  isCurrentUser?: boolean;
+  joinedAt?: string;
+  updatedAt?: string;
+}
+
 export interface Guild {
   id: string;
   name: string;
@@ -86,6 +106,7 @@ export interface Guild {
   totalXp: number;
   weeklyGoalHours: number;
   joined: boolean;
+  memberUserIds?: string[];
   category: "Engineering" | "Medical" | "Varsity" | "General" | "HSC";
   perks: string;
   createdAt?: string;
@@ -626,12 +647,35 @@ export async function createGuildInFirebase(newGuild: Guild): Promise<Guild> {
   const firestore = getFirestoreInstance();
   const path = `guilds/${newGuild.id}`;
   try {
+    const leaderKey = (newGuild.leader || "Leader").trim();
+    const leaderDeskId = `desk_leader_${leaderKey.replace(/\s+/g, '_').toLowerCase()}`;
     const payload = cleanFirestoreData({
       ...newGuild,
+      memberUserIds: [leaderKey],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     });
     await setDoc(doc(firestore, "guilds", newGuild.id), payload, { merge: true });
+
+    // Seed leader desk in guilds/${newGuild.id}/members
+    const leaderDesk: GuildMemberDesk = {
+      id: leaderDeskId,
+      userId: `user_${leaderKey.replace(/\s+/g, '_').toLowerCase()}`,
+      username: leaderKey,
+      fullName: leaderKey,
+      role: 'leader',
+      isFocusing: false,
+      focusSecondsToday: 21600,
+      currentSessionSeconds: 0,
+      currentSubject: "Guild Mission",
+      streak: 5,
+      level: 1,
+      cheersCount: 15,
+      joinedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+    await setDoc(doc(firestore, "guilds", newGuild.id, "members", leaderDeskId), cleanFirestoreData(leaderDesk), { merge: true });
+
     return payload;
   } catch (error) {
     console.error("[Community] createGuild error:", error);
@@ -660,6 +704,240 @@ export async function updateGuildMembershipInFirebase(
   } catch (error) {
     console.error("[Community] updateGuildMembership error:", error);
     handleFirestoreError(error, OperationType.WRITE, path);
+  }
+}
+
+// Subscribe to real-time desks / members of a specific Guild
+export function subscribeToGuildMembers(
+  guildId: string,
+  guildLeaderName: string,
+  onUpdate: (desks: GuildMemberDesk[]) => void
+): Unsubscribe {
+  const firestore = getFirestoreInstance();
+  const path = `guilds/${guildId}/members`;
+
+  return onSnapshot(
+    collection(firestore, "guilds", guildId, "members"),
+    async (snapshot) => {
+      const cleanLeader = (guildLeaderName || "").trim();
+      const leaderDeskId = cleanLeader ? `desk_leader_${cleanLeader.replace(/\s+/g, '_').toLowerCase()}` : "desk_leader";
+
+      if (snapshot.empty) {
+        if (cleanLeader) {
+          // Automatically seed leader desk to Firestore
+          const leaderDesk: GuildMemberDesk = {
+            id: leaderDeskId,
+            userId: `user_${cleanLeader.replace(/\s+/g, '_').toLowerCase()}`,
+            username: cleanLeader,
+            fullName: cleanLeader,
+            role: 'leader',
+            isFocusing: false,
+            focusSecondsToday: 21600,
+            currentSessionSeconds: 0,
+            currentSubject: "Guild Mission",
+            streak: 5,
+            level: 1,
+            cheersCount: 15,
+            joinedAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          try {
+            await setDoc(doc(firestore, "guilds", guildId, "members", leaderDeskId), cleanFirestoreData(leaderDesk), { merge: true });
+          } catch (e) {
+            console.warn("[Community] Could not auto-seed guild leader desk:", e);
+          }
+          onUpdate([leaderDesk]);
+        } else {
+          onUpdate([]);
+        }
+        return;
+      }
+
+      const desks: GuildMemberDesk[] = [];
+      let foundLeader = false;
+
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data() as GuildMemberDesk;
+        // Clean up legacy dummy placeholders
+        if (docSnap.id === "desk_you" || data.username === "you" || data.username === "Leader") {
+          if (cleanLeader && cleanLeader.toLowerCase() !== "leader") {
+            deleteDoc(doc(firestore, "guilds", guildId, "members", docSnap.id)).catch(() => {});
+            return;
+          }
+        }
+
+        const isThisLeader = Boolean(
+          cleanLeader && (
+            data.username?.toLowerCase() === cleanLeader.toLowerCase() ||
+            data.fullName?.toLowerCase() === cleanLeader.toLowerCase()
+          )
+        );
+
+        if (isThisLeader) {
+          foundLeader = true;
+        }
+
+        desks.push({ 
+          ...data, 
+          id: docSnap.id,
+          role: isThisLeader ? 'leader' : (data.role || 'member')
+        });
+      });
+
+      // If leader is specified and was NOT present in the subcollection, seed leader desk!
+      if (!foundLeader && cleanLeader && cleanLeader.toLowerCase() !== "leader") {
+        const leaderDesk: GuildMemberDesk = {
+          id: leaderDeskId,
+          userId: `user_${cleanLeader.replace(/\s+/g, '_').toLowerCase()}`,
+          username: cleanLeader,
+          fullName: cleanLeader,
+          role: 'leader',
+          isFocusing: false,
+          focusSecondsToday: 21600,
+          currentSessionSeconds: 0,
+          currentSubject: "Guild Mission",
+          streak: 5,
+          level: 1,
+          cheersCount: 15,
+          joinedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        desks.unshift(leaderDesk);
+        setDoc(doc(firestore, "guilds", guildId, "members", leaderDeskId), cleanFirestoreData(leaderDesk), { merge: true }).catch(() => {});
+      }
+
+      // Sort: leader first, then active focusing members, then alphabetically
+      desks.sort((a, b) => {
+        const isALeader = a.role === 'leader' || (cleanLeader && a.username?.toLowerCase() === cleanLeader.toLowerCase());
+        const isBLeader = b.role === 'leader' || (cleanLeader && b.username?.toLowerCase() === cleanLeader.toLowerCase());
+        if (isALeader && !isBLeader) return -1;
+        if (!isALeader && isBLeader) return 1;
+        if (a.isFocusing && !b.isFocusing) return -1;
+        if (!a.isFocusing && b.isFocusing) return 1;
+        return (a.username || a.fullName || "").localeCompare(b.username || b.fullName || "");
+      });
+
+      onUpdate(desks);
+    },
+    (error) => {
+      console.error("[Community] onSnapshot guild members error:", error);
+      handleFirestoreError(error, OperationType.GET, path);
+    }
+  );
+}
+
+// Join a Guild: adds user desk to subcollection and updates memberUserIds
+export async function joinGuildInFirebase(
+  guildId: string,
+  user: {
+    id: string;
+    username: string;
+    fullName: string;
+    avatarUrl?: string;
+    level?: number;
+    streak?: number;
+    totalNetFocusTime?: number;
+    isFocusing?: boolean;
+  }
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const cleanUsername = (user.username || user.fullName || "Warrior").trim();
+  const deskId = `desk_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`;
+  const memberDesk: GuildMemberDesk = {
+    id: deskId,
+    userId: user.id || deskId,
+    username: cleanUsername,
+    fullName: user.fullName || cleanUsername,
+    avatarUrl: user.avatarUrl || "",
+    role: 'member',
+    isFocusing: Boolean(user.isFocusing),
+    focusSecondsToday: user.totalNetFocusTime || 0,
+    currentSessionSeconds: 0,
+    currentSubject: "Deep Focus Session",
+    streak: user.streak || 1,
+    level: user.level || 1,
+    cheersCount: 0,
+    joinedAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  try {
+    // 1. Add desk in guilds/${guildId}/members
+    await setDoc(doc(firestore, "guilds", guildId, "members", deskId), cleanFirestoreData(memberDesk), { merge: true });
+
+    // 2. Update guild doc membersCount and memberUserIds
+    const guildRef = doc(firestore, "guilds", guildId);
+    const snap = await getDoc(guildRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const currentIds = Array.isArray(data.memberUserIds) ? data.memberUserIds : [];
+      const updatedIds = Array.from(new Set([...currentIds, user.id, cleanUsername]));
+      await setDoc(guildRef, cleanFirestoreData({
+        ...data,
+        memberUserIds: updatedIds,
+        membersCount: Math.max(updatedIds.length, (data.membersCount || 0) + 1),
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+    }
+  } catch (error) {
+    console.error("[Community] joinGuildInFirebase error:", error);
+    handleFirestoreError(error, OperationType.WRITE, `guilds/${guildId}`);
+  }
+}
+
+// Leave a Guild: removes user desk from subcollection and updates memberUserIds
+export async function leaveGuildInFirebase(
+  guildId: string,
+  user: { id?: string; username: string }
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const cleanUsername = (user.username || "Warrior").trim();
+  const deskId = `desk_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`;
+  try {
+    // 1. Remove desk from subcollection
+    await deleteDoc(doc(firestore, "guilds", guildId, "members", deskId));
+
+    // 2. Update guild doc
+    const guildRef = doc(firestore, "guilds", guildId);
+    const snap = await getDoc(guildRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const currentIds = Array.isArray(data.memberUserIds) ? data.memberUserIds : [];
+      const updatedIds = currentIds.filter((id: string) => id !== user.id && id !== cleanUsername);
+      await setDoc(guildRef, cleanFirestoreData({
+        ...data,
+        memberUserIds: updatedIds,
+        membersCount: Math.max(1, updatedIds.length),
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+    }
+  } catch (error) {
+    console.error("[Community] leaveGuildInFirebase error:", error);
+    handleFirestoreError(error, OperationType.WRITE, `guilds/${guildId}`);
+  }
+}
+
+// Update focus state of a member in guild desk
+export async function updateGuildMemberFocusInFirebase(
+  guildId: string,
+  username: string,
+  isFocusing: boolean,
+  focusSecondsToday?: number,
+  currentSessionSeconds?: number
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const cleanUsername = (username || "").trim();
+  if (!cleanUsername || !guildId) return;
+  const deskId = `desk_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`;
+  try {
+    await setDoc(doc(firestore, "guilds", guildId, "members", deskId), cleanFirestoreData({
+      isFocusing,
+      ...(focusSecondsToday !== undefined ? { focusSecondsToday } : {}),
+      ...(currentSessionSeconds !== undefined ? { currentSessionSeconds } : {}),
+      updatedAt: new Date().toISOString()
+    }), { merge: true });
+  } catch (error) {
+    console.warn("[Community] updateGuildMemberFocus error:", error);
   }
 }
 
