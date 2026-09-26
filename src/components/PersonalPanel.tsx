@@ -11,6 +11,7 @@ import {
   Settings, 
   Sparkles, 
   Copy, 
+  Check,
   ChevronDown,
   BookOpen,
   School,
@@ -217,6 +218,37 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
   const [apiKey, setApiKey] = useState(geminiApiKey || "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
+  const [copiedId, setCopiedId] = useState(false);
+
+  const handleCopyUniqueId = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const idToCopy = user?.uniqueId || user?.id || "BYD-00000";
+    const onCopied = () => {
+      setCopiedId(true);
+      addNotification?.("Copied!", `Unique ID ${idToCopy} copied to clipboard.`);
+      setTimeout(() => setCopiedId(false), 2000);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(idToCopy).then(onCopied).catch(() => {
+        const textArea = document.createElement("textarea");
+        textArea.value = idToCopy;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textArea);
+        onCopied();
+      });
+    } else {
+      const textArea = document.createElement("textarea");
+      textArea.value = idToCopy;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      onCopied();
+    }
+  };
   const [activeModules, setActiveModules] = useState<Record<string, boolean>>(() => {
     try {
       const saved = localStorage.getItem('byd_notification_modules');
@@ -436,7 +468,11 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             {/* Top Stats Bar */}
             <div className="mb-10 flex flex-col sm:flex-row gap-4 relative z-10">
               {/* Unique ID Bar - Neon Style */}
-              <div className="flex-1 p-5 rounded-xl bg-white/5 backdrop-blur-md border border-[#00ff66]/20 flex items-center justify-between group hover:border-[#00ff66]/40 transition-all shadow-inner">
+              <div 
+                onClick={handleCopyUniqueId}
+                title="Click to copy Unique ID"
+                className="flex-1 p-5 rounded-xl bg-white/5 backdrop-blur-md border border-[#00ff66]/20 flex items-center justify-between group hover:border-[#00ff66]/40 transition-all shadow-inner cursor-pointer"
+              >
                 <div className="flex items-center gap-4">
                   {/* Logo Box */}
                   <div className="w-9 h-9 rounded-lg bg-[#39FF14] flex items-center justify-center shadow-[0_0_20px_rgba(57,255,20,0.4)]">
@@ -444,14 +480,35 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                   </div>
                   
                   <div className="flex flex-col">
-                    <span className="text-[10px] font-black text-[#00ff66] tracking-[0.3em] uppercase mb-0.5 drop-shadow-[0_0_5px_rgba(0,255,102,0.5)]">UNIQUE ID</span>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-[10px] font-black text-[#00ff66] tracking-[0.3em] uppercase drop-shadow-[0_0_5px_rgba(0,255,102,0.5)]">UNIQUE ID</span>
+                      {copiedId && (
+                        <span className="text-[9px] font-mono font-bold text-[#00ff66] bg-[#00ff66]/20 px-1.5 py-0.2 rounded border border-[#00ff66]/40 animate-pulse">
+                          COPIED!
+                        </span>
+                      )}
+                    </div>
                     <span className="text-sm font-mono font-bold text-white/90 truncate max-w-[150px]">
-                      {user?.uniqueId || "BYD-00000"}
+                      {user?.uniqueId || user?.id || "BYD-00000"}
                     </span>
                   </div>
                 </div>
-                <button className="w-10 h-10 rounded-xl bg-[#00ff66]/10 flex items-center justify-center border border-[#00ff66]/30 cursor-pointer hover:bg-[#00ff66]/20 transition-all group shadow-lg">
-                  <Copy className="w-4.5 h-4.5 text-[#00ff66] group-hover:scale-110 transition-transform" />
+                <button 
+                  type="button"
+                  onClick={handleCopyUniqueId}
+                  title={copiedId ? "Copied!" : "Copy Unique ID"}
+                  className={cn(
+                    "w-10 h-10 rounded-xl flex items-center justify-center border cursor-pointer transition-all group shadow-lg active:scale-95",
+                    copiedId 
+                      ? "bg-[#00ff66]/25 border-[#00ff66] shadow-[0_0_15px_rgba(0,255,102,0.4)]" 
+                      : "bg-[#00ff66]/10 border-[#00ff66]/30 hover:bg-[#00ff66]/20 hover:border-[#00ff66]/60"
+                  )}
+                >
+                  {copiedId ? (
+                    <Check className="w-4.5 h-4.5 text-[#00ff66] animate-in zoom-in-75 duration-200" />
+                  ) : (
+                    <Copy className="w-4.5 h-4.5 text-[#00ff66] group-hover:scale-110 transition-transform" />
+                  )}
                 </button>
               </div>
 
