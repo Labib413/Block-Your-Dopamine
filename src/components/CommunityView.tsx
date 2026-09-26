@@ -28,7 +28,9 @@ import {
   Shield,
   BookOpen,
   X,
-  Database
+  Database,
+  AlertTriangle,
+  ArrowRight
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../context/AppContext";
@@ -80,6 +82,12 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const [newGuildTag, setNewGuildTag] = useState("");
   const [newGuildDesc, setNewGuildDesc] = useState("");
   const [newGuildCategory, setNewGuildCategory] = useState<Guild["category"]>("Engineering");
+
+  const [pendingGuildSwitch, setPendingGuildSwitch] = useState<{
+    currentGuild: Guild;
+    targetGuild: Guild;
+    autoEnter?: boolean;
+  } | null>(null);
 
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
@@ -418,6 +426,90 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     return false;
   };
 
+  const executeJoinGuild = async (targetGuild: Guild, autoEnter = true) => {
+    // 1. If currently in a different guild, leave it first
+    const previousGuild = guilds.find(g => g.id !== targetGuild.id && isGuildJoinedByMe(g));
+    if (previousGuild) {
+      const prevCount = Math.max(1, previousGuild.membersCount - 1);
+      const prevIds = (Array.isArray(previousGuild.memberUserIds) ? previousGuild.memberUserIds : [])
+        .filter(id => id !== currentUsername && id !== user?.id && id !== currentFullName);
+
+      toggleGuildMutation.mutate({
+        guildId: previousGuild.id,
+        joined: false,
+        membersCount: prevCount,
+        guild: {
+          ...previousGuild,
+          memberUserIds: prevIds
+        }
+      });
+
+      leaveGuildInFirebase(previousGuild.id, {
+        id: user?.id,
+        username: currentUsername
+      }).catch(err => console.warn("[Community] Error leaving previous guild:", err));
+    }
+
+    // 2. Join target guild
+    const nextCount = targetGuild.membersCount + 1;
+    const currentIds = Array.isArray(targetGuild.memberUserIds) ? targetGuild.memberUserIds : [];
+    const updatedIds = Array.from(new Set([...currentIds, currentUsername, user?.id || ""].filter(Boolean)));
+
+    toggleGuildMutation.mutate({
+      guildId: targetGuild.id,
+      joined: true,
+      membersCount: nextCount,
+      guild: {
+        ...targetGuild,
+        memberUserIds: updatedIds
+      }
+    });
+
+    try {
+      await joinGuildInFirebase(targetGuild.id, {
+        id: user?.id || `user_${currentUsername}`,
+        username: currentUsername,
+        fullName: currentFullName,
+        avatarUrl: profile?.avatarUrl || "",
+        level,
+        streak,
+        totalNetFocusTime,
+        isFocusing
+      });
+    } catch (err) {
+      console.warn("[Community] Error joining guild:", err);
+    }
+
+    if (autoEnter) {
+      setSelectedGuildRoomId(targetGuild.id);
+    }
+  };
+
+  const handleRequestJoinGuild = (targetGuild: Guild, autoEnter = true) => {
+    const isAlreadyJoined = isGuildJoinedByMe(targetGuild);
+    if (isAlreadyJoined) {
+      if (autoEnter) {
+        setSelectedGuildRoomId(targetGuild.id);
+      }
+      return;
+    }
+
+    // Check if user is currently joined in another guild
+    const activeCurrentGuild = guilds.find(g => g.id !== targetGuild.id && isGuildJoinedByMe(g));
+    if (activeCurrentGuild) {
+      // Show popup warning asking user to leave current guild
+      setPendingGuildSwitch({
+        currentGuild: activeCurrentGuild,
+        targetGuild,
+        autoEnter
+      });
+      return;
+    }
+
+    // Direct join if not currently in any guild
+    executeJoinGuild(targetGuild, autoEnter);
+  };
+
   const handleToggleGuild = async (guildId: string) => {
     const targetGuild = guilds.find(g => g.id === guildId);
     if (!targetGuild) return;
@@ -449,58 +541,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
         console.warn("[Community] Error leaving guild:", err);
       }
     } else {
-      // Joining new guild: First leave any previous guild so a user only ever belongs to ONE guild
-      const previousGuild = guilds.find(g => g.id !== guildId && isGuildJoinedByMe(g));
-      if (previousGuild) {
-        const prevCount = Math.max(1, previousGuild.membersCount - 1);
-        const prevIds = (Array.isArray(previousGuild.memberUserIds) ? previousGuild.memberUserIds : [])
-          .filter(id => id !== currentUsername && id !== user?.id && id !== currentFullName);
-
-        toggleGuildMutation.mutate({
-          guildId: previousGuild.id,
-          joined: false,
-          membersCount: prevCount,
-          guild: {
-            ...previousGuild,
-            memberUserIds: prevIds
-          }
-        });
-
-        leaveGuildInFirebase(previousGuild.id, {
-          id: user?.id,
-          username: currentUsername
-        }).catch(err => console.warn("[Community] Error leaving previous guild:", err));
-      }
-
-      // Now join the target guild
-      const nextCount = targetGuild.membersCount + 1;
-      const currentIds = Array.isArray(targetGuild.memberUserIds) ? targetGuild.memberUserIds : [];
-      const updatedIds = Array.from(new Set([...currentIds, currentUsername, user?.id || ""].filter(Boolean)));
-
-      toggleGuildMutation.mutate({
-        guildId,
-        joined: true,
-        membersCount: nextCount,
-        guild: {
-          ...targetGuild,
-          memberUserIds: updatedIds
-        }
-      });
-
-      try {
-        await joinGuildInFirebase(guildId, {
-          id: user?.id || `user_${currentUsername}`,
-          username: currentUsername,
-          fullName: currentFullName,
-          avatarUrl: profile?.avatarUrl || "",
-          level,
-          streak,
-          totalNetFocusTime,
-          isFocusing
-        });
-      } catch (err) {
-        console.warn("[Community] Error joining guild:", err);
-      }
+      handleRequestJoinGuild(targetGuild, false);
     }
   };
 
@@ -1288,10 +1329,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
-                            if (!isJoined) {
-                              handleToggleGuild(guild.id);
+                            if (isJoined) {
+                              setSelectedGuildRoomId(guild.id);
+                            } else {
+                              handleRequestJoinGuild(guild, true);
                             }
-                            setSelectedGuildRoomId(guild.id);
                           }}
                           className={cn(
                             "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
@@ -1312,6 +1354,95 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
           </div>
         )
       )}
+
+      {/* Confirmation Modal: Switch Guild Warning */}
+      <AnimatePresence>
+        {pendingGuildSwitch && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-[#0d0d0d] border border-amber-500/30 rounded-3xl p-6 space-y-5 shadow-[0_0_50px_rgba(245,158,11,0.15)] relative overflow-hidden"
+            >
+              <button
+                onClick={() => setPendingGuildSwitch(null)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shadow-[0_0_20px_rgba(245,158,11,0.2)] shrink-0">
+                  <AlertTriangle className="w-6 h-6 text-amber-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Leave Current Guild?</h3>
+                  <span className="text-[11px] text-amber-400/80 font-mono uppercase tracking-wider font-semibold">
+                    1-Guild Membership Rule
+                  </span>
+                </div>
+              </div>
+
+              <p className="text-xs text-white/70 leading-relaxed font-sans">
+                You are currently an active warrior in <span className="text-white font-bold">[{pendingGuildSwitch.currentGuild.tag}] {pendingGuildSwitch.currentGuild.name}</span>. You can only belong to one guild at a time.
+              </p>
+
+              {/* Guild Switch Comparison Badge */}
+              <div className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-red-400 shrink-0" />
+                  <div className="text-left">
+                    <span className="text-[9px] uppercase font-bold text-white/40 block">Current</span>
+                    <span className="font-semibold text-white/90 truncate max-w-[110px] block">
+                      {pendingGuildSwitch.currentGuild.name}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="w-7 h-7 rounded-full bg-white/5 flex items-center justify-center text-white/40 shrink-0">
+                  <ArrowRight className="w-3.5 h-3.5 text-amber-400" />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#39FF14] shrink-0" />
+                  <div className="text-left">
+                    <span className="text-[9px] uppercase font-bold text-white/40 block">Target Guild</span>
+                    <span className="font-semibold text-[#39FF14] truncate max-w-[110px] block">
+                      {pendingGuildSwitch.targetGuild.name}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-[11px] text-white/40 leading-normal">
+                Joining <span className="text-white/80 font-medium">[{pendingGuildSwitch.targetGuild.tag}] {pendingGuildSwitch.targetGuild.name}</span> will immediately remove your study desk from your current guild.
+              </p>
+
+              <div className="flex items-center gap-3 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingGuildSwitch(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10"
+                >
+                  Stay
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const { targetGuild, autoEnter } = pendingGuildSwitch;
+                    setPendingGuildSwitch(null);
+                    executeJoinGuild(targetGuild, autoEnter ?? true);
+                  }}
+                  className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(245,158,11,0.3)] flex items-center justify-center gap-1.5"
+                >
+                  <span>Leave Guild</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Create Guild Modal */}
       <AnimatePresence>
