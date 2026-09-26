@@ -77,73 +77,90 @@ const DailyInspiration = memo(({ quote }: { quote: { text: string; author?: stri
   );
 });
 
-const ProgressCircle = memo(({ level, progressPercent, xp, requiredXP, weeklyRank, globalRank, topSkill }: { level: number, progressPercent: number, xp: number, requiredXP: number, weeklyRank: string, globalRank: string, topSkill: string }) => (
-  <GlassCard className="col-span-8 flex items-center gap-12">
-    <div className="relative w-40 h-40 flex items-center justify-center">
-      <svg className="w-full h-full transform -rotate-90">
-        <circle
-          cx="80"
-          cy="80"
-          r="70"
-          stroke="currentColor"
-          strokeWidth="8"
-          fill="transparent"
-          className="text-white/5"
-        />
-        <circle
-          cx="80"
-          cy="80"
-          r="70"
-          stroke="currentColor"
-          strokeWidth="8"
-          fill="transparent"
-          strokeDasharray={440}
-          strokeDashoffset={440 - (440 * progressPercent) / 100}
-          className="text-neon-green drop-shadow-[0_0_8px_rgba(57,255,20,0.5)] transition-all duration-500"
-        />
-      </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-        <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Level {level}</span>
-        <div className="flex items-baseline justify-center tabular-nums">
-          <span className="text-2xl font-sans font-bold text-white">
-            {Math.floor(progressPercent)}
-          </span>
-          <span className="text-2xl font-bold text-white ml-0.5">%</span>
+const ProgressCircle = memo(({ level, progressPercent, xp, requiredXP, weeklyRank, globalRank, topSkill }: { level: number, progressPercent: number, xp: number, requiredXP: number, weeklyRank: string, globalRank: string, topSkill: string }) => {
+  const safePercent = Math.min(100, Math.max(0, isNaN(progressPercent) ? 0 : progressPercent));
+  return (
+    <GlassCard className="col-span-12 lg:col-span-8 flex flex-col md:flex-row items-center gap-8 md:gap-12 p-6 md:p-8">
+      <div className="relative w-40 h-40 flex-shrink-0 flex items-center justify-center">
+        <svg className="w-full h-full transform -rotate-90">
+          <circle
+            cx="80"
+            cy="80"
+            r="70"
+            stroke="currentColor"
+            strokeWidth="8"
+            fill="transparent"
+            className="text-white/5"
+          />
+          <circle
+            cx="80"
+            cy="80"
+            r="70"
+            stroke="currentColor"
+            strokeWidth="8"
+            fill="transparent"
+            strokeDasharray={440}
+            strokeDashoffset={440 - (440 * safePercent) / 100}
+            className="text-neon-green drop-shadow-[0_0_12px_rgba(57,255,20,0.6)] transition-all duration-700 ease-out"
+          />
+        </svg>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-0.5">Level {level}</span>
+          <div className="flex items-baseline justify-center tabular-nums">
+            <span className="text-3xl font-sans font-bold text-white">
+              {Math.floor(safePercent)}
+            </span>
+            <span className="text-xl font-bold text-neon-green ml-0.5">%</span>
+          </div>
+          <span className="text-[9px] font-mono text-white/30 uppercase tracking-wider mt-0.5">XP Progress</span>
         </div>
       </div>
-    </div>
 
-    <div className="flex-1">
-      <div className="flex items-center justify-between mb-4">
-        <h3 className="text-xl font-sans font-bold">Progress Overview</h3>
-      </div>
-      <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/10 mb-3">
-        <div 
-          className="h-full bg-neon-green shadow-[0_0_10px_rgba(57,255,20,0.5)] transition-all duration-1000" 
-          style={{ width: `${progressPercent}%` }} 
-        />
-      </div>
-      <div className="flex justify-end">
-        <span className="text-xs font-bold text-white/40 uppercase tracking-widest">{xp}/{requiredXP} XP earned to Level {level + 1}</span>
-      </div>
-      
-      <div className="grid grid-cols-3 gap-4 mt-8">
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Weekly Rank</div>
-          <div className="text-lg font-sans font-bold text-white">{weeklyRank}</div>
+      <div className="flex-1 w-full">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2.5">
+            <h3 className="text-xl font-sans font-bold text-white tracking-tight">Progress Overview</h3>
+            <span className="px-2.5 py-0.5 rounded-full bg-neon-green/10 border border-neon-green/30 text-neon-green text-[10px] font-mono font-bold tracking-wider uppercase shadow-[0_0_10px_rgba(57,255,20,0.15)]">
+              Level {level}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 text-xs font-mono text-neon-green font-bold">
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            <span>{xp} XP</span>
+          </div>
         </div>
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Global Rank</div>
-          <div className="text-lg font-sans font-bold text-white">{globalRank}</div>
+
+        {/* Progress Bar */}
+        <div className="w-full h-3 bg-white/5 rounded-full overflow-hidden border border-white/10 mb-2 relative">
+          <div 
+            className="h-full bg-neon-green shadow-[0_0_12px_rgba(57,255,20,0.6)] transition-all duration-1000 rounded-full" 
+            style={{ width: `${safePercent}%` }} 
+          />
         </div>
-        <div className="p-4 rounded-xl bg-white/5 border border-white/10">
-          <div className="text-xs font-bold text-white/40 uppercase tracking-widest mb-1">Top Skill</div>
-          <div className="text-lg font-sans font-bold text-white">{topSkill}</div>
+
+        <div className="flex justify-between items-center text-xs font-mono mb-6">
+          <span className="text-white/40 text-[11px]">{Math.round(safePercent)}% to Next Level</span>
+          <span className="font-bold text-white/70 text-[11px]">{xp} / {requiredXP} XP to Level {level + 1}</span>
+        </div>
+        
+        <div className="grid grid-cols-3 gap-3 md:gap-4">
+          <div className="p-3.5 rounded-xl bg-white/5 border border-white/10">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Weekly Rank</div>
+            <div className="text-base md:text-lg font-sans font-bold text-white truncate">{weeklyRank}</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-white/5 border border-white/10">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Global Rank</div>
+            <div className="text-base md:text-lg font-sans font-bold text-white truncate">{globalRank}</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-white/5 border border-white/10">
+            <div className="text-[10px] font-bold text-white/40 uppercase tracking-widest mb-1">Top Skill</div>
+            <div className="text-base md:text-lg font-sans font-bold text-white truncate">{topSkill}</div>
+          </div>
         </div>
       </div>
-    </div>
-  </GlassCard>
-));
+    </GlassCard>
+  );
+});
 
 const TrendsChart = memo(({ displayChartData, visibleLines }: { displayChartData: any[], visibleLines: any }) => (
   <ResponsiveContainer width="100%" height="100%">
@@ -317,8 +334,8 @@ export function Dashboard() {
     }
   };
 
-  const requiredXP = getRequiredXP(level);
-  const progressPercent = (xp / requiredXP) * 100;
+  const requiredXP = getRequiredXP(level) || 100;
+  const progressPercent = Math.min(100, Math.max(0, (xp / requiredXP) * 100));
 
   useEffect(() => {
     getDailyQuote(geminiApiKey).then(setQuote);

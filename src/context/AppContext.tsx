@@ -122,6 +122,7 @@ export interface GuardedWebsite {
 interface AppState {
   xp: number;
   level: number;
+  totalXP: number;
   streak: number;
   lastStreakDate: string | null;
   consecutiveMissedDays: number;
@@ -477,9 +478,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const now = new Date();
     const today = getLocalDateString(now);
     
+    let initialXP = 0;
+    let initialLevel = 1;
+    let initialTotalXP = 0;
+    try {
+      const savedXP = localStorage.getItem('byd_user_xp');
+      const savedLevel = localStorage.getItem('byd_user_level');
+      const savedTotalXP = localStorage.getItem('byd_user_total_xp');
+      if (savedXP !== null) initialXP = Number(savedXP) || 0;
+      if (savedLevel !== null) initialLevel = Math.max(1, Number(savedLevel) || 1);
+      if (savedTotalXP !== null) initialTotalXP = Number(savedTotalXP) || 0;
+    } catch {}
+
     return {
-      xp: 0,
-      level: 1,
+      xp: initialXP,
+      level: initialLevel,
+      totalXP: initialTotalXP,
       streak: 0,
       lastStreakDate: null,
       consecutiveMissedDays: 0,
@@ -890,6 +904,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
         syncQueue: newSyncQueue 
       };
     });
+
+    // Award +15 XP if any syllabus task was marked as completed
+    const oldChapter = state.academicChapters.find(c => c.id === chapter_id);
+    if (
+      (updates.read_textbook && !oldChapter?.read_textbook) ||
+      (updates.watch_class && !oldChapter?.watch_class) ||
+      (updates.practice_problems && !oldChapter?.practice_problems) ||
+      (updates.make_notes && !oldChapter?.make_notes)
+    ) {
+      addXP(15);
+    }
 
     // Side Effects outside of setState are now handled by debounced Supabase sync in useEffect hook
     triggerSync();
@@ -1667,17 +1692,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.unlockedBadgeIds = combinedBadges;
           next.equippedBadges = sanitizedEquipped;
 
+          // XP, Level & Total XP Persistence from Firestore/Supabase
+          const remoteXP = Number(pd.xp ?? pd.xp_points ?? 0);
+          const remoteLevel = Math.max(1, Number(pd.level ?? 1));
+          const remoteTotalXP = Number(pd.total_xp ?? 0);
+
+          let localSavedXP = 0;
+          let localSavedLevel = 1;
+          let localSavedTotal = 0;
+          try {
+            localSavedXP = Number(localStorage.getItem('byd_user_xp') || 0);
+            localSavedLevel = Math.max(1, Number(localStorage.getItem('byd_user_level') || 1));
+            localSavedTotal = Number(localStorage.getItem('byd_user_total_xp') || 0);
+          } catch {}
+
+          const resolvedLevel = Math.max(prev.level, localSavedLevel, remoteLevel);
+          let resolvedXP = Math.max(prev.xp, localSavedXP, remoteXP);
+          if (remoteLevel > prev.level && remoteLevel > localSavedLevel) {
+            resolvedXP = remoteXP;
+          }
+          const resolvedTotalXP = Math.max(prev.totalXP || 0, localSavedTotal, remoteTotalXP);
+
+          next.xp = resolvedXP;
+          next.level = resolvedLevel;
+          next.totalXP = resolvedTotalXP;
+          next.weeklyRank = resolvedLevel > 1 ? `#${Math.max(1, 20 - resolvedLevel)}` : "Top 25%";
+          next.globalRank = resolvedLevel > 1 ? `#${Math.max(1, 200 - resolvedLevel * 5)}` : "Top 30%";
+          next.topSkill = prev.focusTime > 300 ? "Deep Focus" : "Focus Initiate";
+
+          try {
+            localStorage.setItem('byd_user_xp', String(resolvedXP));
+            localStorage.setItem('byd_user_level', String(resolvedLevel));
+            localStorage.setItem('byd_user_total_xp', String(resolvedTotalXP));
+          } catch {}
+
           // Auto-repair / normalize Firestore fields if any broken/nested structure exists or missing
           const needsRepair = !Array.isArray(pd.equipped_badges) ||
             pd.badges === undefined ||
             pd.equipped_badges === undefined ||
+            pd.xp === undefined ||
+            pd.level === undefined ||
+            remoteXP < resolvedXP ||
+            remoteLevel < resolvedLevel ||
             JSON.stringify(pd.equipped_badges) !== JSON.stringify(sanitizedEquipped) ||
             JSON.stringify(pd.badges) !== JSON.stringify(combinedBadges);
 
           if (needsRepair) {
             syncItemToFirestore(userId, 'profiles', {
               badges: combinedBadges,
-              equipped_badges: sanitizedEquipped
+              equipped_badges: sanitizedEquipped,
+              xp: resolvedXP,
+              level: resolvedLevel,
+              total_xp: resolvedTotalXP
             }, 'upsert');
           }
 
@@ -2028,6 +2094,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             },
             unlockedBadgeIds: combinedBadges,
             equippedBadges: sanitizedEquipped,
+            xp: pd.xp !== undefined ? Number(pd.xp) : prev.xp,
+            level: pd.level !== undefined ? Math.max(1, Number(pd.level)) : prev.level,
+            totalXP: pd.total_xp !== undefined ? Number(pd.total_xp) : (prev.totalXP || 0),
+            weeklyRank: (pd.level !== undefined ? Number(pd.level) : prev.level) > 1 ? `#${Math.max(1, 20 - (pd.level !== undefined ? Number(pd.level) : prev.level))}` : "Top 25%",
+            globalRank: (pd.level !== undefined ? Number(pd.level) : prev.level) > 1 ? `#${Math.max(1, 200 - (pd.level !== undefined ? Number(pd.level) : prev.level) * 5)}` : "Top 30%",
             gender: pd.gender || prev.gender,
             depexMode: (() => {
               if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
@@ -2666,6 +2737,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       equippedBadges: newEquipped,
       badgeHealth: newHealth,
       daysActive: prev.daysActive + 1,
+      xp: prev.xp,
+      level: prev.level,
+      totalXP: prev.totalXP || 0,
       tasks: prev.tasks.filter(task => {
         if (!task.date) return true;
         const taskDate = new Date(task.date);
@@ -2684,37 +2758,52 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const getRequiredXP = (level: number) => {
     if (level <= 1) return 100;
-    if (level === 2) return 150;
-    return 300 * Math.pow(2, level - 3);
+    return Math.round(100 + (level - 1) * 100);
   };
 
   const addXP = (amount: number) => {
+    if (!amount || amount <= 0) return;
     logActivity();
     setState(prev => {
       let newXP = prev.xp + amount;
       let newLevel = prev.level;
+      let newTotalXP = (prev.totalXP || 0) + amount;
       
-      while (newXP >= getRequiredXP(newLevel)) {
-        newXP -= getRequiredXP(newLevel);
+      let req = getRequiredXP(newLevel);
+      while (newXP >= req) {
+        newXP -= req;
         newLevel += 1;
+        req = getRequiredXP(newLevel);
       }
 
-      if (prev.user && (newXP !== prev.xp || newLevel !== prev.level)) {
+      try {
+        localStorage.setItem('byd_user_xp', String(newXP));
+        localStorage.setItem('byd_user_level', String(newLevel));
+        localStorage.setItem('byd_user_total_xp', String(newTotalXP));
+      } catch {}
+
+      if (prev.user) {
         addToSyncQueue({
           table: 'profiles',
           type: 'update',
           id: prev.user.id,
-          data: { xp: newXP, level: newLevel }
+          data: { xp: newXP, level: newLevel, total_xp: newTotalXP }
         });
+        syncItemToFirestore(prev.user.id, 'profiles', {
+          xp: newXP,
+          level: newLevel,
+          total_xp: newTotalXP
+        }, 'upsert');
       }
 
       return { 
         ...prev, 
         xp: newXP, 
         level: newLevel,
-        weeklyRank: newLevel > 1 ? "---" : "N/A",
-        globalRank: newLevel > 1 ? "---" : "N/A",
-        topSkill: prev.focusTime > 300 ? "Focus" : prev.topSkill
+        totalXP: newTotalXP,
+        weeklyRank: newLevel > 1 ? `#${Math.max(1, 20 - newLevel)}` : "Top 25%",
+        globalRank: newLevel > 1 ? `#${Math.max(1, 200 - newLevel * 5)}` : "Top 30%",
+        topSkill: prev.focusTime > 300 ? "Deep Focus" : "Focus Initiate"
       };
     });
   };
@@ -2846,14 +2935,23 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newDailyNet = Math.trunc(prev.totalNetFocusTime + safeNetFocus);
       const newDailyTotal = Math.trunc(prev.dailyTotalFocusTime + safeTotalAttempted);
       
-      const earnedXP = Math.floor(safeNetFocus / 60);
+      const earnedXP = Math.floor(safeNetFocus / 60) + (sessionScore >= 80 ? 20 : 0);
       let newXP = prev.xp + earnedXP;
       let newLevel = prev.level;
+      let newTotalXP = (prev.totalXP || 0) + earnedXP;
       
-      while (newXP >= getRequiredXP(newLevel)) {
-        newXP -= getRequiredXP(newLevel);
+      let req = getRequiredXP(newLevel);
+      while (newXP >= req) {
+        newXP -= req;
         newLevel += 1;
+        req = getRequiredXP(newLevel);
       }
+
+      try {
+        localStorage.setItem('byd_user_xp', String(newXP));
+        localStorage.setItem('byd_user_level', String(newLevel));
+        localStorage.setItem('byd_user_total_xp', String(newTotalXP));
+      } catch {}
 
       // Clear all local states to prevent '0m 00s' freeze
       try {
@@ -2912,6 +3010,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         focusHistory: updatedHistory,
         xp: newXP,
         level: newLevel,
+        totalXP: newTotalXP,
+        weeklyRank: newLevel > 1 ? `#${Math.max(1, 20 - newLevel)}` : "Top 25%",
+        globalRank: newLevel > 1 ? `#${Math.max(1, 200 - newLevel * 5)}` : "Top 30%",
+        topSkill: (prev.focusTime + safeTotalAttempted) > 300 ? "Deep Focus" : "Focus Initiate",
         streak: newStreakInner,
         lastStreakDate: today,
         consecutiveMissedDays: 0
@@ -2933,6 +3035,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const durationMins = Math.max(1, Math.round(safeTotalAttempted / 60));
     const isProductive = sessionScore >= 60;
     const finalTaskName = resourceUsed || "Focus Session";
+
+    const earnedXP = Math.floor(safeNetFocus / 60) + (sessionScore >= 80 ? 20 : 0);
+    let finalNewXP = state.xp + earnedXP;
+    let finalNewLevel = state.level;
+    let finalNewTotalXP = (state.totalXP || 0) + earnedXP;
+    let reqXP = getRequiredXP(finalNewLevel);
+    while (finalNewXP >= reqXP) {
+      finalNewXP -= reqXP;
+      finalNewLevel += 1;
+      reqXP = getRequiredXP(finalNewLevel);
+    }
 
     const finalSessionData = {
       id: finalSessionId,
@@ -2993,6 +3106,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             await syncItemToFirestore(state.user.id, 'user_streaks', finalStreakData, 'upsert');
             // 4. Calculate and save Daily, Weekly, and Monthly reports to Firestore!
             await syncAggregatedReportsToFirestore(state.user.id, finalSessionData, state.focusHistory || []);
+            // 5. Sync XP, level, total_xp directly to Firestore user profile!
+            await syncItemToFirestore(state.user.id, 'profiles', {
+              xp: finalNewXP,
+              level: finalNewLevel,
+              total_xp: finalNewTotalXP
+            }, 'upsert');
           }
         } catch(err) {
           logger.error("Error syncing final session", err);
@@ -3455,6 +3574,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const updateTaskStatus = (id: string, status: Status) => {
     logActivity();
+    const prevTask = state.tasks.find(t => t.id === id);
+    if (status === 'Done' && prevTask?.status !== 'Done') {
+      addXP(15);
+    }
     
     // Update local state immediately
     setState(prev => {
