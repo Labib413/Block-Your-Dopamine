@@ -2466,6 +2466,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
             id: prev.user.id,
             data: { badges: finalUnlocked }
           });
+          syncItemToFirestore(prev.user.id, 'profiles', { badges: finalUnlocked }, 'update');
         }
         return {
           ...prev,
@@ -3454,6 +3455,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: prev.user.id,
           data: { equipped_badges: newEquipped }
         });
+        syncItemToFirestore(prev.user.id, 'profiles', { equipped_badges: newEquipped }, 'update');
       }
 
       return { ...prev, equippedBadges: newEquipped };
