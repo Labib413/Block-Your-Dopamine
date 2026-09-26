@@ -2935,7 +2935,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const newDailyNet = Math.trunc(prev.totalNetFocusTime + safeNetFocus);
       const newDailyTotal = Math.trunc(prev.dailyTotalFocusTime + safeTotalAttempted);
       
-      const earnedXP = Math.floor(safeNetFocus / 60) + (sessionScore >= 80 ? 20 : 0);
+      const earnedXP = (Math.floor(safeNetFocus / 60) * 10) + (sessionScore >= 80 ? 20 : 0);
       let newXP = prev.xp + earnedXP;
       let newLevel = prev.level;
       let newTotalXP = (prev.totalXP || 0) + earnedXP;
@@ -3036,7 +3036,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const isProductive = sessionScore >= 60;
     const finalTaskName = resourceUsed || "Focus Session";
 
-    const earnedXP = Math.floor(safeNetFocus / 60) + (sessionScore >= 80 ? 20 : 0);
+    const earnedXP = (Math.floor(safeNetFocus / 60) * 10) + (sessionScore >= 80 ? 20 : 0);
     let finalNewXP = state.xp + earnedXP;
     let finalNewLevel = state.level;
     let finalNewTotalXP = (state.totalXP || 0) + earnedXP;
