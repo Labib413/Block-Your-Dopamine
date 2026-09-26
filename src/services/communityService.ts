@@ -162,6 +162,7 @@ export const INITIAL_GUILDS: Guild[] = [
     totalXp: 184500,
     weeklyGoalHours: 350,
     joined: false,
+    memberUserIds: ["Tanvir Hasan"],
     category: "Engineering",
     perks: "+10% Focus XP Buff & BUET Question Bank"
   },
@@ -177,7 +178,8 @@ export const INITIAL_GUILDS: Guild[] = [
     rank: 2,
     totalXp: 162000,
     weeklyGoalHours: 320,
-    joined: true,
+    joined: false,
+    memberUserIds: ["Nabila Tabassum"],
     category: "Medical",
     perks: "+8% Bio Mastery Buff & Med Flashcards"
   },
@@ -194,6 +196,7 @@ export const INITIAL_GUILDS: Guild[] = [
     totalXp: 139200,
     weeklyGoalHours: 280,
     joined: false,
+    memberUserIds: ["Farhan Ahmed"],
     category: "Varsity",
     perks: "+5% Daily Streak Protection"
   },
@@ -210,6 +213,7 @@ export const INITIAL_GUILDS: Guild[] = [
     totalXp: 118400,
     weeklyGoalHours: 250,
     joined: false,
+    memberUserIds: ["Sabbir Hossain"],
     category: "HSC",
     perks: "Exclusive Monk Mode Audio & Emblems"
   }
@@ -697,7 +701,6 @@ export async function updateGuildMembershipInFirebase(
       ...existing,
       ...(fallbackGuild || {}),
       id: guildId,
-      joined,
       membersCount,
       updatedAt: new Date().toISOString()
     }), { merge: true });

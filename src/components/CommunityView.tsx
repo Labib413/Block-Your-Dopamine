@@ -389,52 +389,105 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
   const isGuildJoinedByMe = (g: Guild | undefined): boolean => {
     if (!g) return false;
-    if (Array.isArray(g.memberUserIds)) {
-      if (
-        (currentUsername && g.memberUserIds.includes(currentUsername)) ||
-        (user?.id && g.memberUserIds.includes(user.id)) ||
-        (currentFullName && g.memberUserIds.includes(currentFullName))
-      ) {
-        return true;
-      }
-    }
+    const myId = user?.id;
+    const myUsername = (currentUsername || "").toLowerCase();
+    const myFullName = (currentFullName || "").toLowerCase();
+
+    // Check if user is the leader of this guild
     if (g.leader) {
       const l = g.leader.toLowerCase();
-      if (
-        (currentUsername && l === currentUsername.toLowerCase()) ||
-        (currentFullName && l === currentFullName.toLowerCase())
-      ) {
+      if ((myUsername && l === myUsername) || (myFullName && l === myFullName)) {
         return true;
       }
     }
-    return Boolean(g.joined);
+
+    // Check memberUserIds list
+    if (Array.isArray(g.memberUserIds) && g.memberUserIds.length > 0) {
+      const isMember = g.memberUserIds.some(id => {
+        if (!id) return false;
+        const clean = id.toLowerCase();
+        return (
+          (myId && id === myId) ||
+          (myUsername && clean === myUsername) ||
+          (myFullName && clean === myFullName)
+        );
+      });
+      if (isMember) return true;
+    }
+
+    return false;
   };
 
   const handleToggleGuild = async (guildId: string) => {
-    const guild = guilds.find(g => g.id === guildId);
-    if (!guild) return;
+    const targetGuild = guilds.find(g => g.id === guildId);
+    if (!targetGuild) return;
 
-    const alreadyJoined = isGuildJoinedByMe(guild);
-    const nextJoined = !alreadyJoined;
-    const nextCount = nextJoined ? guild.membersCount + 1 : Math.max(1, guild.membersCount - 1);
+    const alreadyJoined = isGuildJoinedByMe(targetGuild);
 
-    const currentIds = Array.isArray(guild.memberUserIds) ? guild.memberUserIds : [];
-    const updatedIds = nextJoined 
-      ? Array.from(new Set([...currentIds, currentUsername, user?.id || ""].filter(Boolean)))
-      : currentIds.filter(id => id !== currentUsername && id !== user?.id && id !== currentFullName);
+    if (alreadyJoined) {
+      // Leaving this guild
+      const nextCount = Math.max(1, targetGuild.membersCount - 1);
+      const currentIds = Array.isArray(targetGuild.memberUserIds) ? targetGuild.memberUserIds : [];
+      const updatedIds = currentIds.filter(id => id !== currentUsername && id !== user?.id && id !== currentFullName);
 
-    toggleGuildMutation.mutate({
-      guildId,
-      joined: nextJoined,
-      membersCount: nextCount,
-      guild: {
-        ...guild,
-        memberUserIds: updatedIds
+      toggleGuildMutation.mutate({
+        guildId,
+        joined: false,
+        membersCount: nextCount,
+        guild: {
+          ...targetGuild,
+          memberUserIds: updatedIds
+        }
+      });
+
+      try {
+        await leaveGuildInFirebase(guildId, {
+          id: user?.id,
+          username: currentUsername
+        });
+      } catch (err) {
+        console.warn("[Community] Error leaving guild:", err);
       }
-    });
+    } else {
+      // Joining new guild: First leave any previous guild so a user only ever belongs to ONE guild
+      const previousGuild = guilds.find(g => g.id !== guildId && isGuildJoinedByMe(g));
+      if (previousGuild) {
+        const prevCount = Math.max(1, previousGuild.membersCount - 1);
+        const prevIds = (Array.isArray(previousGuild.memberUserIds) ? previousGuild.memberUserIds : [])
+          .filter(id => id !== currentUsername && id !== user?.id && id !== currentFullName);
 
-    try {
-      if (nextJoined) {
+        toggleGuildMutation.mutate({
+          guildId: previousGuild.id,
+          joined: false,
+          membersCount: prevCount,
+          guild: {
+            ...previousGuild,
+            memberUserIds: prevIds
+          }
+        });
+
+        leaveGuildInFirebase(previousGuild.id, {
+          id: user?.id,
+          username: currentUsername
+        }).catch(err => console.warn("[Community] Error leaving previous guild:", err));
+      }
+
+      // Now join the target guild
+      const nextCount = targetGuild.membersCount + 1;
+      const currentIds = Array.isArray(targetGuild.memberUserIds) ? targetGuild.memberUserIds : [];
+      const updatedIds = Array.from(new Set([...currentIds, currentUsername, user?.id || ""].filter(Boolean)));
+
+      toggleGuildMutation.mutate({
+        guildId,
+        joined: true,
+        membersCount: nextCount,
+        guild: {
+          ...targetGuild,
+          memberUserIds: updatedIds
+        }
+      });
+
+      try {
         await joinGuildInFirebase(guildId, {
           id: user?.id || `user_${currentUsername}`,
           username: currentUsername,
@@ -445,14 +498,9 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
           totalNetFocusTime,
           isFocusing
         });
-      } else {
-        await leaveGuildInFirebase(guildId, {
-          id: user?.id,
-          username: currentUsername
-        });
+      } catch (err) {
+        console.warn("[Community] Error joining guild:", err);
       }
-    } catch (err) {
-      console.warn("[Community] Error updating guild participation:", err);
     }
   };
 
@@ -480,6 +528,30 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     if (!newGuildName.trim() || !newGuildTag.trim()) return;
 
     const leaderName = currentUsername || currentFullName || "Warrior";
+
+    // If user is already in another guild, leave it first
+    const previousGuild = guilds.find(g => isGuildJoinedByMe(g));
+    if (previousGuild) {
+      const prevCount = Math.max(1, previousGuild.membersCount - 1);
+      const prevIds = (Array.isArray(previousGuild.memberUserIds) ? previousGuild.memberUserIds : [])
+        .filter(id => id !== currentUsername && id !== user?.id && id !== currentFullName);
+
+      toggleGuildMutation.mutate({
+        guildId: previousGuild.id,
+        joined: false,
+        membersCount: prevCount,
+        guild: {
+          ...previousGuild,
+          memberUserIds: prevIds
+        }
+      });
+
+      leaveGuildInFirebase(previousGuild.id, {
+        id: user?.id,
+        username: currentUsername
+      }).catch(err => console.warn("[Community] Error leaving previous guild on create:", err));
+    }
+
     const newGuild: Guild = {
       id: `g_${Date.now()}`,
       name: newGuildName.trim(),
@@ -492,7 +564,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       rank: guilds.length + 1,
       totalXp: 2500,
       weeklyGoalHours: 200,
-      joined: true,
+      joined: false,
       memberUserIds: [leaderName, user?.id || ""].filter(Boolean),
       category: newGuildCategory,
       perks: "+5% Synergy Focus Boost"
