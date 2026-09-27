@@ -31,7 +31,9 @@ import {
   Database,
   AlertTriangle,
   ArrowRight,
-  Loader2
+  Loader2,
+  Dices,
+  RefreshCw
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../context/AppContext";
@@ -39,11 +41,13 @@ import { GlassCard } from "./GlassCard";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
 import { GuildStudyRoom } from "./GuildStudyRoom";
+import { GuildEmblemBadge } from "./GuildEmblemBadge";
 import {
   CommunityMember,
   CommunityPost,
   DetoxChallenge,
   Guild,
+  GuildEmblem,
   INITIAL_GUILDS,
   INITIAL_MEMBERS,
   INITIAL_CHALLENGES,
@@ -66,7 +70,9 @@ import {
   syncMemberPresenceToFirebase,
   compareCommunityMembers,
   searchUserByUidInFirebase,
-  deleteGuildInFirebase
+  deleteGuildInFirebase,
+  generateGuildEmblem,
+  EMBLEM_PALETTES
 } from "../services/communityService";
 
 export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onNavigate?: (view: string) => void }) {
@@ -87,6 +93,28 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const [newGuildDesc, setNewGuildDesc] = useState("");
   const [newGuildCategory, setNewGuildCategory] = useState<Guild["category"]>("Engineering");
   const [newGuildMinLevel, setNewGuildMinLevel] = useState<number>(1);
+  const [customEmblem, setCustomEmblem] = useState<GuildEmblem | null>(null);
+
+  // Dynamic Live Clan Logo Preview
+  const previewEmblem = useMemo(() => {
+    return customEmblem || generateGuildEmblem(newGuildName || "Titan Squad", newGuildCategory, newGuildTag || "WAR");
+  }, [customEmblem, newGuildName, newGuildCategory, newGuildTag]);
+
+  const handleRollRandomEmblem = () => {
+    const icons: GuildEmblem["icon"][] = ["dragon", "swords", "shield", "crown", "phoenix", "flame", "atom", "caduceus", "skull", "wolf", "lightning"];
+    const randomIcon = icons[Math.floor(Math.random() * icons.length)];
+    const randomPalette = EMBLEM_PALETTES[Math.floor(Math.random() * EMBLEM_PALETTES.length)];
+    const shapes: GuildEmblem["shape"][] = ["shield", "hexagon", "diamond", "rounded"];
+    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+    
+    setCustomEmblem({
+      icon: randomIcon,
+      bgGradient: randomPalette.bgGradient,
+      glowColor: randomPalette.glowColor,
+      borderColor: randomPalette.borderColor,
+      shape: randomShape
+    });
+  };
 
   const [pendingGuildSwitch, setPendingGuildSwitch] = useState<{
     currentGuild: Guild;
@@ -713,10 +741,13 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       }).catch(err => console.warn("[Community] Error leaving previous guild on create:", err));
     }
 
+    const finalEmblem = customEmblem || generateGuildEmblem(newGuildName.trim(), newGuildCategory, newGuildTag.trim().toUpperCase());
+
     const newGuild: Guild = {
       id: `g_${Date.now()}`,
       name: newGuildName.trim(),
       tag: newGuildTag.trim().toUpperCase(),
+      emblem: finalEmblem,
       description: newGuildDesc.trim() || "A high-focus academic syndicate dedicated to zero distractions.",
       leader: leaderName,
       membersCount: 1,
@@ -734,6 +765,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
     createGuildMutation.mutate(newGuild);
     setIsCreateGuildOpen(false);
+    setCustomEmblem(null);
     setNewGuildName("");
     setNewGuildTag("");
     setNewGuildDesc("");
@@ -1320,11 +1352,16 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               <GlassCard className="p-6 border-[#39FF14]/30 relative overflow-hidden bg-gradient-to-r from-[#39FF14]/10 via-black to-transparent">
                 <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
                   <div className="flex items-center gap-4">
-                    <div className="w-14 h-14 rounded-2xl bg-[#39FF14]/10 border border-[#39FF14]/40 flex items-center justify-center shadow-[0_0_20px_rgba(57,255,20,0.2)]">
-                      <Shield className="w-7 h-7 text-[#39FF14]" />
-                    </div>
+                    <GuildEmblemBadge
+                      emblem={userJoinedGuild.emblem || generateGuildEmblem(userJoinedGuild.name, userJoinedGuild.category, userJoinedGuild.tag)}
+                      name={userJoinedGuild.name}
+                      tag={userJoinedGuild.tag}
+                      category={userJoinedGuild.category}
+                      size="xl"
+                      className="shadow-[0_0_30px_rgba(57,255,20,0.35)]"
+                    />
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="px-2 py-0.5 rounded-md bg-[#39FF14]/20 border border-[#39FF14]/40 text-[#39FF14] text-[10px] font-mono font-bold">
                           [{userJoinedGuild.tag}]
                         </span>
@@ -1334,7 +1371,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                         </span>
                       </div>
                       <p className="text-xs text-white/50 mt-1 font-sans max-w-xl">{userJoinedGuild.description}</p>
-                      <div className="flex items-center gap-4 mt-2 text-[11px] font-mono">
+                      <div className="flex items-center gap-4 mt-2 text-[11px] font-mono flex-wrap">
                         <span className="text-[#39FF14] flex items-center gap-1 font-bold">
                           <Zap className="w-3.5 h-3.5" /> {userJoinedGuild.perks}
                         </span>
@@ -1446,10 +1483,15 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                   >
                     <div className="space-y-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="w-12 h-12 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center font-mono font-bold text-base text-[#39FF14] group-hover:scale-105 transition-transform">
-                            [{guild.tag}]
-                          </div>
+                        <div className="flex items-center gap-3.5">
+                          <GuildEmblemBadge
+                            emblem={guild.emblem || generateGuildEmblem(guild.name, guild.category, guild.tag)}
+                            name={guild.name}
+                            tag={guild.tag}
+                            category={guild.category}
+                            size="md"
+                            className="group-hover:scale-105 transition-transform"
+                          />
                           <div>
                             <div className="flex items-center gap-2 flex-wrap">
                               <h4 className="text-base font-bold text-white group-hover:text-[#39FF14] transition-colors leading-tight">{guild.name}</h4>
@@ -1646,6 +1688,39 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               </div>
 
               <form onSubmit={handleCreateGuild} className="space-y-4">
+                {/* Live Clan Crest Logo Generator & Preview */}
+                <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/10 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3.5">
+                    <GuildEmblemBadge
+                      emblem={previewEmblem}
+                      name={newGuildName || "Clan"}
+                      tag={newGuildTag || "WAR"}
+                      category={newGuildCategory}
+                      size="xl"
+                      className="shadow-[0_0_30px_rgba(57,255,20,0.3)] shrink-0"
+                    />
+                    <div>
+                      <span className="text-[10px] uppercase font-bold text-white/40 block">Auto-Generated Clan Crest</span>
+                      <span className="text-sm font-bold text-white font-mono flex items-center gap-1.5 mt-0.5">
+                        <span className="text-[#39FF14]">[{newGuildTag || "TAG"}]</span> {newGuildName || "Your Syndicate"}
+                      </span>
+                      <span className="text-[11px] text-white/50 block capitalize mt-0.5">
+                        {previewEmblem.icon} Crest • {previewEmblem.shape} frame
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRollRandomEmblem}
+                    className="px-3.5 py-2.5 rounded-xl bg-white/5 hover:bg-white/15 border border-white/10 text-white text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors shrink-0 cursor-pointer"
+                    title="Roll New Random Clan Crest"
+                  >
+                    <Dices className="w-4 h-4 text-[#39FF14]" />
+                    <span>Roll Crest</span>
+                  </button>
+                </div>
+
                 <div>
                   <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Guild Name</label>
                   <input

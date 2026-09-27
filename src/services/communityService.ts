@@ -94,10 +94,20 @@ export interface GuildMemberDesk {
   updatedAt?: string;
 }
 
+export interface GuildEmblem {
+  icon: "swords" | "dragon" | "shield" | "crown" | "phoenix" | "flame" | "atom" | "caduceus" | "cross" | "skull" | "wolf" | "lion" | "lightning" | "zap";
+  bgGradient: string;
+  glowColor: string;
+  borderColor: string;
+  shape: "rounded";
+}
+
 export interface Guild {
   id: string;
   name: string;
   tag: string;
+  logoUrl?: string;
+  emblem?: GuildEmblem;
   description: string;
   leader: string;
   membersCount: number;
@@ -113,6 +123,90 @@ export interface Guild {
   perks: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export const EMBLEM_PALETTES = [
+  {
+    theme: "cmyk-cyan",
+    bgGradient: "from-[#00F0FF]/20 via-[#0a0a0a] to-[#041d24]",
+    glowColor: "#00F0FF",
+    borderColor: "rgba(0, 240, 255, 0.4)",
+  },
+  {
+    theme: "cmyk-magenta",
+    bgGradient: "from-[#FF007F]/20 via-[#0a0a0a] to-[#240414]",
+    glowColor: "#FF007F",
+    borderColor: "rgba(255, 0, 127, 0.4)",
+  },
+  {
+    theme: "cmyk-yellow",
+    bgGradient: "from-[#FFE600]/20 via-[#0a0a0a] to-[#241e04]",
+    glowColor: "#FFE600",
+    borderColor: "rgba(255, 230, 0, 0.4)",
+  },
+  {
+    theme: "cmyk-cyan-yellow",
+    bgGradient: "from-[#00FF66]/20 via-[#0a0a0a] to-[#042413]",
+    glowColor: "#00FF66",
+    borderColor: "rgba(0, 255, 102, 0.4)",
+  },
+  {
+    theme: "cmyk-cyan-magenta",
+    bgGradient: "from-[#8A2BE2]/20 via-[#0a0a0a] to-[#170424]",
+    glowColor: "#8A2BE2",
+    borderColor: "rgba(138, 43, 226, 0.4)",
+  },
+  {
+    theme: "cmyk-magenta-yellow",
+    bgGradient: "from-[#FF5500]/20 via-[#0a0a0a] to-[#240c04]",
+    glowColor: "#FF5500",
+    borderColor: "rgba(255, 85, 0, 0.4)",
+  },
+  {
+    theme: "cmyk-key-carbon",
+    bgGradient: "from-slate-800/40 via-[#0a0a0a] to-zinc-950",
+    glowColor: "#E2E8F0",
+    borderColor: "rgba(226, 232, 240, 0.3)",
+  }
+];
+
+export function generateGuildEmblem(name: string, category: string = "General", tag: string = ""): GuildEmblem {
+  const seedStr = `${name || 'Guild'}_${category}_${tag}`.toLowerCase();
+  let hash = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = ((hash << 5) - hash) + seedStr.charCodeAt(i);
+    hash |= 0;
+  }
+  const positiveHash = Math.abs(hash);
+
+  // Category-specific iconic bias
+  let icon: GuildEmblem["icon"] = "shield";
+  if (category === "Engineering") {
+    const engIcons: GuildEmblem["icon"][] = ["atom", "lightning", "swords", "shield"];
+    icon = engIcons[positiveHash % engIcons.length];
+  } else if (category === "Medical") {
+    const medIcons: GuildEmblem["icon"][] = ["caduceus", "cross", "crown", "shield"];
+    icon = medIcons[positiveHash % medIcons.length];
+  } else if (category === "HSC") {
+    const hscIcons: GuildEmblem["icon"][] = ["skull", "phoenix", "dragon", "flame"];
+    icon = hscIcons[positiveHash % hscIcons.length];
+  } else if (category === "Varsity") {
+    const varIcons: GuildEmblem["icon"][] = ["crown", "wolf", "dragon", "swords"];
+    icon = varIcons[positiveHash % varIcons.length];
+  } else {
+    const allIcons: GuildEmblem["icon"][] = ["dragon", "swords", "crown", "phoenix", "shield", "wolf", "skull", "atom", "lightning"];
+    icon = allIcons[positiveHash % allIcons.length];
+  }
+
+  const palette = EMBLEM_PALETTES[positiveHash % EMBLEM_PALETTES.length];
+
+  return {
+    icon,
+    bgGradient: palette.bgGradient,
+    glowColor: palette.glowColor,
+    borderColor: palette.borderColor,
+    shape: "rounded"
+  };
 }
 
 export interface GuildCheer {
@@ -155,6 +249,13 @@ export const INITIAL_GUILDS: Guild[] = [
     id: "g1",
     name: "BUET Pioneers",
     tag: "BUET",
+    emblem: {
+      icon: "atom",
+      bgGradient: "from-[#00F0FF]/20 via-[#0a0a0a] to-[#041d24]",
+      glowColor: "#00F0FF",
+      borderColor: "rgba(0, 240, 255, 0.4)",
+      shape: "rounded"
+    },
     description: "Dedicated to intense problem solving, higher mathematics, and hardcore engineering entrance prep.",
     leader: "Tanvir Hasan",
     membersCount: 48,
@@ -172,6 +273,13 @@ export const INITIAL_GUILDS: Guild[] = [
     id: "g2",
     name: "DMC Medicos Syndicate",
     tag: "DMC",
+    emblem: {
+      icon: "caduceus",
+      bgGradient: "from-[#FF007F]/20 via-[#0a0a0a] to-[#240414]",
+      glowColor: "#FF007F",
+      borderColor: "rgba(255, 0, 127, 0.4)",
+      shape: "rounded"
+    },
     description: "Daily biology memorization, medical question bank mastery, and zero-distraction grinds.",
     leader: "Nabila Tabassum",
     membersCount: 42,
@@ -189,6 +297,13 @@ export const INITIAL_GUILDS: Guild[] = [
     id: "g3",
     name: "Apex Scholars (DU Ka)",
     tag: "APEX",
+    emblem: {
+      icon: "crown",
+      bgGradient: "from-[#FFE600]/20 via-[#0a0a0a] to-[#241e04]",
+      glowColor: "#FFE600",
+      borderColor: "rgba(255, 230, 0, 0.4)",
+      shape: "rounded"
+    },
     description: "Pure science champions competing for top national varsity ranks with disciplined routines.",
     leader: "Farhan Ahmed",
     membersCount: 36,
@@ -206,6 +321,13 @@ export const INITIAL_GUILDS: Guild[] = [
     id: "g4",
     name: "Monk Mode Elite",
     tag: "MONK",
+    emblem: {
+      icon: "dragon",
+      bgGradient: "from-[#FF5500]/20 via-[#0a0a0a] to-[#240c04]",
+      glowColor: "#FF5500",
+      borderColor: "rgba(255, 85, 0, 0.4)",
+      shape: "rounded"
+    },
     description: "Strict dopamine detox, 6+ hours daily net focus, and extreme discipline for HSC 2026.",
     leader: "Sabbir Hossain",
     membersCount: 29,

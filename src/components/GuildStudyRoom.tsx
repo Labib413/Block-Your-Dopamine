@@ -56,8 +56,11 @@ import {
   kickGuildMemberInFirebase,
   updateGuildMemberRoleInFirebase,
   updateGuildSettingsInFirebase,
-  deleteGuildInFirebase
+  deleteGuildInFirebase,
+  GuildEmblem,
+  generateGuildEmblem
 } from "../services/communityService";
+import { GuildEmblemBadge } from "./GuildEmblemBadge";
 
 export type { GuildMemberDesk };
 
@@ -65,6 +68,8 @@ export interface GuildData {
   id: string;
   name: string;
   tag: string;
+  logoUrl?: string;
+  emblem?: GuildEmblem;
   description: string;
   leader: string;
   membersCount: number;
@@ -472,23 +477,30 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
         <div className="flex items-center gap-4">
           <button 
             onClick={onBack}
-            className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors"
+            className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-white/50 hover:text-white hover:bg-white/10 transition-colors shrink-0"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
+
+          <GuildEmblemBadge
+            emblem={guild.emblem || generateGuildEmblem(guild.name, guild.category, guild.tag)}
+            name={guild.name}
+            tag={guild.tag}
+            category={guild.category}
+            size="lg"
+            className="shadow-[0_0_25px_rgba(57,255,20,0.3)]"
+          />
+
           <div>
-            <div className="flex items-center gap-3">
-              <span className="px-2.5 py-1 rounded-lg bg-[#39FF14]/15 border border-[#39FF14]/40 text-[#39FF14] text-xs font-mono font-bold">
-                [{guild.tag}]
-              </span>
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight flex items-center gap-2">
                 {guild.name}
               </h1>
-              <span className="px-2.5 py-0.5 rounded-full bg-white/10 text-white/60 text-xs font-semibold">
+              <span className="px-2.5 py-0.5 rounded-full bg-white/10 border border-white/10 text-white/60 text-xs font-semibold">
                 Lv.{guild.level}
               </span>
             </div>
-            <div className="flex items-center gap-3 mt-1.5 text-xs text-white/50">
+            <div className="flex items-center gap-3 mt-1.5 text-xs text-white/50 flex-wrap">
               <span className="text-[#39FF14] font-medium flex items-center gap-1 font-mono">
                 <Zap className="w-3.5 h-3.5" /> {guild.perks}
               </span>
