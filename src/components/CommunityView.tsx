@@ -33,7 +33,9 @@ import {
   ArrowRight,
   Loader2,
   Dices,
-  RefreshCw
+  RefreshCw,
+  LayoutGrid,
+  List
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../context/AppContext";
@@ -85,6 +87,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
   const [guildFilter, setGuildFilter] = useState<string>("All");
   const [guildSearch, setGuildSearch] = useState<string>("");
+  const [guildViewMode, setGuildViewMode] = useState<"grid" | "list">("grid");
   const [selectedGuildRoomId, setSelectedGuildRoomId] = useState<string | null>(null);
   const [selectedGuildRoomTab, setSelectedGuildRoomTab] = useState<"Room" | "Leaderboard" | "CheerWall" | "Management">("Room");
   const [isCreateGuildOpen, setIsCreateGuildOpen] = useState(false);
@@ -1453,90 +1456,214 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                 </div>
               </div>
 
-              {/* Create Guild Button */}
-              <button
-                onClick={() => setIsCreateGuildOpen(true)}
-                className="px-4 py-2.5 rounded-xl bg-[#39FF14] hover:bg-[#32e012] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(57,255,20,0.25)] transition-all shrink-0 w-full sm:w-auto justify-center"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create Guild</span>
-              </button>
+              {/* Right: View Mode Toggle & Create Guild Button */}
+              <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end">
+                {/* View Mode Toggle: Grid vs List */}
+                <div className="flex items-center p-1 rounded-xl bg-white/5 border border-white/10 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setGuildViewMode("grid")}
+                    className={cn(
+                      "p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer",
+                      guildViewMode === "grid"
+                        ? "bg-[#39FF14] text-black shadow-[0_0_10px_rgba(57,255,20,0.3)]"
+                        : "text-white/40 hover:text-white"
+                    )}
+                    title="Grid View"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGuildViewMode("list")}
+                    className={cn(
+                      "p-1.5 rounded-lg transition-all flex items-center justify-center cursor-pointer",
+                      guildViewMode === "list"
+                        ? "bg-[#39FF14] text-black shadow-[0_0_10px_rgba(57,255,20,0.3)]"
+                        : "text-white/40 hover:text-white"
+                    )}
+                    title="List View"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Create Guild Button */}
+                <button
+                  onClick={() => setIsCreateGuildOpen(true)}
+                  className="px-4 py-2.5 rounded-xl bg-[#39FF14] hover:bg-[#32e012] text-black font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-[0_0_20px_rgba(57,255,20,0.25)] transition-all shrink-0 justify-center cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create Guild</span>
+                </button>
+              </div>
             </div>
 
-            {/* Guilds Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {filteredGuilds.map((guild) => {
-                const isJoined = isGuildJoinedByMe(guild);
-                return (
-                  <GlassCard 
-                    key={guild.id} 
-                    onClick={() => {
-                      if (!isJoined) {
-                        handleToggleGuild(guild.id);
-                      }
-                      setSelectedGuildRoomId(guild.id);
-                    }}
-                    className="p-6 flex flex-col justify-between space-y-6 hover:border-[#39FF14]/40 cursor-pointer group transition-all"
-                  >
-                    <div className="space-y-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-3.5">
-                          <GuildEmblemBadge
-                            emblem={guild.emblem || generateGuildEmblem(guild.name, guild.category, guild.tag)}
-                            name={guild.name}
-                            tag={guild.tag}
-                            category={guild.category}
-                            size="md"
-                            className="group-hover:scale-105 transition-transform"
-                          />
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <h4 className="text-base font-bold text-white group-hover:text-[#39FF14] transition-colors leading-tight">{guild.name}</h4>
-                              <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60">
-                                Lv.{guild.level}
-                              </span>
-                              {guild.minLevel && guild.minLevel > 1 && (
-                                <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-mono font-bold text-amber-400">
-                                  Min Lv.{guild.minLevel}
+            {/* Guilds Container: Grid or List Mode */}
+            {guildViewMode === "grid" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {filteredGuilds.map((guild) => {
+                  const isJoined = isGuildJoinedByMe(guild);
+                  return (
+                    <GlassCard 
+                      key={guild.id} 
+                      onClick={() => {
+                        if (!isJoined) {
+                          handleToggleGuild(guild.id);
+                        }
+                        setSelectedGuildRoomId(guild.id);
+                      }}
+                      className="p-6 flex flex-col justify-between space-y-6 hover:border-[#39FF14]/40 cursor-pointer group transition-all"
+                    >
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3.5">
+                            <GuildEmblemBadge
+                              emblem={guild.emblem || generateGuildEmblem(guild.name, guild.category, guild.tag)}
+                              name={guild.name}
+                              tag={guild.tag}
+                              category={guild.category}
+                              size="md"
+                              className="group-hover:scale-105 transition-transform"
+                            />
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-base font-bold text-white group-hover:text-[#39FF14] transition-colors leading-tight">{guild.name}</h4>
+                                <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60">
+                                  Lv.{guild.level}
                                 </span>
-                              )}
+                                {guild.minLevel && guild.minLevel > 1 && (
+                                  <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-mono font-bold text-amber-400">
+                                    Min Lv.{guild.minLevel}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-white/40 mt-0.5">Leader: <span className="text-white/70 font-medium">{guild.leader}</span></p>
                             </div>
-                            <p className="text-[11px] text-white/40 mt-0.5">Leader: <span className="text-white/70 font-medium">{guild.leader}</span></p>
+                          </div>
+
+                          <div className="flex flex-col items-end">
+                            <span className="text-xs font-mono font-bold text-[#FFD700] flex items-center gap-1">
+                              <Trophy className="w-3.5 h-3.5" /> #{guild.rank}
+                            </span>
+                            <span className="text-[10px] text-white/30 uppercase font-semibold mt-0.5">{guild.category}</span>
                           </div>
                         </div>
 
-                        <div className="flex flex-col items-end">
-                          <span className="text-xs font-mono font-bold text-[#FFD700] flex items-center gap-1">
-                            <Trophy className="w-3.5 h-3.5" /> #{guild.rank}
-                          </span>
-                          <span className="text-[10px] text-white/30 uppercase font-semibold mt-0.5">{guild.category}</span>
+                        <p className="text-xs text-white/50 leading-relaxed font-sans">{guild.description}</p>
+
+                        <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2 text-xs text-[#39FF14]">
+                          <Zap className="w-3.5 h-3.5 shrink-0" />
+                          <span className="text-[11px] font-medium">{guild.perks}</span>
                         </div>
                       </div>
 
-                      <p className="text-xs text-white/50 leading-relaxed font-sans">{guild.description}</p>
-
-                      <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex items-center gap-2 text-xs text-[#39FF14]">
-                        <Zap className="w-3.5 h-3.5 shrink-0" />
-                        <span className="text-[11px] font-medium">{guild.perks}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-4 pt-4 border-t border-white/5">
-                      <div className="grid grid-cols-2 gap-3 text-xs font-mono">
-                        <div className="p-2 rounded-lg bg-white/5 border border-white/5">
-                          <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Total XP</span>
-                          <span className="text-white font-bold">{guild.totalXp.toLocaleString()} XP</span>
+                      <div className="space-y-4 pt-4 border-t border-white/5">
+                        <div className="grid grid-cols-2 gap-3 text-xs font-mono">
+                          <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                            <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Total XP</span>
+                            <span className="text-white font-bold">{guild.totalXp.toLocaleString()} XP</span>
+                          </div>
+                          <div className="p-2 rounded-lg bg-white/5 border border-white/5">
+                            <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Warriors</span>
+                            <span className="text-white font-bold">{guild.membersCount}/{guild.maxMembers}</span>
+                          </div>
                         </div>
-                        <div className="p-2 rounded-lg bg-white/5 border border-white/5">
-                          <span className="text-[10px] uppercase text-white/40 block font-sans font-bold">Warriors</span>
-                          <span className="text-white font-bold">{guild.membersCount}/{guild.maxMembers}</span>
+
+                        <div className="flex items-center justify-between gap-4 pt-1">
+                          <div className="flex items-center gap-1.5 text-xs text-white/40 font-mono">
+                            <Users className="w-3.5 h-3.5 text-white/30" />
+                            <span>{guild.weeklyGoalHours}h weekly goal</span>
+                          </div>
+
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (isJoined) {
+                                setSelectedGuildRoomId(guild.id);
+                              } else {
+                                handleRequestJoinGuild(guild, true);
+                              }
+                            }}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                              isJoined
+                                ? "bg-[#FF8C00] hover:bg-[#ff9d26] text-black shadow-[0_0_15px_rgba(255,140,0,0.25)]"
+                                : "bg-[#39FF14] hover:bg-[#32e012] text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]"
+                            )}
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>{isJoined ? "Enter Room" : "Join & Enter"}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </GlassCard>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {filteredGuilds.map((guild) => {
+                  const isJoined = isGuildJoinedByMe(guild);
+                  return (
+                    <GlassCard 
+                      key={guild.id} 
+                      onClick={() => {
+                        if (!isJoined) {
+                          handleToggleGuild(guild.id);
+                        }
+                        setSelectedGuildRoomId(guild.id);
+                      }}
+                      className="p-4 sm:p-5 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 hover:border-[#39FF14]/40 cursor-pointer group transition-all"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                        <GuildEmblemBadge
+                          emblem={guild.emblem || generateGuildEmblem(guild.name, guild.category, guild.tag)}
+                          name={guild.name}
+                          tag={guild.tag}
+                          category={guild.category}
+                          size="md"
+                          className="group-hover:scale-105 transition-transform shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm sm:text-base font-bold text-white group-hover:text-[#39FF14] transition-colors truncate">
+                              {guild.name}
+                            </h4>
+                            <span className="px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-[10px] font-bold text-white/60 shrink-0">
+                              Lv.{guild.level}
+                            </span>
+                            <span className="text-[10px] font-mono text-white/40 uppercase bg-white/[0.03] px-2 py-0.5 rounded border border-white/5 shrink-0">
+                              {guild.category}
+                            </span>
+                            {guild.minLevel && guild.minLevel > 1 && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-[10px] font-mono font-bold text-amber-400 shrink-0">
+                                Min Lv.{guild.minLevel}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-white/50 truncate max-w-xl mt-0.5 font-sans">
+                            {guild.description}
+                          </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-4 pt-1">
-                        <div className="flex items-center gap-1.5 text-xs text-white/40 font-mono">
-                          <Users className="w-3.5 h-3.5 text-white/30" />
-                          <span>{guild.weeklyGoalHours}h weekly goal</span>
+                      <div className="flex items-center justify-between md:justify-end gap-5 w-full md:w-auto pt-3 md:pt-0 border-t md:border-t-0 border-white/5 shrink-0">
+                        <div className="flex items-center gap-4 text-xs font-mono">
+                          <div className="text-left md:text-right">
+                            <span className="text-[9px] uppercase text-white/40 block font-sans font-bold">Warriors</span>
+                            <span className="text-white font-bold">{guild.membersCount}/{guild.maxMembers}</span>
+                          </div>
+                          <div className="text-left md:text-right">
+                            <span className="text-[9px] uppercase text-white/40 block font-sans font-bold">Total XP</span>
+                            <span className="text-[#39FF14] font-bold">{guild.totalXp.toLocaleString()}</span>
+                          </div>
+                          <div className="text-left md:text-right hidden sm:block">
+                            <span className="text-[9px] uppercase text-white/40 block font-sans font-bold">Rank</span>
+                            <span className="text-[#FFD700] font-bold flex items-center gap-1">
+                              <Trophy className="w-3 h-3" /> #{guild.rank}
+                            </span>
+                          </div>
                         </div>
 
                         <button
@@ -1549,21 +1676,21 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                             }
                           }}
                           className={cn(
-                            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5",
+                            "px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shrink-0",
                             isJoined
                               ? "bg-[#FF8C00] hover:bg-[#ff9d26] text-black shadow-[0_0_15px_rgba(255,140,0,0.25)]"
                               : "bg-[#39FF14] hover:bg-[#32e012] text-black shadow-[0_0_15px_rgba(57,255,20,0.2)]"
                           )}
                         >
                           <BookOpen className="w-3.5 h-3.5" />
-                          <span>{isJoined ? "Enter Room" : "Join & Enter"}</span>
+                          <span>{isJoined ? "Enter" : "Join"}</span>
                         </button>
                       </div>
-                    </div>
-                  </GlassCard>
-                );
-              })}
-            </div>
+                    </GlassCard>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )
       )}
