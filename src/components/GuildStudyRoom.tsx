@@ -680,7 +680,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                   className={cn(
                     "p-2.5 sm:p-3 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 relative group border min-h-[110px]",
                     isDeskActive 
-                      ? "bg-[#FF8C00]/[0.08] border-[#FF8C00]/40 shadow-[0_0_20px_rgba(255,140,0,0.15)] ring-1 ring-[#FF8C00]/20" 
+                      ? "bg-[#FF7A00]/[0.15] border-[#FF7A00] shadow-[0_0_25px_rgba(255,122,0,0.35)] ring-2 ring-[#FF7A00]/50" 
                       : "bg-white/[0.02] border-white/[0.04] hover:bg-white/[0.05] hover:border-white/10"
                   )}
                 >
@@ -700,12 +700,20 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                     ))}
                   </AnimatePresence>
 
-                  {/* Desk Visual Icon */}
+                  {/* Active Focus Ping Badge */}
+                  {isDeskActive && (
+                    <div className="absolute top-2 right-2 flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-full bg-[#FF7A00] animate-ping" />
+                      <Flame className="w-3.5 h-3.5 text-[#FF7A00] fill-current animate-bounce" />
+                    </div>
+                  )}
+
+                  {/* Desk Visual Icon - Changes to Glowing Orange Fire Study Station when focusing */}
                   <div className="relative mb-1">
                     {isDeskActive ? (
-                      /* Active: Orange stickman studying at desk */
+                      /* Active: Glowing Orange stickman studying with fire energy at desk */
                       <div className="relative">
-                        <svg viewBox="0 0 100 80" className="w-12 h-10 sm:w-14 sm:h-12 text-[#FF8C00] drop-shadow-[0_0_6px_rgba(255,140,0,0.6)]">
+                        <svg viewBox="0 0 100 80" className="w-12 h-10 sm:w-14 sm:h-12 text-[#FF7A00] drop-shadow-[0_0_8px_rgba(255,122,0,0.9)]">
                           {/* Desk surface */}
                           <rect x="15" y="46" width="70" height="3.5" rx="1.5" fill="currentColor" />
                           {/* Legs */}
@@ -745,7 +753,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                   {/* Username */}
                   <span className={cn(
                     "text-[11px] font-semibold max-w-[100px] truncate block leading-tight",
-                    isDeskActive ? "text-[#FF8C00] font-mono drop-shadow-[0_0_5px_rgba(255,140,0,0.5)] font-bold" : "text-white/70"
+                    isDeskActive ? "text-[#FF7A00] font-mono drop-shadow-[0_0_6px_rgba(255,122,0,0.7)] font-bold" : "text-white/70"
                   )}>
                     {desk.username}{desk.isCurrentUser ? " (You)" : ""}
                   </span>
@@ -753,7 +761,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                   {/* Timer */}
                   <span className={cn(
                     "text-[10px] sm:text-[11px] font-mono font-bold mt-0.5 tracking-wider block leading-none",
-                    isDeskActive ? "text-[#FF8C00]" : "text-white/40"
+                    isDeskActive ? "text-[#FF7A00] drop-shadow-[0_0_5px_rgba(255,122,0,0.5)]" : "text-white/40"
                   )}>
                     {isDeskActive 
                       ? formatTimer(desk.currentSessionSeconds)
@@ -804,32 +812,50 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
               <GlassCard 
                 key={member.id}
                 className={cn(
-                  "p-4 flex items-center justify-between gap-4 transition-all",
-                  member.isFocusing ? "border-[#FF8C00]/30 bg-[#FF8C00]/[0.02]" : "hover:border-white/20"
+                  "p-4 flex items-center justify-between gap-4 transition-all duration-300",
+                  member.isFocusing 
+                    ? "border-[#FF7A00] bg-[#FF7A00]/[0.08] shadow-[0_0_20px_rgba(255,122,0,0.25)] ring-1 ring-[#FF7A00]/40" 
+                    : "hover:border-white/20"
                 )}
               >
                 <div className="flex items-center gap-4">
+                  {/* Rank / Profile Icon: Switches to Glowing Orange Flame when Focusing */}
                   <div className={cn(
-                    "w-8 h-8 rounded-xl flex items-center justify-center font-mono font-bold text-xs",
-                    idx === 0 ? "bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40" :
-                    idx === 1 ? "bg-slate-300/20 text-slate-200 border border-slate-300/40" :
-                    idx === 2 ? "bg-amber-600/20 text-amber-500 border border-amber-600/40" :
-                    "bg-white/5 text-white/40 border border-white/5"
+                    "w-9 h-9 rounded-xl flex items-center justify-center font-mono font-bold text-xs relative transition-all duration-200",
+                    member.isFocusing 
+                      ? "bg-[#FF7A00]/20 border border-[#FF7A00] text-[#FF7A00] shadow-[0_0_15px_rgba(255,122,0,0.5)] ring-1 ring-[#FF7A00]/40" 
+                      : idx === 0 ? "bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/40" 
+                      : idx === 1 ? "bg-slate-300/20 text-slate-200 border border-slate-300/40" 
+                      : idx === 2 ? "bg-amber-600/20 text-amber-500 border border-amber-600/40" 
+                      : "bg-white/5 text-white/40 border border-white/5"
                   )}>
-                    #{idx + 1}
+                    {member.isFocusing ? (
+                      <Flame className="w-5 h-5 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_6px_rgba(255,122,0,0.8)]" />
+                    ) : (
+                      <span>#{idx + 1}</span>
+                    )}
+                    {member.isFocusing && (
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#FF7A00] border border-black absolute -top-1 -right-1 animate-ping" />
+                    )}
                   </div>
 
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-bold text-white">{member.fullName}</span>
+                      <span className={cn(
+                        "text-sm font-bold transition-colors",
+                        member.isFocusing ? "text-[#FF7A00] drop-shadow-[0_0_5px_rgba(255,122,0,0.5)]" : "text-white"
+                      )}>
+                        {member.fullName}
+                      </span>
                       <span className="text-xs text-white/40 font-mono">@{member.username}</span>
                       {member.isFocusing && (
-                        <span className="px-2 py-0.5 rounded-md bg-[#FF8C00]/20 text-[#FF8C00] text-[9px] font-bold uppercase tracking-wider">
-                          Studying
+                        <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse font-mono shadow-[0_0_10px_rgba(255,122,0,0.3)]">
+                          <Flame className="w-3 h-3 fill-current" />
+                          Focusing Now
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-white/40 mt-0.5">Subject: <span className="text-white/70 font-medium">{member.currentSubject}</span></p>
+                    <p className="text-xs text-white/40 mt-0.5">Subject: <span className={member.isFocusing ? "text-[#FF7A00]/90 font-medium" : "text-white/70 font-medium"}>{member.currentSubject}</span></p>
                   </div>
                 </div>
 
@@ -838,7 +864,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                     <span className="text-[10px] uppercase font-bold text-white/40 block">Today's Time</span>
                     <span className={cn(
                       "text-base font-bold font-mono",
-                      member.isFocusing ? "text-[#FF8C00]" : "text-white"
+                      member.isFocusing ? "text-[#FF7A00] drop-shadow-[0_0_6px_rgba(255,122,0,0.5)]" : "text-white"
                     )}>
                       {formatTimer(member.focusSecondsToday, true)}
                     </span>
@@ -1156,26 +1182,46 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                 <GlassCard
                   key={member.id}
                   className={cn(
-                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all",
-                    isLeader ? "border-[#FFD700]/30 bg-[#FFD700]/[0.02]" :
-                    isOfficer ? "border-cyan-500/30 bg-cyan-500/[0.02]" :
-                    isIdle ? "border-amber-500/10 hover:border-amber-500/30" : "hover:border-white/20"
+                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-200",
+                    member.isFocusing 
+                      ? "border-[#FF7A00] bg-[#FF7A00]/[0.08] shadow-[0_0_20px_rgba(255,122,0,0.25)] ring-1 ring-[#FF7A00]/40" 
+                      : isLeader ? "border-[#FFD700]/30 bg-[#FFD700]/[0.02]" 
+                      : isOfficer ? "border-cyan-500/30 bg-cyan-500/[0.02]" 
+                      : isIdle ? "border-amber-500/10 hover:border-amber-500/30" 
+                      : "hover:border-white/20"
                   )}
                 >
                   {/* Member Identity & Status */}
                   <div className="flex items-center gap-3.5">
                     <div className={cn(
-                      "w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border",
+                      "w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border transition-all duration-200 relative",
+                      member.isFocusing ? "bg-[#FF7A00]/20 border-[#FF7A00] text-[#FF7A00] shadow-[0_0_15px_rgba(255,122,0,0.5)] ring-1 ring-[#FF7A00]/50" :
                       isLeader ? "bg-[#FFD700]/10 border-[#FFD700]/40 text-[#FFD700]" :
                       isOfficer ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400" :
                       "bg-white/5 border-white/10 text-white/70"
                     )}>
-                      {isLeader ? "👑" : isOfficer ? "⚔️" : member.username.charAt(0).toUpperCase()}
+                      {member.isFocusing ? (
+                        <Flame className="w-6 h-6 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_8px_rgba(255,122,0,0.8)]" />
+                      ) : isLeader ? (
+                        "👑"
+                      ) : isOfficer ? (
+                        "⚔️"
+                      ) : (
+                        (member.username || "W").charAt(0).toUpperCase()
+                      )}
+                      {member.isFocusing && (
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#FF7A00] border border-black absolute -top-1 -right-1 animate-ping" />
+                      )}
                     </div>
 
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-bold text-white">{member.fullName}</span>
+                        <span className={cn(
+                          "text-sm font-bold transition-colors",
+                          member.isFocusing ? "text-[#FF7A00]" : "text-white"
+                        )}>
+                          {member.fullName}
+                        </span>
                         <span className="text-xs text-white/40 font-mono">@{member.username}</span>
                         
                         {/* Role Badge */}
@@ -1189,8 +1235,9 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
                         </span>
 
                         {member.isFocusing && (
-                          <span className="px-2 py-0.5 rounded-full bg-[#FF8C00]/20 text-[#FF8C00] text-[9px] font-bold uppercase font-mono animate-pulse">
-                            Studying Now
+                          <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase font-mono animate-pulse flex items-center gap-1 shadow-[0_0_10px_rgba(255,122,0,0.3)]">
+                            <Flame className="w-3 h-3 fill-current" />
+                            Studying in Focus
                           </span>
                         )}
                       </div>
@@ -1354,19 +1401,32 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
 
               <div className="flex items-center gap-4">
                 <div className={cn(
-                  "w-16 h-16 rounded-2xl flex items-center justify-center border",
+                  "w-16 h-16 rounded-2xl flex items-center justify-center border transition-all duration-300 relative",
                   selectedDesk.isFocusing 
-                    ? "bg-[#FF8C00]/10 border-[#FF8C00]/40 text-[#FF8C00]" 
+                    ? "bg-[#FF7A00]/20 border-[#FF7A00] text-[#FF7A00] shadow-[0_0_25px_rgba(255,122,0,0.5)] ring-2 ring-[#FF7A00]/50" 
                     : "bg-white/5 border-white/10 text-white/60"
                 )}>
-                  <BookOpen className="w-8 h-8" />
+                  {selectedDesk.isFocusing ? (
+                    <Flame className="w-9 h-9 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_10px_rgba(255,122,0,0.9)]" />
+                  ) : (
+                    <BookOpen className="w-8 h-8" />
+                  )}
+                  {selectedDesk.isFocusing && (
+                    <span className="w-3 h-3 rounded-full bg-[#FF7A00] border border-black absolute -top-1 -right-1 animate-ping" />
+                  )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-white">{selectedDesk.fullName}</h3>
+                    <h3 className={cn(
+                      "text-lg font-bold transition-colors",
+                      selectedDesk.isFocusing ? "text-[#FF7A00] drop-shadow-[0_0_6px_rgba(255,122,0,0.6)]" : "text-white"
+                    )}>
+                      {selectedDesk.fullName}
+                    </h3>
                     {selectedDesk.isFocusing && (
-                      <span className="px-2 py-0.5 rounded-full bg-[#FF8C00]/20 text-[#FF8C00] text-[9px] font-bold uppercase font-mono animate-pulse">
-                        Studying
+                      <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase font-mono animate-pulse flex items-center gap-1 shadow-[0_0_12px_rgba(255,122,0,0.3)]">
+                        <Flame className="w-3 h-3 fill-current" />
+                        Focusing Now
                       </span>
                     )}
                   </div>
