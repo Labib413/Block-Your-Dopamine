@@ -65,7 +65,8 @@ import {
   subscribeToCommunityMembers,
   syncMemberPresenceToFirebase,
   compareCommunityMembers,
-  searchUserByUidInFirebase
+  searchUserByUidInFirebase,
+  deleteGuildInFirebase
 } from "../services/communityService";
 
 export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onNavigate?: (view: string) => void }) {
@@ -653,6 +654,35 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       queryClient.invalidateQueries({ queryKey: ['community', 'guilds'] });
     }
   });
+
+  // 6. Delete / Disband Guild Mutation
+  const deleteGuildMutation = useMutation({
+    mutationFn: deleteGuildInFirebase,
+    onMutate: async (guildId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['community', 'guilds'] });
+      const prevGuilds = queryClient.getQueryData<Guild[]>(['community', 'guilds']) || [];
+      queryClient.setQueryData<Guild[]>(['community', 'guilds'], prevGuilds.filter(g => g.id !== guildId));
+      if (selectedGuildRoomId === guildId) {
+        setSelectedGuildRoomId(null);
+        setSelectedGuildRoomTab("Room");
+      }
+      return { prevGuilds };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.prevGuilds) {
+        queryClient.setQueryData(['community', 'guilds'], context.prevGuilds);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['community', 'guilds'] });
+    }
+  });
+
+  const handleDeleteGuild = async (guildId: string) => {
+    deleteGuildMutation.mutate(guildId);
+    setSelectedGuildRoomId(null);
+    setSelectedGuildRoomTab("Room");
+  };
 
   const handleCreateGuild = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1281,6 +1311,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               setSelectedGuildRoomTab("Room");
             }} 
             onToggleJoin={handleToggleGuild} 
+            onDeleteGuild={handleDeleteGuild}
           />
         ) : (
           <div className="space-y-6">
@@ -1318,7 +1349,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                     {Boolean(
                       userJoinedGuild && (
                         (currentUsername && userJoinedGuild.leader?.toLowerCase() === currentUsername.toLowerCase()) ||
-                        (currentFullName && userJoinedGuild.leader?.toLowerCase() === currentFullName.toLowerCase())
+                        (currentFullName && userJoinedGuild.leader?.toLowerCase() === currentFullName.toLowerCase()) ||
+                        (user?.id && userJoinedGuild.leader?.toLowerCase() === user.id.toLowerCase())
                       )
                     ) && (
                       <button

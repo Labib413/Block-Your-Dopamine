@@ -995,6 +995,33 @@ export async function updateGuildSettingsInFirebase(
   }
 }
 
+// Disband / Delete Guild (Guild Leader Authority): Removes all desks, cheers, and deletes guild doc
+export async function deleteGuildInFirebase(guildId: string): Promise<void> {
+  if (!guildId) return;
+  const firestore = getFirestoreInstance();
+  const path = `guilds/${guildId}`;
+
+  try {
+    // 1. Delete all member desks in subcollection
+    const membersSnap = await getDocs(collection(firestore, "guilds", guildId, "members"));
+    for (const memberDoc of membersSnap.docs) {
+      await deleteDoc(doc(firestore, "guilds", guildId, "members", memberDoc.id)).catch(() => {});
+    }
+
+    // 2. Delete all cheers in subcollection
+    const cheersSnap = await getDocs(collection(firestore, "guilds", guildId, "cheers"));
+    for (const cheerDoc of cheersSnap.docs) {
+      await deleteDoc(doc(firestore, "guilds", guildId, "cheers", cheerDoc.id)).catch(() => {});
+    }
+
+    // 3. Delete the parent guild document
+    await deleteDoc(doc(firestore, path));
+  } catch (error) {
+    console.error("[Community] deleteGuildInFirebase error:", error);
+    handleFirestoreError(error, OperationType.DELETE, path);
+  }
+}
+
 // Update focus state of a member in guild desk
 export async function updateGuildMemberFocusInFirebase(
   guildId: string,

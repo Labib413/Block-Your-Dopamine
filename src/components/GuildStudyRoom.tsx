@@ -38,7 +38,9 @@ import {
   Edit3,
   Save,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2,
+  Loader2
 } from "lucide-react";
 import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
@@ -53,7 +55,8 @@ import {
   updateGuildMemberFocusInFirebase,
   kickGuildMemberInFirebase,
   updateGuildMemberRoleInFirebase,
-  updateGuildSettingsInFirebase
+  updateGuildSettingsInFirebase,
+  deleteGuildInFirebase
 } from "../services/communityService";
 
 export type { GuildMemberDesk };
@@ -82,6 +85,7 @@ interface GuildStudyRoomProps {
   initialTab?: "Room" | "Leaderboard" | "CheerWall" | "Management";
   onBack: () => void;
   onToggleJoin: (guildId: string) => void;
+  onDeleteGuild?: (guildId: string) => Promise<void> | void;
 }
 
 function formatTimer(seconds: number, showHoursAlways = false): string {
@@ -95,7 +99,7 @@ function formatTimer(seconds: number, showHoursAlways = false): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
-export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: GuildStudyRoomProps) {
+export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDeleteGuild }: GuildStudyRoomProps) {
   const { 
     user, 
     profile, 
@@ -114,7 +118,8 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
   const leaderKey = (guild.leader || "Leader").trim();
   const isMeLeader = Boolean(
     (currentUsername && leaderKey.toLowerCase() === currentUsername.toLowerCase()) || 
-    (currentFullName && leaderKey.toLowerCase() === currentFullName.toLowerCase())
+    (currentFullName && leaderKey.toLowerCase() === currentFullName.toLowerCase()) ||
+    (user?.id && leaderKey.toLowerCase() === user.id.toLowerCase())
   );
 
   const [desks, setDesks] = useState<GuildMemberDesk[]>([
@@ -134,9 +139,20 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
     }
   ]);
 
-  const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall" | "Management">(initialTab || "Room");
+  const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall" | "Management">(
+    (initialTab === "Management" && isMeLeader) ? "Management" : (initialTab && initialTab !== "Management") ? initialTab : "Room"
+  );
+
+  useEffect(() => {
+    if (!isMeLeader && activeTab === "Management") {
+      setActiveTab("Room");
+    }
+  }, [isMeLeader, activeTab]);
+
   const [selectedDesk, setSelectedDesk] = useState<GuildMemberDesk | null>(null);
   const [isConfirmingKick, setIsConfirmingKick] = useState(false);
+  const [isConfirmingDeleteGuild, setIsConfirmingDeleteGuild] = useState(false);
+  const [isDeletingGuild, setIsDeletingGuild] = useState(false);
   const [floatingCheers, setFloatingCheers] = useState<{ id: number; deskId: string; emoji: string }[]>([]);
   const [ambientAudio, setAmbientAudio] = useState(false);
   const [ambientSoundType, setAmbientSoundType] = useState<"Rain" | "Library" | "WhiteNoise" | "Cafe">("Rain");
@@ -156,6 +172,24 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
   const [memberToKick, setMemberToKick] = useState<GuildMemberDesk | null>(null);
   const [kickReason, setKickReason] = useState("Underperforming / Inactive");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+
+  const handleDeleteGuild = async () => {
+    setIsDeletingGuild(true);
+    try {
+      if (onDeleteGuild) {
+        await onDeleteGuild(guild.id);
+      } else {
+        await deleteGuildInFirebase(guild.id);
+      }
+      onBack();
+    } catch (err) {
+      console.error("Error deleting guild:", err);
+      setActionNotice("Failed to delete guild. Please try again.");
+    } finally {
+      setIsDeletingGuild(false);
+      setIsConfirmingDeleteGuild(false);
+    }
+  };
 
   // Real-time guild desks subscription from Firestore
   useEffect(() => {
@@ -603,27 +637,27 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
             <span>Cheer Wall</span>
           </button>
 
-          {/* Guild Management Tab (Available for all to view squad stats; Leader gets full authority) */}
-          <button
-            onClick={() => setActiveTab("Management")}
-            className={cn(
-              "px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
-              activeTab === "Management"
-                ? "bg-[#FFD700] text-black shadow-[0_0_20px_rgba(255,215,0,0.3)] font-bold"
-                : "text-white/50 hover:text-white hover:bg-white/5"
-            )}
-          >
-            <Crown className="w-3.5 h-3.5 text-current" />
-            <span>Guild Management</span>
-            {isMeLeader && (
+          {/* Guild Management Tab (Strictly restricted to Guild Leader ONLY) */}
+          {isMeLeader && (
+            <button
+              onClick={() => setActiveTab("Management")}
+              className={cn(
+                "px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-2",
+                activeTab === "Management"
+                  ? "bg-[#FFD700] text-black shadow-[0_0_20px_rgba(255,215,0,0.3)] font-bold"
+                  : "text-white/50 hover:text-white hover:bg-white/5"
+              )}
+            >
+              <Crown className="w-3.5 h-3.5 text-current" />
+              <span>Guild Management</span>
               <span className={cn(
                 "px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold",
                 activeTab === "Management" ? "bg-black/20 text-black" : "bg-[#FFD700]/20 text-[#FFD700]"
               )}>
                 Leader HQ
               </span>
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
         {/* Ambient Study Room Soundscape Toggle */}
@@ -1308,8 +1342,113 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin }: Guil
               );
             })}
           </div>
+
+          {/* Danger Zone: Permanent Guild Disband / Delete (Guild Leader Authority Only) */}
+          {isMeLeader && (
+            <GlassCard className="p-6 border-red-500/30 bg-red-500/[0.03] space-y-4 mt-6">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center shrink-0 shadow-[0_0_20px_rgba(239,68,68,0.2)]">
+                    <Trash2 className="w-5 h-5 text-red-400" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                      <span>Disband & Delete Guild</span>
+                      <span className="text-[10px] font-mono font-bold bg-red-500/20 text-red-400 px-2 py-0.5 rounded border border-red-500/30 uppercase">
+                        Danger Zone
+                      </span>
+                    </h4>
+                    <p className="text-xs text-white/50 mt-1 max-w-xl">
+                      Permanently delete <span className="text-white font-bold">[{guild.tag}] {guild.name}</span>. All members will be automatically released from the guild, all desks and chat history will be wiped from Firebase, and the guild will disappear for all users.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingDeleteGuild(true)}
+                  className="px-4 py-2.5 rounded-xl bg-red-500/15 hover:bg-red-500 border border-red-500/40 text-red-400 hover:text-white text-xs font-bold uppercase tracking-wider transition-all shrink-0 flex items-center gap-2 shadow-[0_0_15px_rgba(239,68,68,0.2)] cursor-pointer"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Guild</span>
+                </button>
+              </div>
+            </GlassCard>
+          )}
         </div>
       )}
+
+      {/* Disband / Delete Guild Confirmation Modal */}
+      <AnimatePresence>
+        {isConfirmingDeleteGuild && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-md bg-[#0d0d0d] border border-red-500/40 rounded-3xl p-6 space-y-5 shadow-[0_0_60px_rgba(239,68,68,0.3)] relative overflow-hidden"
+            >
+              <button
+                disabled={isDeletingGuild}
+                onClick={() => setIsConfirmingDeleteGuild(false)}
+                className="absolute top-5 right-5 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 text-white/50 hover:text-white flex items-center justify-center transition-colors disabled:opacity-40"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-2xl bg-red-500/15 border border-red-500/40 flex items-center justify-center shadow-[0_0_25px_rgba(239,68,68,0.3)] shrink-0">
+                  <Trash2 className="w-6 h-6 text-red-500 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white tracking-tight">Permanently Delete Guild?</h3>
+                  <span className="text-[11px] text-red-400 font-mono uppercase tracking-wider font-semibold block mt-0.5">
+                    Irreversible Leader Action
+                  </span>
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-red-500/10 border border-red-500/20 text-xs text-white/80 leading-relaxed">
+                Are you sure you want to delete <span className="text-white font-bold font-mono">[{guild.tag}] {guild.name}</span>?
+                <ul className="list-disc list-inside mt-2 space-y-1 text-white/70 text-[11px]">
+                  <li>All <span className="text-white font-semibold">{desks.length} member desks</span> will be removed immediately.</li>
+                  <li>All guild members will automatically leave this guild.</li>
+                  <li>The guild will be deleted from Firebase Firestore in real-time.</li>
+                </ul>
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  disabled={isDeletingGuild}
+                  onClick={() => setIsConfirmingDeleteGuild(false)}
+                  className="flex-1 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10 disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isDeletingGuild}
+                  onClick={handleDeleteGuild}
+                  className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_20px_rgba(239,68,68,0.4)] flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  {isDeletingGuild ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Deleting...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-4 h-4" />
+                      <span>Yes, Delete Guild</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Expel / Kick Member Confirmation Modal */}
       <AnimatePresence>
