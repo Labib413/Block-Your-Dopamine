@@ -30,7 +30,8 @@ import {
   X,
   Database,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../context/AppContext";
@@ -63,7 +64,8 @@ import {
   fetchMembersFromFirebase,
   subscribeToCommunityMembers,
   syncMemberPresenceToFirebase,
-  compareCommunityMembers
+  compareCommunityMembers,
+  searchUserByUidInFirebase
 } from "../services/communityService";
 
 export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onNavigate?: (view: string) => void }) {
@@ -166,6 +168,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
   const myNetMinutes = Math.floor((totalNetFocusTime || 0) / 60);
   const myMemberEntry: CommunityMember = useMemo(() => ({
     id: user?.id || `user_${currentUsername}`,
+    uniqueId: (user as any)?.uniqueId || (profile as any)?.uniqueId || user?.id || `BYD-${currentUsername.toUpperCase()}`,
     username: currentUsername,
     fullName: currentFullName,
     avatarUrl: profile?.avatarUrl || "",
@@ -179,7 +182,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     badges: equippedBadges && equippedBadges.length > 0 ? equippedBadges : ["f1", "h1"],
     institution: profile?.institution || "BYD Academy",
     year: profile?.year || "HSC 2026"
-  }), [user?.id, currentUsername, currentFullName, profile, level, xp, streak, myNetMinutes, detoxPercent, isFocusing, equippedBadges]);
+  }), [user, currentUsername, currentFullName, profile, level, xp, streak, myNetMinutes, detoxPercent, isFocusing, equippedBadges]);
 
   // Sync current user presence and live focus status to Firestore
   const lastSyncedRef = useRef<string>("");
@@ -188,6 +191,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     if (!user?.id || currentUsername === "you") return;
     const serialized = JSON.stringify({
       id: myMemberEntry.id,
+      uniqueId: myMemberEntry.uniqueId,
       xp: myMemberEntry.xp,
       level: myMemberEntry.level,
       streak: myMemberEntry.streak,
@@ -203,6 +207,10 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       });
     }
   }, [myMemberEntry, isFocusing, user?.id, currentUsername]);
+
+  // Real-time searched user doc when searching by UID
+  const [searchedUserDoc, setSearchedUserDoc] = useState<CommunityMember | null>(null);
+  const [isSearchingUid, setIsSearchingUid] = useState(false);
 
   // Combine and sort leaderboard members with 100% deterministic ranking
   const allMembers = useMemo(() => {
@@ -225,6 +233,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
         ...existing,
         ...myMemberEntry,
         id: myKey,
+        uniqueId: myMemberEntry.uniqueId || existing?.uniqueId || myKey,
         xp: Math.max(existing?.xp || 0, myMemberEntry.xp || 0),
         netFocusMinutes: Math.max(existing?.netFocusMinutes || 0, myMemberEntry.netFocusMinutes || 0),
         streak: Math.max(existing?.streak || 0, myMemberEntry.streak || 0),
@@ -239,18 +248,77 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     }
 
     // 3. Sort deterministically using compareCommunityMembers so all clients display identical ranks
-    const list = Array.from(memberMap.values());
+    const list = Array.from(memberMap.values()).filter(Boolean);
     list.sort(compareCommunityMembers);
     return list.map((m, idx) => ({ ...m, rank: idx + 1 }));
   }, [firestoreMembers, myMemberEntry, currentUsername, user?.id]);
 
+  // Debounced search for direct Firestore UID / uniqueId lookup
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || q.length < 2) {
+      setSearchedUserDoc(null);
+      setIsSearchingUid(false);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      // Check if already in active client list
+      const qLower = q.toLowerCase();
+      const alreadyInList = allMembers.some(m => {
+        const idLower = (m?.id || "").toLowerCase();
+        const uniqueLower = (m?.uniqueId || "").toLowerCase();
+        const unameLower = (m?.username || "").toLowerCase();
+        const nameLower = (m?.fullName || "").toLowerCase();
+        return idLower === qLower || uniqueLower === qLower || unameLower === qLower || nameLower.includes(qLower);
+      });
+
+      if (!alreadyInList) {
+        setIsSearchingUid(true);
+        try {
+          const res = await searchUserByUidInFirebase(q);
+          if (res) {
+            setSearchedUserDoc(res);
+          } else {
+            setSearchedUserDoc(null);
+          }
+        } catch {
+          setSearchedUserDoc(null);
+        } finally {
+          setIsSearchingUid(false);
+        }
+      } else {
+        setSearchedUserDoc(null);
+        setIsSearchingUid(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery, allMembers]);
+
   const filteredMembers = useMemo(() => {
-    return allMembers.filter(m => 
-      m.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      m.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (m.institution && m.institution.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
-  }, [allMembers, searchQuery]);
+    const q = searchQuery.trim().toLowerCase();
+    
+    let baseList = allMembers;
+    if (searchedUserDoc && !allMembers.some(m => m.id === searchedUserDoc.id)) {
+      baseList = [{ ...searchedUserDoc, rank: 1 }, ...allMembers];
+    }
+
+    if (!q) return baseList;
+
+    return baseList.filter(m => {
+      if (!m) return false;
+      const matchName = (m.fullName || "").toLowerCase().includes(q);
+      const matchUsername = (m.username || "").toLowerCase().includes(q);
+      const matchInstitution = (m.institution || "").toLowerCase().includes(q);
+      const matchId = (m.id || "").toLowerCase().includes(q);
+      const matchUniqueId = (m.uniqueId || (m as any).unique_id || "").toLowerCase().includes(q);
+      const matchUserId = ((m as any).userId || "").toLowerCase().includes(q);
+      const matchUid = ((m as any).uid || "").toLowerCase().includes(q);
+
+      return matchName || matchUsername || matchInstitution || matchId || matchUniqueId || matchUserId || matchUid;
+    });
+  }, [allMembers, searchQuery, searchedUserDoc]);
 
   const livePods = useMemo(() => {
     return allMembers.filter(m => m.status === "focusing");
@@ -758,15 +826,26 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
         <div className="space-y-6">
           {/* Filters & Search */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="relative w-full sm:w-80">
+            <div className="relative w-full sm:w-96">
               <Search className="w-4 h-4 text-white/30 absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
-                placeholder="Search warriors or institutions..."
+                placeholder="Search warriors, institutions, or UID (e.g. BYD-XXXX)..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-[#39FF14]/50 transition-colors"
               />
+              {isSearchingUid ? (
+                <Loader2 className="w-3.5 h-3.5 text-[#39FF14] animate-spin absolute right-3.5 top-1/2 -translate-y-1/2" />
+              ) : searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="w-4 h-4 rounded-full bg-white/10 hover:bg-white/20 text-white/40 hover:text-white flex items-center justify-center text-[10px] absolute right-3.5 top-1/2 -translate-y-1/2 cursor-pointer transition-colors"
+                >
+                  ✕
+                </button>
+              ) : null}
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
@@ -899,9 +978,16 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                           {member?.fullName || member?.username || "Warrior"}
                           {isMe && <span className="text-[9px] font-black text-[#39FF14] uppercase">(You)</span>}
                         </span>
-                        <span className="text-xs text-white/40 truncate font-mono">
-                          @{member?.username || "warrior"} {member?.institution ? `• ${member.institution}` : ""}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap truncate">
+                          <span className="text-xs text-white/40 truncate font-mono">
+                            @{member?.username || "warrior"} {member?.institution ? `• ${member.institution}` : ""}
+                          </span>
+                          {(member?.uniqueId || (member?.id && !member.id.startsWith("user_top_"))) && (
+                            <span className="text-[9px] font-mono font-bold text-[#39FF14] bg-[#39FF14]/10 px-1.5 py-0.2 rounded border border-[#39FF14]/25 shrink-0 select-all">
+                              UID: {member?.uniqueId || member?.id}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 

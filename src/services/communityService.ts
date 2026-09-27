@@ -1190,3 +1190,79 @@ export async function syncMemberPresenceToFirebase(member: CommunityMember): Pro
     handleFirestoreError(error, OperationType.WRITE, path);
   }
 }
+
+/**
+ * Direct UID lookup in Firestore across community_members and users collections
+ */
+export async function searchUserByUidInFirebase(searchQuery: string): Promise<CommunityMember | null> {
+  const clean = searchQuery.trim();
+  if (!clean) return null;
+  const firestore = getFirestoreInstance();
+
+  try {
+    // 1. Direct match by document ID in community_members
+    const directMemberSnap = await getDoc(doc(firestore, "community_members", clean));
+    if (directMemberSnap.exists()) {
+      const d = directMemberSnap.data() as any;
+      return { id: directMemberSnap.id, ...d } as CommunityMember;
+    }
+
+    // 2. Direct match by document ID in users collection
+    const userDocSnap = await getDoc(doc(firestore, "users", clean));
+    if (userDocSnap.exists()) {
+      const u = userDocSnap.data() as any;
+      return {
+        id: userDocSnap.id,
+        uniqueId: u.uniqueId || u.unique_id || userDocSnap.id,
+        username: u.username || u.profile?.username || clean,
+        fullName: u.fullName || u.profile?.fullName || u.name || "Warrior",
+        avatarUrl: u.avatarUrl || u.profile?.avatarUrl || "",
+        level: u.level || 1,
+        xp: u.xp || 0,
+        streak: u.streak || 1,
+        netFocusMinutes: Math.floor((u.totalNetFocusTime || 0) / 60) || 0,
+        detoxScore: u.detoxPercent || 100,
+        status: u.isFocusing ? "focusing" : "idle",
+        badges: u.equippedBadges || ["f1"],
+        institution: u.profile?.institution || u.institution || "BYD Academy",
+        year: u.profile?.year || u.year || "HSC"
+      };
+    }
+
+    // 3. Query users collection by uniqueId or username
+    try {
+      const usersSnap = await getDocs(collection(firestore, "users"));
+      for (const docSnap of usersSnap.docs) {
+        const u = docSnap.data() as any;
+        const uidVal = (u.uniqueId || u.unique_id || docSnap.id || "").toString().toLowerCase();
+        const uname = (u.username || u.profile?.username || "").toString().toLowerCase();
+        const qLower = clean.toLowerCase();
+        if (uidVal === qLower || uname === qLower || uidVal.includes(qLower) || docSnap.id.toLowerCase() === qLower) {
+          return {
+            id: docSnap.id,
+            uniqueId: u.uniqueId || u.unique_id || docSnap.id,
+            username: u.username || u.profile?.username || uname || "warrior",
+            fullName: u.fullName || u.profile?.fullName || u.name || "Warrior",
+            avatarUrl: u.avatarUrl || u.profile?.avatarUrl || "",
+            level: u.level || 1,
+            xp: u.xp || 0,
+            streak: u.streak || 1,
+            netFocusMinutes: Math.floor((u.totalNetFocusTime || 0) / 60) || 0,
+            detoxScore: u.detoxPercent || 100,
+            status: u.isFocusing ? "focusing" : "idle",
+            badges: u.equippedBadges || ["f1"],
+            institution: u.profile?.institution || u.institution || "BYD Academy",
+            year: u.profile?.year || u.year || "HSC"
+          };
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return null;
+  } catch (err) {
+    console.warn("[Community] searchUserByUid error:", err);
+    return null;
+  }
+}
