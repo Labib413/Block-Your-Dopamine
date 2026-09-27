@@ -1046,31 +1046,32 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {livePods.map((member) => (
-              <GlassCard key={member.id} className="p-5 flex flex-col justify-between space-y-4">
+              <GlassCard key={member.id} className="p-5 flex flex-col justify-between space-y-4 border-[#FF7A00]/50 bg-[#FF7A00]/[0.04] shadow-[0_0_20px_rgba(255,122,0,0.15)] ring-1 ring-[#FF7A00]/25">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden shrink-0 relative">
+                    <div className="w-11 h-11 rounded-2xl bg-[#FF7A00]/15 border-2 border-[#FF7A00] flex items-center justify-center overflow-hidden shrink-0 relative shadow-[0_0_12px_rgba(255,122,0,0.4)]">
                       {member?.avatarUrl ? (
                         <img src={member.avatarUrl} alt={member?.fullName || "Warrior"} className="w-full h-full object-cover" />
                       ) : (
-                        <span className="text-base font-bold text-white/70">{(member?.fullName || member?.username || "W").charAt(0)}</span>
+                        <Flame className="w-6 h-6 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_6px_rgba(255,122,0,0.8)]" />
                       )}
-                      <div className="w-2.5 h-2.5 rounded-full bg-[#39FF14] border border-black absolute -bottom-0.5 -right-0.5 animate-pulse" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-[#FF7A00] border border-black absolute -top-0.5 -right-0.5 animate-ping" />
                     </div>
                     <div>
-                      <h4 className="text-sm font-bold text-white">{member?.fullName || member?.username || "Warrior"}</h4>
+                      <h4 className="text-sm font-bold text-[#FF7A00] drop-shadow-[0_0_5px_rgba(255,122,0,0.5)]">{member?.fullName || member?.username || "Warrior"}</h4>
                       <span className="text-[11px] text-white/40 font-mono">@{member?.username || "warrior"}</span>
                     </div>
                   </div>
 
-                  <span className="px-2 py-0.5 rounded-full bg-[#39FF14]/10 border border-[#39FF14]/20 text-[#39FF14] text-[10px] font-bold uppercase tracking-wider">
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 shadow-[0_0_10px_rgba(255,122,0,0.25)] animate-pulse">
+                    <Flame className="w-3 h-3 fill-current" />
                     In Focus
                   </span>
                 </div>
 
                 <div className="p-3 rounded-xl bg-black/40 border border-white/5 space-y-2">
-                  <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-white/40">
-                    <Target className="w-3 h-3 text-[#39FF14]" /> Current Objective
+                  <div className="flex items-center gap-2 text-[10px] uppercase font-bold text-[#FF7A00]">
+                    <Target className="w-3 h-3 text-[#FF7A00]" /> Current Objective
                   </div>
                   <p className="text-xs font-medium text-white/90 leading-snug">
                     {member.currentTask || "Deep Monkish Focus Sprint"}
@@ -1078,8 +1079,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                 </div>
 
                 <div className="flex items-center justify-between pt-2 border-t border-white/5 text-xs text-white/40">
-                  <span className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-[#39FF14]" /> Active Sprint
+                  <span className="flex items-center gap-1.5 text-[#FF7A00] font-medium">
+                    <Clock className="w-3.5 h-3.5 text-[#FF7A00]" /> Active Sprint
                   </span>
                   <span className="font-mono text-white/70 font-semibold">Streak: {member.streak}d</span>
                 </div>

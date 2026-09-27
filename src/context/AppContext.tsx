@@ -14,6 +14,7 @@ import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
 import { logger } from "../lib/logger";
 import { queryClient } from "../lib/queryClient";
 import { syncAggregatedReportsToFirestore } from "../lib/sessionReports";
+import { syncUserFocusToAllGuildsAndCommunityInFirebase } from "../services/communityService";
 export interface User {
   id: string;
   email: string;
@@ -606,6 +607,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
+
+  // Universal Live Focus Sync to Firebase (All Guilds & Community Presence)
+  const lastFocusSyncedState = useRef<{ isFocusing: boolean; time: number } | null>(null);
+  useEffect(() => {
+    const currentUsername = state.profile?.username || state.user?.user_metadata?.username || state.user?.email?.split('@')[0] || '';
+    const currentFullName = state.profile?.fullName || state.user?.user_metadata?.full_name || currentUsername || 'Warrior';
+    const userId = state.user?.id || '';
+
+    if (!currentUsername || currentUsername === 'you') return;
+
+    if (
+      !lastFocusSyncedState.current ||
+      lastFocusSyncedState.current.isFocusing !== state.isFocusing ||
+      Math.abs(lastFocusSyncedState.current.time - state.totalNetFocusTime) >= 60
+    ) {
+      lastFocusSyncedState.current = { isFocusing: state.isFocusing, time: state.totalNetFocusTime };
+      syncUserFocusToAllGuildsAndCommunityInFirebase(
+        userId,
+        currentUsername,
+        currentFullName,
+        state.isFocusing,
+        state.totalNetFocusTime
+      ).catch(() => {});
+    }
+  }, [state.isFocusing, state.totalNetFocusTime, state.user?.id, state.profile?.username, state.profile?.fullName]);
 
   // Sync Queue Processor with Debounce & Error Recovery
   const processSyncQueue = useCallback(async () => {

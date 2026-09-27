@@ -1266,3 +1266,68 @@ export async function searchUserByUidInFirebase(searchQuery: string): Promise<Co
     return null;
   }
 }
+
+/**
+ * Universal Focus Sync: When any user turns on/off Focus Session anywhere in the app,
+ * this function immediately updates Firestore users, community_members, and all joined guilds' member desks!
+ */
+export async function syncUserFocusToAllGuildsAndCommunityInFirebase(
+  userId: string,
+  username: string,
+  fullName: string,
+  isFocusing: boolean,
+  totalNetFocusTime: number = 0
+): Promise<void> {
+  const firestore = getFirestoreInstance();
+  const cleanUsername = (username || fullName || "Warrior").trim();
+  if (!cleanUsername || cleanUsername === "you") return;
+  const deskId = `desk_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`;
+
+  try {
+    const updatedAt = new Date().toISOString();
+
+    // 1. Sync to community_members collection
+    const memberDocId = userId || `user_${cleanUsername}`;
+    await setDoc(doc(firestore, "community_members", memberDocId), cleanFirestoreData({
+      id: memberDocId,
+      username: cleanUsername,
+      fullName: fullName || cleanUsername,
+      status: isFocusing ? "focusing" : "idle",
+      isFocusing,
+      netFocusMinutes: Math.floor(totalNetFocusTime / 60),
+      updatedAt
+    }), { merge: true });
+
+    // 2. Sync to users collection
+    if (userId) {
+      await setDoc(doc(firestore, "users", userId), cleanFirestoreData({
+        isFocusing,
+        totalNetFocusTime,
+        updatedAt
+      }), { merge: true });
+    }
+
+    // 3. Find and update all guilds where user is a member
+    const guildsSnap = await getDocs(collection(firestore, "guilds"));
+    for (const guildDoc of guildsSnap.docs) {
+      const gData = guildDoc.data();
+      const memberIds = Array.isArray(gData.memberUserIds) ? gData.memberUserIds : [];
+      const isMember = memberIds.some((id: string) => 
+        id === userId || 
+        id?.toLowerCase() === cleanUsername.toLowerCase() ||
+        id?.toLowerCase() === fullName.toLowerCase()
+      ) || (gData.leader && gData.leader.toLowerCase() === cleanUsername.toLowerCase());
+
+      if (isMember) {
+        await setDoc(doc(firestore, "guilds", guildDoc.id, "members", deskId), cleanFirestoreData({
+          isFocusing,
+          focusSecondsToday: totalNetFocusTime || 0,
+          updatedAt
+        }), { merge: true });
+      }
+    }
+  } catch (err) {
+    console.warn("[Community] syncUserFocusToAllGuildsAndCommunityInFirebase error:", err);
+  }
+}
+
