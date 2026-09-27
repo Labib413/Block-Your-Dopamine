@@ -1357,16 +1357,13 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                       name={userJoinedGuild.name}
                       tag={userJoinedGuild.tag}
                       category={userJoinedGuild.category}
-                      size="xl"
-                      className="shadow-[0_0_30px_rgba(57,255,20,0.35)]"
+                      size="lg"
+                      className="shadow-[0_0_20px_rgba(0,240,255,0.25)]"
                     />
                     <div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="px-2 py-0.5 rounded-md bg-[#39FF14]/20 border border-[#39FF14]/40 text-[#39FF14] text-[10px] font-mono font-bold">
-                          [{userJoinedGuild.tag}]
-                        </span>
+                      <div className="flex items-center gap-2.5 flex-wrap">
                         <h3 className="text-xl font-bold text-white tracking-tight">{userJoinedGuild.name}</h3>
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-white/10 text-white/60 font-semibold">
+                        <span className="text-xs px-2.5 py-0.5 rounded-full bg-white/10 text-white/60 font-semibold font-mono">
                           Rank #{userJoinedGuild.rank}
                         </span>
                       </div>
