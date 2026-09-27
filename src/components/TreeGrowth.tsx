@@ -17,17 +17,23 @@ export const TreeGrowth = React.memo(({ totalDuration, isDistracted = false, isS
   // Formula: Growth% = ((TotalSessionTime - RemainingTime) / TotalSessionTime) * 100
   const totalSessionSeconds = totalDuration * 60;
 
+  // Base time in video where seedling is visible (0.8s), scaling to video duration
+  const getTargetVideoTime = (progress: number, duration: number) => {
+    const minTime = Math.min(0.8, duration * 0.05); // Initial visible seedling time
+    return minTime + progress * Math.max(0, duration - minTime);
+  };
+
   useEffect(() => {
     const handleGrowthUpdate = (e: any) => {
-      const newProgress = e.detail.progress / 100;
+      const newProgress = Math.min(1, Math.max(0, (e.detail?.progress ?? 0) / 100));
       
       // Update display progress only at these intervals
       setDisplayProgress(newProgress);
       progressRef.current = newProgress;
 
       // Smooth transition using requestAnimationFrame
-      if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
-        const targetTime = newProgress * videoRef.current.duration;
+      if (videoRef.current && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+        const targetTime = getTargetVideoTime(newProgress, videoRef.current.duration);
         const startTime = videoRef.current.currentTime;
         const duration = 2000; // 2 seconds smooth transition
         const startTimestamp = performance.now();
@@ -61,10 +67,10 @@ export const TreeGrowth = React.memo(({ totalDuration, isDistracted = false, isS
     };
   }, [totalSessionSeconds, isSessionCompleted]);
 
-  // Initial sync on load
+  // Initial sync on load - ensure seedling is visible immediately
   const handleVideoLoaded = () => {
-    if (videoRef.current && Number.isFinite(videoRef.current.duration)) {
-      videoRef.current.currentTime = progressRef.current * videoRef.current.duration;
+    if (videoRef.current && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+      videoRef.current.currentTime = getTargetVideoTime(progressRef.current, videoRef.current.duration);
     }
   };
 
@@ -92,7 +98,9 @@ export const TreeGrowth = React.memo(({ totalDuration, isDistracted = false, isS
           src="/tree_growth.mp4"
           muted
           playsInline
+          preload="auto"
           onLoadedMetadata={handleVideoLoaded}
+          onCanPlay={handleVideoLoaded}
           onError={handleError}
           // Constant filters for stability with smooth CSS transitions
           className="w-full h-full object-cover invert hue-rotate-180 contrast-125 brightness-90 transition-all duration-1000 ease-in-out"

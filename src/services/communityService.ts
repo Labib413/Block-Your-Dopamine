@@ -33,6 +33,11 @@ export interface CommunityMember {
   focusStartedAt?: string;
   badges: string[];
   institution?: string;
+  class?: string;
+  classGroup?: string;
+  subject?: string;
+  subjectGroup?: string;
+  group?: string;
   year?: string;
   rank?: number;
   updatedAt?: string;
@@ -357,7 +362,9 @@ export const INITIAL_MEMBERS: CommunityMember[] = [
     currentTask: "Advanced Physics Chapter 4 - Thermodynamics",
     badges: ["f1", "f2", "f3", "f4", "h1", "h3"],
     institution: "BUET",
-    year: "HSC 2025"
+    class: "Undergraduate (1st Year)",
+    subject: "Computer Science & Engineering",
+    year: "Batch 2024"
   },
   {
     id: "user_top_2",
@@ -372,6 +379,8 @@ export const INITIAL_MEMBERS: CommunityMember[] = [
     currentTask: "Monk Mode 4h Sprint - Organic Chemistry",
     badges: ["f1", "f2", "f5", "h2"],
     institution: "Notre Dame College",
+    class: "Class 12 / HSC",
+    subject: "Science (Engineering Prep)",
     year: "HSC 2026"
   },
   {
@@ -385,7 +394,9 @@ export const INITIAL_MEMBERS: CommunityMember[] = [
     detoxScore: 96,
     status: "idle",
     badges: ["f1", "f3", "h1", "h4"],
-    institution: "Viqarunnisa Noon",
+    institution: "Viqarunnisa Noon School & College",
+    class: "Class 12 / HSC",
+    subject: "Science (Pre-Medical)",
     year: "HSC 2025"
   },
   {
@@ -401,6 +412,8 @@ export const INITIAL_MEMBERS: CommunityMember[] = [
     currentTask: "Calculus Deep Flow Session",
     badges: ["f1", "f2", "h2"],
     institution: "Dhaka College",
+    class: "Class 12 / HSC",
+    subject: "Science (Higher Math)",
     year: "HSC 2026"
   },
   {
@@ -415,6 +428,8 @@ export const INITIAL_MEMBERS: CommunityMember[] = [
     status: "break",
     badges: ["f1", "h1"],
     institution: "Holy Cross College",
+    class: "Class 11",
+    subject: "Science",
     year: "HSC 2025"
   }
 ];

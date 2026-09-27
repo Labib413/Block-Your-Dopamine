@@ -925,8 +925,8 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
                     </thead>
                     <tbody className="divide-y divide-white/[0.04]">
                       {sessions && sessions.length > 0 ? (
-                        sessions.map((session: any) => (
-                          <tr key={session?.id} className="hover:bg-white/[0.02] transition-colors group">
+                        sessions.map((session: any, idx: number) => (
+                          <tr key={session?.id || `session-${session?.created_at || idx}-${idx}`} className="hover:bg-white/[0.02] transition-colors group">
                             <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex flex-col gap-0.5">
                                 <span className="text-sm font-medium text-white/90">

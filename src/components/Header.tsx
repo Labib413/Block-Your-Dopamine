@@ -241,8 +241,8 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
                 </div>
               ) : (
                 <div className="divide-y divide-white/5">
-                  {(notifications || []).slice(0, 5).map((notif) => (
-                    <div key={notif.id} className="p-4 hover:bg-white/5 transition-colors group relative">
+                  {(notifications || []).slice(0, 5).map((notif, idx) => (
+                    <div key={notif?.id || `notif-${idx}`} className="p-4 hover:bg-white/5 transition-colors group relative">
                       <div className="flex justify-between items-start mb-1">
                         <h4 className="text-xs font-bold text-white pr-6">{notif.title}</h4>
                         <span className="text-[9px] font-mono text-white/30">{notif.time}</span>

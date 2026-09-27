@@ -35,7 +35,10 @@ import {
   Dices,
   RefreshCw,
   LayoutGrid,
-  List
+  List,
+  GraduationCap,
+  Calendar,
+  Layers
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useApp } from "../context/AppContext";
@@ -107,8 +110,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     const icons: GuildEmblem["icon"][] = ["dragon", "swords", "shield", "crown", "phoenix", "flame", "atom", "caduceus", "skull", "wolf", "lightning"];
     const randomIcon = icons[Math.floor(Math.random() * icons.length)];
     const randomPalette = EMBLEM_PALETTES[Math.floor(Math.random() * EMBLEM_PALETTES.length)];
-    const shapes: GuildEmblem["shape"][] = ["shield", "hexagon", "diamond", "rounded"];
-    const randomShape = shapes[Math.floor(Math.random() * shapes.length)];
+    const shapes: GuildEmblem["shape"][] = ["rounded"];
+    const randomShape = shapes[0];
     
     setCustomEmblem({
       icon: randomIcon,
@@ -212,8 +215,10 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     status: isFocusing ? "focusing" : "idle",
     currentTask: isFocusing ? "Deep Focus Session in Progress" : "",
     badges: equippedBadges && equippedBadges.length > 0 ? equippedBadges : ["f1", "h1"],
-    institution: profile?.institution || "BYD Academy",
-    year: profile?.year || "HSC 2026"
+    institution: profile?.institution || "",
+    class: profile?.class || (profile as any)?.classGroup || "",
+    subject: profile?.subjectGroup || (profile as any)?.subject || "",
+    year: profile?.year || ""
   }), [user, currentUsername, currentFullName, profile, level, xp, streak, myNetMinutes, detoxPercent, isFocusing, equippedBadges]);
 
   // Sync current user presence and live focus status to Firestore
@@ -940,7 +945,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
               return (
                 <GlassCard 
-                  key={member.id}
+                  key={member?.id || member?.username || `member-top-${idx}`}
                   onClick={() => setSelectedMember(member)}
                   className={cn(
                     "cursor-pointer relative flex flex-col items-center text-center p-6 transition-all duration-300",
@@ -1007,11 +1012,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
             </div>
 
             <div className="divide-y divide-white/[0.04]">
-              {filteredMembers.map((member) => {
+              {filteredMembers.map((member, idx) => {
                 const isMe = member.username === currentUsername;
                 return (
                   <div
-                    key={member.id}
+                    key={member?.id || member?.username || `member-row-${idx}`}
                     onClick={() => setSelectedMember(member)}
                     className={cn(
                       "p-4 grid grid-cols-12 items-center cursor-pointer transition-colors duration-200 hover:bg-white/[0.04]",
@@ -1043,16 +1048,9 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                           {member?.fullName || member?.username || "Warrior"}
                           {isMe && <span className="text-[9px] font-black text-[#39FF14] uppercase">(You)</span>}
                         </span>
-                        <div className="flex items-center gap-1.5 flex-wrap truncate">
-                          <span className="text-xs text-white/40 truncate font-mono">
-                            @{member?.username || "warrior"} {member?.institution ? `• ${member.institution}` : ""}
-                          </span>
-                          {(member?.uniqueId || (member?.id && !member.id.startsWith("user_top_"))) && (
-                            <span className="text-[9px] font-mono font-bold text-[#39FF14] bg-[#39FF14]/10 px-1.5 py-0.2 rounded border border-[#39FF14]/25 shrink-0 select-all">
-                              UID: {member?.uniqueId || member?.id}
-                            </span>
-                          )}
-                        </div>
+                        <span className="text-xs text-white/40 truncate font-mono">
+                          @{member?.username || "warrior"}
+                        </span>
                       </div>
                     </div>
 
@@ -1110,8 +1108,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {livePods.map((member) => (
-              <GlassCard key={member.id} className="p-5 flex flex-col justify-between space-y-4 border-[#FF7A00]/50 bg-[#FF7A00]/[0.04] shadow-[0_0_20px_rgba(255,122,0,0.15)] ring-1 ring-[#FF7A00]/25">
+            {livePods.map((member, idx) => (
+              <GlassCard key={member?.id || member?.username || `live-pod-${idx}`} className="p-5 flex flex-col justify-between space-y-4 border-[#FF7A00]/50 bg-[#FF7A00]/[0.04] shadow-[0_0_20px_rgba(255,122,0,0.15)] ring-1 ring-[#FF7A00]/25">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex items-center gap-3">
                     <div className="w-11 h-11 rounded-2xl bg-[#FF7A00]/15 border-2 border-[#FF7A00] flex items-center justify-center overflow-hidden shrink-0 relative shadow-[0_0_12px_rgba(255,122,0,0.4)]">
@@ -1196,8 +1194,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
           {/* Posts Feed */}
           <div className="space-y-4">
-            {posts.map((post) => (
-              <GlassCard key={post.id} className="p-6 space-y-4">
+            {posts.map((post, idx) => (
+              <GlassCard key={post?.id || `post-${idx}`} className="p-6 space-y-4">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
@@ -1288,8 +1286,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       {activeTab === "Challenges" && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {challenges.map((challenge) => (
-              <GlassCard key={challenge.id} className="p-6 flex flex-col justify-between space-y-6">
+            {challenges.map((challenge, idx) => (
+              <GlassCard key={challenge?.id || `challenge-${idx}`} className="p-6 flex flex-col justify-between space-y-6">
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-[10px] font-bold uppercase tracking-wider text-white/50">
@@ -1502,11 +1500,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
             {/* Guilds Container: Grid or List Mode */}
             {guildViewMode === "grid" ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {filteredGuilds.map((guild) => {
+                {filteredGuilds.map((guild, idx) => {
                   const isJoined = isGuildJoinedByMe(guild);
                   return (
                     <GlassCard 
-                      key={guild.id} 
+                      key={guild?.id || `guild-grid-${idx}`} 
                       onClick={() => {
                         if (!isJoined) {
                           handleToggleGuild(guild.id);
@@ -1603,11 +1601,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               </div>
             ) : (
               <div className="space-y-3">
-                {filteredGuilds.map((guild) => {
+                {filteredGuilds.map((guild, idx) => {
                   const isJoined = isGuildJoinedByMe(guild);
                   return (
                     <GlassCard 
-                      key={guild.id} 
+                      key={guild?.id || `guild-list-${idx}`} 
                       onClick={() => {
                         if (!isJoined) {
                           handleToggleGuild(guild.id);
@@ -1976,9 +1974,60 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                       </span>
                     </div>
                   )}
-                  {selectedMember?.institution && (
-                    <p className="text-[11px] text-[#39FF14] font-medium mt-0.5">{selectedMember.institution} • {selectedMember.year || "HSC"}</p>
-                  )}
+                </div>
+              </div>
+
+              {/* Academic Credentials Card */}
+              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] space-y-3">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-white/40 flex items-center gap-1.5">
+                  <GraduationCap className="w-3.5 h-3.5 text-[#39FF14]" />
+                  <span>Academic Profile</span>
+                </span>
+
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  {/* Institution */}
+                  <div className="col-span-2 p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
+                    <GraduationCap className="w-4 h-4 text-[#39FF14] shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[9px] uppercase font-bold text-white/40 block">Institution</span>
+                      <span className="text-xs font-semibold text-white/90 leading-snug block">
+                        {selectedMember?.institution || "Not Specified"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Class / Grade */}
+                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
+                    <Layers className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[9px] uppercase font-bold text-white/40 block">Class / Grade</span>
+                      <span className="text-xs font-semibold text-white/90 leading-snug block">
+                        {selectedMember?.class || selectedMember?.classGroup || "Not Specified"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Target Year / Batch */}
+                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
+                    <Calendar className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[9px] uppercase font-bold text-white/40 block">Year / Batch</span>
+                      <span className="text-xs font-semibold text-white/90 leading-snug block">
+                        {selectedMember?.year || "Not Specified"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Subject / Group */}
+                  <div className="col-span-2 p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
+                    <BookOpen className="w-4 h-4 text-[#FF007F] shrink-0 mt-0.5" />
+                    <div>
+                      <span className="text-[9px] uppercase font-bold text-white/40 block">Subject / Group</span>
+                      <span className="text-xs font-semibold text-white/90 leading-snug block">
+                        {selectedMember?.subject || selectedMember?.subjectGroup || selectedMember?.group || "General Science"}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2001,11 +2050,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               <div className="space-y-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-white/40 block">Equipped Badges</span>
                 <div className="flex flex-wrap gap-2">
-                  {(selectedMember?.badges || []).map((badgeId) => {
+                  {(selectedMember?.badges || []).map((badgeId, idx) => {
                     const badge = BADGES.find(b => b.id === badgeId);
                     return (
                       <div
-                        key={badgeId}
+                        key={`badge-${badgeId || 'item'}-${idx}`}
                         className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs font-semibold text-white"
                       >
                         <Award className="w-3.5 h-3.5 text-[#39FF14]" />

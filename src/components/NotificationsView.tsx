@@ -91,9 +91,9 @@ export function NotificationsView({ onBack }: NotificationsViewProps) {
             </div>
           ) : (
             <div className="space-y-4">
-              {notifications?.map((notif) => (
+              {notifications?.map((notif, idx) => (
                 <div 
-                  key={notif.id} 
+                  key={notif?.id || `notif-${idx}`} 
                   className="flex items-start justify-between p-5 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors group"
                 >
                   <div className="flex gap-4">

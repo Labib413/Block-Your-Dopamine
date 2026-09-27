@@ -713,13 +713,13 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
         <div className="space-y-6">
           {/* Virtual Desks Grid (Compact 4-6 columns matching user reference) */}
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2.5 sm:gap-3.5 bg-[#0a0a0a]/90 border border-white/[0.06] p-3.5 sm:p-5 rounded-2xl backdrop-blur-xl relative overflow-hidden">
-            {desks.map((desk) => {
+            {desks.map((desk, idx) => {
               const isDeskActive = desk.isFocusing;
               const deskCheers = floatingCheers.filter(c => c.deskId === desk.id);
 
               return (
                 <motion.div
-                  key={desk.id}
+                  key={desk?.id || desk?.userId || `desk-${desk?.username || ''}-${idx}`}
                   whileHover={{ scale: 1.03 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setSelectedDesk(desk)}
@@ -732,9 +732,9 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 >
                   {/* Floating Cheer Particles */}
                   <AnimatePresence>
-                    {deskCheers.map(c => (
+                    {deskCheers.map((c, cheerIdx) => (
                       <motion.div
-                        key={c.id}
+                        key={c?.id || `cheer-${cheerIdx}`}
                         initial={{ opacity: 1, y: 0, scale: 0.8 }}
                         animate={{ opacity: 0, y: -35, scale: 1.2 }}
                         exit={{ opacity: 0 }}
@@ -856,7 +856,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           <div className="space-y-2.5">
             {[...desks].sort((a, b) => b.focusSecondsToday - a.focusSecondsToday).map((member, idx) => (
               <GlassCard 
-                key={member.id}
+                key={member?.id || member?.userId || `champ-${member?.username || ''}-${idx}`}
                 className={cn(
                   "p-4 flex items-center justify-between gap-4 transition-all duration-300",
                   member.isFocusing 
@@ -975,8 +975,8 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           </GlassCard>
 
           <div className="space-y-3">
-            {guildCheers.map((cheer) => (
-              <GlassCard key={cheer.id} className="p-4 flex items-start gap-4">
+            {guildCheers.map((cheer, idx) => (
+              <GlassCard key={cheer?.id || `cheer-${idx}`} className="p-4 flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-[#FF8C00]/10 border border-[#FF8C00]/30 flex items-center justify-center text-lg shrink-0">
                   {cheer.emoji}
                 </div>
@@ -1219,14 +1219,14 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
 
           {/* Member Contribution Roster Cards */}
           <div className="space-y-3">
-            {filteredManagementDesks.map((member) => {
+            {filteredManagementDesks.map((member, idx) => {
               const isLeader = member.role === 'leader';
               const isOfficer = member.role === 'officer';
               const isIdle = member.focusSecondsToday === 0 && !member.isFocusing;
 
               return (
                 <GlassCard
-                  key={member.id}
+                  key={member?.id || member?.userId || `roster-${member?.username || ''}-${idx}`}
                   className={cn(
                     "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-200",
                     member.isFocusing 
