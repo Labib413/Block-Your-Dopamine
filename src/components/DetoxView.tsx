@@ -51,24 +51,24 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
     syncData
   } = useApp();
 
-  const activeSubjectId = academicSettings.focusSubjectId;
-  const activeSubjectName = activeSubjectId ? HSC_SUBJECT_NAMES[activeSubjectId] : null;
+  const activeSubjectId = academicSettings?.focusSubjectId || null;
+  const activeSubjectName = activeSubjectId && HSC_SUBJECT_NAMES ? HSC_SUBJECT_NAMES[activeSubjectId] : null;
 
   // Aggregate resources for the active subject
   const subjectResources = useMemo(() => {
-    if (!activeSubjectId) return [];
-    const chapters = academicChapters.filter(c => c.subject_id === activeSubjectId);
-    return chapters.flatMap(c => c.resources || []);
+    if (!activeSubjectId || !Array.isArray(academicChapters)) return [];
+    const chapters = academicChapters.filter(c => c && c.subject_id === activeSubjectId);
+    return chapters.flatMap(c => (Array.isArray(c?.resources) ? c.resources : []));
   }, [activeSubjectId, academicChapters]);
 
   // Combine global resources and subject-specific resources
   const allResources = useMemo(() => {
-    const formattedSubjectRes = subjectResources.map(r => ({
+    const formattedSubjectRes = (subjectResources || []).map(r => ({
       ...r,
-      type: (r.url.includes('youtube.com') || r.url.includes('youtu.be')) ? 'YOUTUBE' : 'OTHERS'
+      type: (r?.url && (r.url.includes('youtube.com') || r.url.includes('youtu.be'))) ? 'YOUTUBE' : (r?.type || 'OTHERS')
     } as Resource));
     
-    return [...resources, ...formattedSubjectRes];
+    return [...(Array.isArray(resources) ? resources : []), ...formattedSubjectRes];
   }, [resources, subjectResources]);
 
   const getLocalDateString = (date: Date) => {
@@ -81,11 +81,13 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
 
   // Fetch latest focus data on mount
   useEffect(() => {
-    syncData();
+    if (typeof syncData === 'function') {
+      syncData();
+    }
   }, [syncData]);
 
-  const completedHours = contextTotalNetFocusTime / 3600;
-  const goalPercentage = dailyGoalHours > 0 ? Math.min(100, (completedHours / dailyGoalHours) * 100) : 0;
+  const completedHours = (contextTotalNetFocusTime || 0) / 3600;
+  const goalPercentage = (dailyGoalHours || 0) > 0 ? Math.min(100, (completedHours / dailyGoalHours) * 100) : 0;
 
   const treeStageName = goalPercentage >= 100 
     ? "Ancient Cyber Oak" 

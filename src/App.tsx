@@ -157,7 +157,9 @@ function AppWorkspace() {
         {currentView === "Dashboard" ? (
           <Dashboard />
         ) : currentView === "Detox" ? (
-          <DetoxView initialTab={detoxInitialTab} onBack={() => handleNavigate("Dashboard")} />
+          <ErrorBoundary>
+            <DetoxView initialTab={detoxInitialTab} onBack={() => handleNavigate("Dashboard")} />
+          </ErrorBoundary>
         ) : currentView === "Personal" ? (
           <div className="flex-1 overflow-y-auto scrollbar-hide">
             <PersonalPanel onShowBadges={() => setShowBadges(true)} />
