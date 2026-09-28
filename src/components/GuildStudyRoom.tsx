@@ -418,7 +418,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
         targetDesk.userId
       );
 
-      setActionNotice(`@${targetDesk.username} was removed from the guild.`);
+      setActionNotice(`${targetDesk.username} was removed from the guild.`);
       setTimeout(() => setActionNotice(null), 3500);
     } catch (err) {
       console.error("[GuildStudyRoom] Failed to kick member:", err);
@@ -433,7 +433,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
       
       const targetDesk = desks.find(d => d.id === memberDeskId);
       const roleName = targetRole === 'officer' ? 'Officer / Co-Leader ⚔️' : 'Member 🛡️';
-      setActionNotice(`Rank updated: @${targetDesk?.username || 'Warrior'} is now ${roleName}`);
+      setActionNotice(`Rank updated: ${targetDesk?.username || 'Warrior'} is now ${roleName}`);
       setTimeout(() => setActionNotice(null), 3500);
     } catch (err) {
       console.error("[GuildStudyRoom] Failed to update member role:", err);
@@ -893,7 +893,6 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                       )}>
                         {member.fullName}
                       </span>
-                      <span className="text-xs text-white/40 font-mono">@{member.username}</span>
                       {member.isFocusing && (
                         <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse font-mono shadow-[0_0_10px_rgba(255,122,0,0.3)]">
                           <Flame className="w-3 h-3 fill-current" />
@@ -982,7 +981,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-white font-mono">@{cheer.sender}</span>
+                    <span className="text-xs font-bold text-white font-mono">{cheer.sender}</span>
                     <span className="text-[10px] text-white/40">{cheer.time}</span>
                   </div>
                   <p className="text-xs text-white/70 mt-1 font-sans leading-relaxed">{cheer.text}</p>
@@ -1268,7 +1267,6 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                         )}>
                           {member.fullName}
                         </span>
-                        <span className="text-xs text-white/40 font-mono">@{member.username}</span>
                         
                         {/* Role Badge */}
                         <span className={cn(
@@ -1492,7 +1490,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
               </div>
 
               <p className="text-xs text-white/70 leading-relaxed font-sans">
-                You are about to kick <span className="text-white font-bold">{memberToKick.fullName}</span> (<span className="text-red-400 font-mono">@{memberToKick.username}</span>) from <span className="text-white font-semibold">[{guild.tag}] {guild.name}</span>. Their study desk will be removed from the virtual room.
+                You are about to kick <span className="text-white font-bold">{memberToKick.fullName}</span> from <span className="text-white font-semibold">[{guild.tag}] {guild.name}</span>. Their study desk will be removed from the virtual room.
               </p>
 
               <div>
@@ -1581,7 +1579,6 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-white/40 font-mono">@{selectedDesk.username}</p>
                   <p className="text-[11px] text-[#39FF14] font-medium mt-0.5">Studying: {selectedDesk.currentSubject}</p>
                 </div>
               </div>
@@ -1646,7 +1643,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   ) : (
                     <div className="space-y-2">
                       <p className="text-[11px] text-white/70">
-                        Are you sure you want to kick <span className="text-white font-bold">@{selectedDesk.username}</span>? Their desk will be immediately removed from the study room.
+                        Are you sure you want to kick <span className="text-white font-bold">{selectedDesk.fullName || selectedDesk.username}</span>? Their desk will be immediately removed from the study room.
                       </p>
                       <div className="flex items-center gap-2">
                         <button

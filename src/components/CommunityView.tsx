@@ -985,7 +985,6 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                       <span className="text-[10px] text-[#39FF14] font-black uppercase tracking-wider">(You)</span>
                     )}
                   </h3>
-                  <span className="text-xs text-white/40 font-mono">@{member?.username || "warrior"}</span>
 
                   <div className="mt-4 grid grid-cols-2 gap-2 w-full pt-4 border-t border-white/5">
                     <div className="p-2 rounded-xl bg-white/5 border border-white/5 flex flex-col">
@@ -1049,9 +1048,6 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                         <span className="text-sm font-bold text-white truncate flex items-center gap-1.5">
                           {member?.fullName || member?.username || "Warrior"}
                           {isMe && <span className="text-[9px] font-black text-[#39FF14] uppercase">(You)</span>}
-                        </span>
-                        <span className="text-xs text-white/40 truncate font-mono">
-                          @{member?.username || "warrior"}
                         </span>
                       </div>
                     </div>
@@ -1124,7 +1120,6 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-[#FF7A00] drop-shadow-[0_0_5px_rgba(255,122,0,0.5)]">{member?.fullName || member?.username || "Warrior"}</h4>
-                      <span className="text-[11px] text-white/40 font-mono">@{member?.username || "warrior"}</span>
                     </div>
                   </div>
 
@@ -1209,7 +1204,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-white">{post?.fullName || post?.username || "Warrior"}</h4>
-                      <span className="text-xs text-white/40 font-mono">@{post?.username || "warrior"} • {post?.timestamp || "Just now"}</span>
+                      <span className="text-xs text-white/40 font-mono">{post?.timestamp || "Just now"}</span>
                     </div>
                   </div>
 
@@ -1968,7 +1963,6 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                 </div>
                 <div>
                   <h3 className="text-lg font-bold text-white">{selectedMember?.fullName || selectedMember?.username || "Warrior"}</h3>
-                  <p className="text-xs text-white/40 font-mono">@{selectedMember?.username || "warrior"}</p>
                   {(selectedMember?.uniqueId || selectedMember?.id) && (
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] font-mono font-bold text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded border border-[#39FF14]/25 select-all">
@@ -1979,72 +1973,52 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                 </div>
               </div>
 
-              {/* Academic Credentials Card */}
-              <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/[0.08] space-y-3">
-                <span className="text-[10px] uppercase font-bold tracking-wider text-white/40 flex items-center gap-1.5">
-                  <GraduationCap className="w-3.5 h-3.5 text-[#39FF14]" />
-                  <span>Academic Profile</span>
-                </span>
+              {/* Minimal Academic Credentials Card */}
+              {(() => {
+                const isMe = selectedMember?.username === currentUsername || selectedMember?.id === user?.id;
+                const institution = selectedMember?.institution || (isMe ? profile?.institution : "") || "Not Specified";
+                const classVal = selectedMember?.class || selectedMember?.classGroup || (isMe ? (profile?.class || (profile as any)?.classGroup) : "") || "";
+                const yearVal = selectedMember?.year || (isMe ? profile?.year : "") || "";
+                const classYearFormatted = classVal && yearVal 
+                  ? `${classVal}-${yearVal}`
+                  : (classVal || yearVal || "HSC-2025");
+                const subjectVal = selectedMember?.subject || selectedMember?.subjectGroup || selectedMember?.group || (isMe ? (profile?.subjectGroup || (profile as any)?.subject) : "") || "Science";
 
-                <div className="grid grid-cols-2 gap-3 text-xs">
-                  {/* Institution */}
-                  <div className="col-span-2 p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
-                    <GraduationCap className="w-4 h-4 text-[#39FF14] shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-white/40 block">Institution</span>
-                      <span className="text-xs font-semibold text-white/90 leading-snug block">
-                        {selectedMember?.institution || "Not Specified"}
-                      </span>
+                return (
+                  <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.08] relative overflow-hidden group">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <GraduationCap className="w-3.5 h-3.5 text-[#39FF14]" />
+                      <span className="text-[10px] uppercase font-bold tracking-wider text-white/40">Academic Profile</span>
+                    </div>
+
+                    <div className="space-y-1 pl-1">
+                      <div className="text-sm font-semibold text-white leading-snug">
+                        {institution}
+                      </div>
+                      <div className="text-xs font-mono font-medium text-[#39FF14]/90">
+                        {classYearFormatted}
+                      </div>
+                      <div className="text-xs font-medium text-white/60">
+                        {subjectVal}
+                      </div>
                     </div>
                   </div>
+                );
+              })()}
 
-                  {/* Class / Grade */}
-                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
-                    <Layers className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-white/40 block">Class / Grade</span>
-                      <span className="text-xs font-semibold text-white/90 leading-snug block">
-                        {selectedMember?.class || selectedMember?.classGroup || "Not Specified"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Target Year / Batch */}
-                  <div className="p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
-                    <Calendar className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-white/40 block">Year / Batch</span>
-                      <span className="text-xs font-semibold text-white/90 leading-snug block">
-                        {selectedMember?.year || "Not Specified"}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Subject / Group */}
-                  <div className="col-span-2 p-2.5 rounded-xl bg-black/40 border border-white/5 flex items-start gap-2.5">
-                    <BookOpen className="w-4 h-4 text-[#FF007F] shrink-0 mt-0.5" />
-                    <div>
-                      <span className="text-[9px] uppercase font-bold text-white/40 block">Subject / Group</span>
-                      <span className="text-xs font-semibold text-white/90 leading-snug block">
-                        {selectedMember?.subject || selectedMember?.subjectGroup || selectedMember?.group || "General Science"}
-                      </span>
-                    </div>
-                  </div>
+              {/* Minimal Stats Row */}
+              <div className="grid grid-cols-3 gap-2.5">
+                <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
+                  <span className="text-[9px] uppercase font-bold text-white/35 block tracking-wider">Level</span>
+                  <span className="text-base font-bold text-white font-mono">{selectedMember?.level ?? 1}</span>
                 </div>
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 rounded-2xl bg-white/5 border border-white/5 text-center">
-                  <span className="text-[10px] uppercase font-bold text-white/40 block">Level</span>
-                  <span className="text-lg font-bold text-white font-mono">{selectedMember?.level ?? 1}</span>
+                <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
+                  <span className="text-[9px] uppercase font-bold text-white/35 block tracking-wider">Streak</span>
+                  <span className="text-base font-bold text-orange-400 font-mono">{selectedMember?.streak ?? 0}d</span>
                 </div>
-                <div className="p-3 rounded-2xl bg-white/5 border border-white/5 text-center">
-                  <span className="text-[10px] uppercase font-bold text-white/40 block">Streak</span>
-                  <span className="text-lg font-bold text-orange-400 font-mono">{selectedMember?.streak ?? 0}d</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-white/5 border border-white/5 text-center">
-                  <span className="text-[10px] uppercase font-bold text-white/40 block">Detox Score</span>
-                  <span className="text-lg font-bold text-[#39FF14] font-mono">{selectedMember?.detoxScore ?? 100}%</span>
+                <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
+                  <span className="text-[9px] uppercase font-bold text-white/35 block tracking-wider">Detox Score</span>
+                  <span className="text-base font-bold text-[#39FF14] font-mono">{selectedMember?.detoxScore ?? 100}%</span>
                 </div>
               </div>
 
@@ -2052,14 +2026,6 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-white/40 block">Equipped Badges</span>
-                  <span className="text-[10px] font-mono text-white/30">
-                    {(() => {
-                      const isMe = selectedMember?.username === currentUsername || selectedMember?.id === user?.id;
-                      const rawList = isMe ? (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? equippedBadges : selectedMember?.badges) : selectedMember?.badges;
-                      const count = (rawList || []).filter(Boolean).length;
-                      return `${count} Active`;
-                    })()}
-                  </span>
                 </div>
 
                 {(() => {
