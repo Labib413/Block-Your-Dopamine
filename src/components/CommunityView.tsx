@@ -45,6 +45,7 @@ import { useApp } from "../context/AppContext";
 import { GlassCard } from "./GlassCard";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
+import { TheSparkIcon } from "./icons/TheSparkIcon";
 import { GuildStudyRoom } from "./GuildStudyRoom";
 import { GuildEmblemBadge } from "./GuildEmblemBadge";
 import {
@@ -214,7 +215,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     detoxScore: detoxPercent || 92,
     status: isFocusing ? "focusing" : "idle",
     currentTask: isFocusing ? "Deep Focus Session in Progress" : "",
-    badges: equippedBadges && equippedBadges.length > 0 ? equippedBadges : ["f1", "h1"],
+    badges: (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? (equippedBadges.filter(Boolean) as string[]) : ["f1", "h1"]),
     institution: profile?.institution || "",
     class: profile?.class || (profile as any)?.classGroup || "",
     subject: profile?.subjectGroup || (profile as any)?.subject || "",
@@ -235,6 +236,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
       netFocusMinutes: myMemberEntry.netFocusMinutes,
       detoxScore: myMemberEntry.detoxScore,
       status: myMemberEntry.status,
+      badges: myMemberEntry.badges,
       isFocusing
     });
     if (lastSyncedRef.current !== serialized) {
@@ -2047,22 +2049,100 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               </div>
 
               {/* Earned Badges */}
-              <div className="space-y-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-white/40 block">Equipped Badges</span>
-                <div className="flex flex-wrap gap-2">
-                  {(selectedMember?.badges || []).map((badgeId, idx) => {
-                    const badge = BADGES.find(b => b.id === badgeId);
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-white/40 block">Equipped Badges</span>
+                  <span className="text-[10px] font-mono text-white/30">
+                    {(() => {
+                      const isMe = selectedMember?.username === currentUsername || selectedMember?.id === user?.id;
+                      const rawList = isMe ? (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? equippedBadges : selectedMember?.badges) : selectedMember?.badges;
+                      const count = (rawList || []).filter(Boolean).length;
+                      return `${count} Active`;
+                    })()}
+                  </span>
+                </div>
+
+                {(() => {
+                  const isMe = selectedMember?.username === currentUsername || selectedMember?.id === user?.id;
+                  const rawList = isMe 
+                    ? (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? (equippedBadges.filter(Boolean) as string[]) : (selectedMember?.badges || ["f1", "h1"]))
+                    : (selectedMember?.badges && selectedMember.badges.filter(Boolean).length > 0 ? selectedMember.badges.filter(Boolean) : ["f1", "h1"]);
+
+                  const validBadgeIds = (rawList || []).filter(Boolean);
+
+                  if (validBadgeIds.length === 0) {
                     return (
-                      <div
-                        key={`badge-${badgeId || 'item'}-${idx}`}
-                        className="px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2 text-xs font-semibold text-white"
-                      >
-                        <Award className="w-3.5 h-3.5 text-[#39FF14]" />
-                        <span>{badge?.title || badgeId}</span>
+                      <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5 text-center text-xs text-white/30 font-mono">
+                        No badges equipped currently
                       </div>
                     );
-                  })}
-                </div>
+                  }
+
+                  return (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {validBadgeIds.map((badgeId, idx) => {
+                        const badge = BADGES.find(b => b.id === badgeId);
+                        const badgeColor = badge?.color || "#39FF14";
+                        const BadgeIconComponent = badge?.icon;
+
+                        return (
+                          <div
+                            key={`equipped-badge-${badgeId}-${idx}`}
+                            className="p-3 rounded-2xl bg-white/[0.03] border border-white/[0.08] flex items-center gap-3 transition-all hover:border-white/20 group relative overflow-hidden shadow-sm"
+                          >
+                            {/* Ambient Subtle Glow */}
+                            <div 
+                              className="absolute -right-2 -bottom-2 w-12 h-12 rounded-full blur-xl opacity-20 pointer-events-none" 
+                              style={{ backgroundColor: badgeColor }} 
+                            />
+
+                            {/* Badge Icon Slot */}
+                            <div 
+                              className="w-9 h-9 rounded-xl flex items-center justify-center border relative shrink-0 transition-transform group-hover:scale-105"
+                              style={{
+                                backgroundColor: `${badgeColor}18`,
+                                borderColor: `${badgeColor}45`,
+                                boxShadow: `0 0 14px ${badgeColor}35`
+                              }}
+                            >
+                              {badgeId === 'f1' ? (
+                                <TheSparkIcon className="w-5 h-5 relative z-10 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)] text-emerald-400" />
+                              ) : typeof BadgeIconComponent === 'string' ? (
+                                <img 
+                                  src={BadgeIconComponent} 
+                                  alt={badge?.title || "Badge"}
+                                  className="w-5 h-5 relative z-10 object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" 
+                                  referrerPolicy="no-referrer"
+                                />
+                              ) : BadgeIconComponent ? (
+                                <BadgeIconComponent className="w-5 h-5 relative z-10 drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" style={{ color: badgeColor }} />
+                              ) : (
+                                <Award className="w-5 h-5 relative z-10" style={{ color: badgeColor }} />
+                              )}
+                            </div>
+
+                            {/* Badge Info */}
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-bold text-white group-hover:text-[#39FF14] transition-colors leading-snug truncate">
+                                {badge?.title || badgeId}
+                              </span>
+                              <span 
+                                className="text-[9px] font-mono font-bold uppercase tracking-wider mt-0.5 inline-block w-fit px-1.5 py-0.5 rounded"
+                                style={{ 
+                                  color: badgeColor, 
+                                  backgroundColor: `${badgeColor}18`,
+                                  borderColor: `${badgeColor}30` 
+                                }}
+                              >
+                                {badge?.rarity || badge?.category || "Special"}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
 
               <div className="pt-2">
