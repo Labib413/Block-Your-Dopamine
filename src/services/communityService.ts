@@ -1294,7 +1294,19 @@ export async function fetchMembersFromFirebase(): Promise<CommunityMember[]> {
         deleteDoc(doc(firestore, path, docSnap.id)).catch(() => {});
         return;
       }
-      members.push({ id: docSnap.id, ...(data as Omit<CommunityMember, "id">) });
+      const actualBadges = Array.isArray(data.equipped_badges)
+        ? data.equipped_badges.filter(Boolean)
+        : Array.isArray(data.equippedBadges)
+        ? data.equippedBadges.filter(Boolean)
+        : Array.isArray(data.badges)
+        ? data.badges.filter(Boolean)
+        : [];
+
+      members.push({
+        id: docSnap.id,
+        ...(data as Omit<CommunityMember, "id">),
+        badges: actualBadges
+      });
     });
 
     members.sort(compareCommunityMembers);
@@ -1326,7 +1338,19 @@ export function subscribeToCommunityMembers(
           deleteDoc(doc(firestore, path, docSnap.id)).catch(() => {});
           return;
         }
-        members.push({ id: docSnap.id, ...(data as Omit<CommunityMember, "id">) });
+        const actualBadges = Array.isArray(data.equipped_badges)
+          ? data.equipped_badges.filter(Boolean)
+          : Array.isArray(data.equippedBadges)
+          ? data.equippedBadges.filter(Boolean)
+          : Array.isArray(data.badges)
+          ? data.badges.filter(Boolean)
+          : [];
+
+        members.push({
+          id: docSnap.id,
+          ...(data as Omit<CommunityMember, "id">),
+          badges: actualBadges
+        });
       });
       members.sort(compareCommunityMembers);
       onUpdate(members);
@@ -1344,8 +1368,11 @@ export async function syncMemberPresenceToFirebase(member: CommunityMember): Pro
   const firestore = getFirestoreInstance();
   const path = `community_members/${member.id}`;
   try {
+    const validBadges = Array.isArray(member.badges) ? member.badges.filter(Boolean) : [];
     const sanitized = cleanFirestoreData({
       ...member,
+      badges: validBadges,
+      equipped_badges: validBadges,
       updatedAt: new Date().toISOString()
     });
     await setDoc(doc(firestore, "community_members", member.id), sanitized, { merge: true });
@@ -1387,7 +1414,13 @@ export async function searchUserByUidInFirebase(searchQuery: string): Promise<Co
         netFocusMinutes: Math.floor((u.totalNetFocusTime || 0) / 60) || 0,
         detoxScore: u.detoxPercent || 100,
         status: u.isFocusing ? "focusing" : "idle",
-        badges: u.equippedBadges || ["f1"],
+        badges: Array.isArray(u.equipped_badges) 
+          ? u.equipped_badges.filter(Boolean) 
+          : Array.isArray(u.equippedBadges) 
+          ? u.equippedBadges.filter(Boolean) 
+          : Array.isArray(u.badges) 
+          ? u.badges.filter(Boolean) 
+          : [],
         institution: u.profile?.institution || u.institution || "BYD Academy",
         year: u.profile?.year || u.year || "HSC"
       };
@@ -1414,7 +1447,13 @@ export async function searchUserByUidInFirebase(searchQuery: string): Promise<Co
             netFocusMinutes: Math.floor((u.totalNetFocusTime || 0) / 60) || 0,
             detoxScore: u.detoxPercent || 100,
             status: u.isFocusing ? "focusing" : "idle",
-            badges: u.equippedBadges || ["f1"],
+            badges: Array.isArray(u.equipped_badges) 
+              ? u.equipped_badges.filter(Boolean) 
+              : Array.isArray(u.equippedBadges) 
+              ? u.equippedBadges.filter(Boolean) 
+              : Array.isArray(u.badges) 
+              ? u.badges.filter(Boolean) 
+              : [],
             institution: u.profile?.institution || u.institution || "BYD Academy",
             year: u.profile?.year || u.year || "HSC"
           };

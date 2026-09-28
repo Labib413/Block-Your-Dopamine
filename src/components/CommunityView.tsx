@@ -45,6 +45,7 @@ import { useApp } from "../context/AppContext";
 import { GlassCard } from "./GlassCard";
 import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
+import { db, doc, onSnapshot } from "../firebase";
 import { TheSparkIcon } from "./icons/TheSparkIcon";
 import { GuildStudyRoom } from "./GuildStudyRoom";
 import { GuildEmblemBadge } from "./GuildEmblemBadge";
@@ -138,6 +139,48 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedMember, setSelectedMember] = useState<CommunityMember | null>(null);
+  const [liveSelectedMember, setLiveSelectedMember] = useState<CommunityMember | null>(null);
+
+  // Real-time Firestore sync for selected leaderboard profile
+  useEffect(() => {
+    if (!selectedMember?.id && !selectedMember?.username) {
+      setLiveSelectedMember(null);
+      return;
+    }
+
+    const memberDocId = selectedMember.id || `user_${selectedMember.username}`;
+
+    const unsub = onSnapshot(doc(db, "community_members", memberDocId), async (snap) => {
+      if (snap.exists()) {
+        const d = snap.data() as any;
+        const liveBadges = Array.isArray(d.equipped_badges) 
+          ? d.equipped_badges.filter(Boolean) 
+          : Array.isArray(d.equippedBadges)
+          ? d.equippedBadges.filter(Boolean)
+          : Array.isArray(d.badges) 
+          ? d.badges.filter(Boolean) 
+          : [];
+
+        setLiveSelectedMember(prev => ({
+          ...(prev || selectedMember),
+          ...d,
+          badges: liveBadges
+        }));
+      } else {
+        // Fallback: search by uniqueId or username in Firestore
+        try {
+          const lookedUp = await searchUserByUidInFirebase(selectedMember.uniqueId || selectedMember.id || selectedMember.username);
+          if (lookedUp) {
+            setLiveSelectedMember(lookedUp);
+          }
+        } catch {}
+      }
+    }, (err) => {
+      console.warn("[Community] live member snapshot error:", err);
+    });
+
+    return () => unsub();
+  }, [selectedMember?.id, selectedMember?.username, selectedMember?.uniqueId]);
 
   // 1. TanStack Query for Community Posts (Feed)
   const { data: posts = INITIAL_POSTS, isLoading: isPostsLoading } = useQuery<CommunityPost[]>({
@@ -215,7 +258,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
     detoxScore: detoxPercent || 92,
     status: isFocusing ? "focusing" : "idle",
     currentTask: isFocusing ? "Deep Focus Session in Progress" : "",
-    badges: (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? (equippedBadges.filter(Boolean) as string[]) : ["f1", "h1"]),
+    badges: (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? (equippedBadges.filter(Boolean) as string[]) : []),
     institution: profile?.institution || "",
     class: profile?.class || (profile as any)?.classGroup || "",
     subject: profile?.subjectGroup || (profile as any)?.subject || "",
@@ -1938,7 +1981,11 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
       {/* Member Profile Modal */}
       <AnimatePresence>
-        {selectedMember && (
+        {selectedMember && (() => {
+          const activeMember = liveSelectedMember || selectedMember;
+          const isMe = activeMember?.username === currentUsername || activeMember?.id === user?.id;
+
+          return (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -1955,18 +2002,18 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center overflow-hidden shrink-0">
-                  {selectedMember?.avatarUrl ? (
-                    <img src={selectedMember.avatarUrl} alt={selectedMember?.fullName || "Warrior"} className="w-full h-full object-cover" />
+                  {activeMember?.avatarUrl ? (
+                    <img src={activeMember.avatarUrl} alt={activeMember?.fullName || "Warrior"} className="w-full h-full object-cover" />
                   ) : (
-                    <span className="text-2xl font-bold text-white/70">{(selectedMember?.fullName || selectedMember?.username || "W").charAt(0)}</span>
+                    <span className="text-2xl font-bold text-white/70">{(activeMember?.fullName || activeMember?.username || "W").charAt(0)}</span>
                   )}
                 </div>
                 <div>
-                  <h3 className="text-lg font-bold text-white">{selectedMember?.fullName || selectedMember?.username || "Warrior"}</h3>
-                  {(selectedMember?.uniqueId || selectedMember?.id) && (
+                  <h3 className="text-lg font-bold text-white">{activeMember?.fullName || activeMember?.username || "Warrior"}</h3>
+                  {(activeMember?.uniqueId || activeMember?.id) && (
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-[10px] font-mono font-bold text-[#39FF14] bg-[#39FF14]/10 px-2 py-0.5 rounded border border-[#39FF14]/25 select-all">
-                        UID: {selectedMember.uniqueId || selectedMember.id}
+                        UID: {activeMember.uniqueId || activeMember.id}
                       </span>
                     </div>
                   )}
@@ -1975,14 +2022,13 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
               {/* Minimal Academic Credentials Card */}
               {(() => {
-                const isMe = selectedMember?.username === currentUsername || selectedMember?.id === user?.id;
-                const institution = selectedMember?.institution || (isMe ? profile?.institution : "") || "Not Specified";
-                const classVal = selectedMember?.class || selectedMember?.classGroup || (isMe ? (profile?.class || (profile as any)?.classGroup) : "") || "";
-                const yearVal = selectedMember?.year || (isMe ? profile?.year : "") || "";
+                const institution = activeMember?.institution || (isMe ? profile?.institution : "") || "Not Specified";
+                const classVal = activeMember?.class || activeMember?.classGroup || (isMe ? (profile?.class || (profile as any)?.classGroup) : "") || "";
+                const yearVal = activeMember?.year || (isMe ? profile?.year : "") || "";
                 const classYearFormatted = classVal && yearVal 
                   ? `${classVal}-${yearVal}`
                   : (classVal || yearVal || "HSC-2025");
-                const subjectVal = selectedMember?.subject || selectedMember?.subjectGroup || selectedMember?.group || (isMe ? (profile?.subjectGroup || (profile as any)?.subject) : "") || "Science";
+                const subjectVal = activeMember?.subject || activeMember?.subjectGroup || activeMember?.group || (isMe ? (profile?.subjectGroup || (profile as any)?.subject) : "") || "Science";
 
                 return (
                   <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/[0.08] relative overflow-hidden group">
@@ -2010,15 +2056,15 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               <div className="grid grid-cols-3 gap-2.5">
                 <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
                   <span className="text-[9px] uppercase font-bold text-white/35 block tracking-wider">Level</span>
-                  <span className="text-base font-bold text-white font-mono">{selectedMember?.level ?? 1}</span>
+                  <span className="text-base font-bold text-white font-mono">{activeMember?.level ?? 1}</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
                   <span className="text-[9px] uppercase font-bold text-white/35 block tracking-wider">Streak</span>
-                  <span className="text-base font-bold text-orange-400 font-mono">{selectedMember?.streak ?? 0}d</span>
+                  <span className="text-base font-bold text-orange-400 font-mono">{activeMember?.streak ?? 0}d</span>
                 </div>
                 <div className="p-2.5 rounded-xl bg-white/[0.02] border border-white/[0.06] text-center">
                   <span className="text-[9px] uppercase font-bold text-white/35 block tracking-wider">Detox Score</span>
-                  <span className="text-base font-bold text-[#39FF14] font-mono">{selectedMember?.detoxScore ?? 100}%</span>
+                  <span className="text-base font-bold text-[#39FF14] font-mono">{activeMember?.detoxScore ?? 100}%</span>
                 </div>
               </div>
 
@@ -2029,10 +2075,16 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                 </div>
 
                 {(() => {
-                  const isMe = selectedMember?.username === currentUsername || selectedMember?.id === user?.id;
-                  const rawList = isMe 
-                    ? (equippedBadges && equippedBadges.filter(Boolean).length > 0 ? (equippedBadges.filter(Boolean) as string[]) : (selectedMember?.badges || ["f1", "h1"]))
-                    : (selectedMember?.badges && selectedMember.badges.filter(Boolean).length > 0 ? selectedMember.badges.filter(Boolean) : ["f1", "h1"]);
+                  // Only show actual equipped badges synced from Firebase - NEVER fallback to dummy badges
+                  const rawList: string[] = isMe 
+                    ? (equippedBadges ? (equippedBadges.filter(Boolean) as string[]) : [])
+                    : Array.isArray(activeMember?.equipped_badges)
+                    ? (activeMember.equipped_badges.filter(Boolean) as string[])
+                    : Array.isArray(activeMember?.equippedBadges)
+                    ? (activeMember.equippedBadges.filter(Boolean) as string[])
+                    : Array.isArray(activeMember?.badges)
+                    ? (activeMember.badges.filter(Boolean) as string[])
+                    : [];
 
                   const validBadgeIds = (rawList || []).filter(Boolean);
 
@@ -2121,7 +2173,8 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
               </div>
             </motion.div>
           </div>
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       {/* Minimum Level Requirement Modal */}

@@ -223,6 +223,22 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
         cleanPayload.unlocked_badges = normalizedBadges;
       }
       await setDoc(userRef, cleanPayload, { merge: true });
+
+      // Automatically sync badge state to community_members for instant Leaderboard profile reflection
+      try {
+        const commRef = doc(db, 'community_members', userId);
+        const commPayload: Record<string, any> = {
+          updatedAt: new Date().toISOString()
+        };
+        if (cleanPayload.equipped_badges !== undefined && Array.isArray(cleanPayload.equipped_badges)) {
+          const validEquipped = cleanPayload.equipped_badges.filter(Boolean);
+          commPayload.equipped_badges = validEquipped;
+          commPayload.badges = validEquipped;
+        }
+        await setDoc(commRef, commPayload, { merge: true });
+      } catch (commErr) {
+        // Silent catch for community sync
+      }
       return;
     }
 
