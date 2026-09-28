@@ -87,19 +87,24 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
   }, [syncData]);
 
   const completedHours = (contextTotalNetFocusTime || 0) / 3600;
-  const goalPercentage = (dailyGoalHours || 0) > 0 ? Math.min(100, (completedHours / dailyGoalHours) * 100) : 0;
+  const goalPercentage = (dailyGoalHours || 0) > 0 ? Math.min(100, (completedHours / (dailyGoalHours || 1)) * 100) : 0;
+  const safeGoalPct = isNaN(goalPercentage) ? 0 : goalPercentage;
 
-  const treeStageName = goalPercentage >= 100 
+  const treeStageName = safeGoalPct >= 100 
     ? "Ancient Cyber Oak" 
-    : goalPercentage >= 75 
+    : safeGoalPct >= 75 
     ? "Flourishing Tree" 
-    : goalPercentage >= 50 
+    : safeGoalPct >= 50 
     ? "Young Tree" 
-    : goalPercentage >= 25 
+    : safeGoalPct >= 25 
     ? "Growing Sapling" 
     : "Seed & Sprout";
 
-  const fullTreesCount = (dailySessions || []).filter((s: any) => s?.is_productive || (s?.duration_minutes && s.duration_minutes >= 25)).length || (completedHours >= 1 ? Math.floor(completedHours) : (completedHours > 0 ? 1 : 0));
+  const fullTreesCount = typeof dailySessions === 'number'
+    ? dailySessions
+    : Array.isArray(dailySessions)
+    ? dailySessions.filter((s: any) => s?.is_productive || (s?.duration_minutes && s.duration_minutes >= 25)).length
+    : (completedHours >= 1 ? Math.floor(completedHours) : (completedHours > 0 ? 1 : 0));
 
   // Set Focus State
   const [timerDuration, setTimerDuration] = useState(25);
@@ -667,35 +672,39 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {allResources.map((res) => (
-                        <div key={res.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 group">
+                      {(allResources || []).filter(Boolean).map((res, index) => (
+                        <div key={res?.id || `res-${index}`} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/10 group">
                           <div className="flex items-center gap-3">
                             <div className="p-2 rounded-lg bg-white/5">
-                              {res.type === "YOUTUBE" && <Youtube className="w-4 h-4 text-red-500" />}
-                              {res.type === "PDF" && <FileText className="w-4 h-4 text-blue-500" />}
-                              {res.type === "IMAGE" && <ImageIcon className="w-4 h-4 text-purple-500" />}
-                              {res.type === "OTHERS" && <Globe className="w-4 h-4 text-emerald-500" />}
+                              {res?.type === "YOUTUBE" && <Youtube className="w-4 h-4 text-red-500" />}
+                              {res?.type === "PDF" && <FileText className="w-4 h-4 text-blue-500" />}
+                              {res?.type === "IMAGE" && <ImageIcon className="w-4 h-4 text-purple-500" />}
+                              {res?.type === "OTHERS" && <Globe className="w-4 h-4 text-emerald-500" />}
                             </div>
                             <div>
-                              <div className="text-sm font-medium text-white">{res.title}</div>
-                              <div className="text-[10px] text-white/40 truncate max-w-[150px]">{res.url}</div>
+                              <div className="text-sm font-medium text-white">{res?.title || "Untitled"}</div>
+                              <div className="text-[10px] text-white/40 truncate max-w-[150px]">{res?.url || ""}</div>
                             </div>
                           </div>
                           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <a 
-                              href={res.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="p-2 hover:text-neon-green transition-colors"
-                            >
-                              <ExternalLink className="w-4 h-4" />
-                            </a>
-                            <button 
-                              onClick={() => removeResource(res.id)}
-                              className="p-2 hover:text-red-500 transition-colors"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            {res?.url && (
+                              <a 
+                                href={res.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="p-2 hover:text-neon-green transition-colors"
+                              >
+                                <ExternalLink className="w-4 h-4" />
+                              </a>
+                            )}
+                            {res?.id && (
+                              <button 
+                                onClick={() => removeResource(res.id)}
+                                className="p-2 hover:text-red-500 transition-colors"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )}
                           </div>
                         </div>
                       ))}

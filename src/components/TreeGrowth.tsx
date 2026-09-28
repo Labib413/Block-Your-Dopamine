@@ -1,24 +1,51 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { AlertTriangle, VideoOff } from 'lucide-react';
+import { cn } from '../lib/utils';
 
 interface TreeGrowthProps {
-  totalDuration: number;
+  totalDuration?: number;
   isDistracted?: boolean;
-  isSessionCompleted: boolean;
+  isSessionCompleted?: boolean;
+  progressPercent?: number;
+  className?: string;
 }
 
-export const TreeGrowth = React.memo(({ totalDuration, isDistracted = false, isSessionCompleted }: TreeGrowthProps) => {
+export const TreeGrowth = React.memo(({ 
+  totalDuration = 25, 
+  isDistracted = false, 
+  isSessionCompleted = false,
+  progressPercent,
+  className
+}: TreeGrowthProps) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [videoError, setVideoError] = useState(false);
-  const progressRef = useRef(0);
+  const initialProgress = typeof progressPercent === 'number' ? Math.min(1, Math.max(0, progressPercent / 100)) : 0;
+  const progressRef = useRef(initialProgress);
   const animationRef = useRef<number | null>(null);
-  const [displayProgress, setDisplayProgress] = useState(0);
+  const [displayProgress, setDisplayProgress] = useState(initialProgress);
+
+  // Sync if progressPercent prop changes
+  useEffect(() => {
+    if (typeof progressPercent === 'number') {
+      const p = Math.min(1, Math.max(0, progressPercent / 100));
+      setDisplayProgress(p);
+      progressRef.current = p;
+      if (videoRef.current && Number.isFinite(videoRef.current.duration) && videoRef.current.duration > 0) {
+        try {
+          videoRef.current.currentTime = getTargetVideoTime(p, videoRef.current.duration);
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }, [progressPercent]);
 
   // Formula: Growth% = ((TotalSessionTime - RemainingTime) / TotalSessionTime) * 100
-  const totalSessionSeconds = totalDuration * 60;
+  const totalSessionSeconds = (totalDuration || 25) * 60;
 
   // Base time in video where seedling is visible (0.8s), scaling to video duration
   const getTargetVideoTime = (progress: number, duration: number) => {
+    if (!Number.isFinite(duration) || duration <= 0) return 0;
     const minTime = Math.min(0.8, duration * 0.05); // Initial visible seedling time
     return minTime + progress * Math.max(0, duration - minTime);
   };
@@ -80,7 +107,7 @@ export const TreeGrowth = React.memo(({ totalDuration, isDistracted = false, isS
 
   return (
     <div 
-      className="relative w-80 h-64 flex items-center justify-center overflow-hidden bg-[#050505]"
+      className={cn("relative w-80 h-64 flex items-center justify-center overflow-hidden bg-[#050505]", className)}
       style={{ 
         willChange: 'transform, opacity', 
         contain: 'strict',
