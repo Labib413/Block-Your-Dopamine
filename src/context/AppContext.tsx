@@ -437,36 +437,75 @@ const getDayDifference = (date1: string, date2: string) => {
 };
 
 export const sanitizeEquippedBadges = (raw: any): (string | null)[] => {
-  if (!Array.isArray(raw)) return [null, null, null];
-  const sanitized: (string | null)[] = [null, null, null];
-  for (let i = 0; i < 3; i++) {
-    const val = raw[i];
-    if (typeof val === 'string' && val.trim().length > 0) {
-      sanitized[i] = val.trim();
-    } else if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string') {
-      sanitized[i] = val[0].trim();
-    } else if (val && typeof val === 'object' && typeof val[0] === 'string') {
-      sanitized[i] = val[0].trim();
-    } else {
-      sanitized[i] = null;
+  if (!raw) return [null, null, null];
+  
+  // If it's a JSON string, parse it
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      if (raw.includes(',')) {
+        raw = raw.split(',').map(s => s.trim());
+      } else {
+        raw = [raw.trim()];
+      }
     }
   }
+
+  const sanitized: (string | null)[] = [null, null, null];
+
+  if (Array.isArray(raw)) {
+    for (let i = 0; i < 3; i++) {
+      const val = raw[i];
+      if (typeof val === 'string' && val.trim().length > 0 && val !== 'null' && val !== 'undefined') {
+        sanitized[i] = val.trim();
+      } else if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'string' && val[0].trim().length > 0) {
+        sanitized[i] = val[0].trim();
+      } else if (val && typeof val === 'object' && typeof val[0] === 'string' && val[0].trim().length > 0) {
+        sanitized[i] = val[0].trim();
+      } else {
+        sanitized[i] = null;
+      }
+    }
+  } else if (typeof raw === 'object' && raw !== null) {
+    for (let i = 0; i < 3; i++) {
+      const val = raw[i] ?? raw[String(i)] ?? raw[`slot_${i}`] ?? raw[`slot${i}`];
+      if (typeof val === 'string' && val.trim().length > 0 && val !== 'null' && val !== 'undefined') {
+        sanitized[i] = val.trim();
+      } else {
+        sanitized[i] = null;
+      }
+    }
+  }
+
   return sanitized;
 };
 
 export const sanitizeUnlockedBadges = (raw: any): string[] => {
+  if (!raw) return [];
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      if (raw.includes(',')) {
+        raw = raw.split(',').map(s => s.trim());
+      } else {
+        raw = [raw.trim()];
+      }
+    }
+  }
   if (!Array.isArray(raw)) return [];
   const result: string[] = [];
   raw.forEach(item => {
-    if (typeof item === 'string' && item.trim().length > 0) {
+    if (typeof item === 'string' && item.trim().length > 0 && item !== 'null' && item !== 'undefined') {
       result.push(item.trim());
     } else if (Array.isArray(item)) {
       item.forEach(sub => {
-        if (typeof sub === 'string' && sub.trim().length > 0) result.push(sub.trim());
+        if (typeof sub === 'string' && sub.trim().length > 0 && sub !== 'null' && sub !== 'undefined') result.push(sub.trim());
       });
     } else if (item && typeof item === 'object') {
       Object.values(item).forEach(sub => {
-        if (typeof sub === 'string' && sub.trim().length > 0) result.push(sub.trim());
+        if (typeof sub === 'string' && sub.trim().length > 0 && sub !== 'null' && sub !== 'undefined') result.push(sub.trim());
       });
     }
   });
@@ -482,6 +521,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let initialXP = 0;
     let initialLevel = 1;
     let initialTotalXP = 0;
+    let initialEquipped: (string | null)[] = [null, null, null];
+    let initialUnlocked: string[] = [];
     try {
       const savedXP = localStorage.getItem('byd_user_xp');
       const savedLevel = localStorage.getItem('byd_user_level');
@@ -489,6 +530,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (savedXP !== null) initialXP = Number(savedXP) || 0;
       if (savedLevel !== null) initialLevel = Math.max(1, Number(savedLevel) || 1);
       if (savedTotalXP !== null) initialTotalXP = Number(savedTotalXP) || 0;
+
+      const savedEquipped = localStorage.getItem('byd_equipped_badges');
+      if (savedEquipped) {
+        initialEquipped = sanitizeEquippedBadges(savedEquipped);
+      }
+      const savedUnlocked = localStorage.getItem('byd_unlocked_badges');
+      if (savedUnlocked) {
+        initialUnlocked = sanitizeUnlockedBadges(savedUnlocked);
+      }
     } catch {}
 
     return {
@@ -540,8 +590,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       user: null,
       profile: null,
       daysActive: 1,
-      equippedBadges: [null, null, null],
-      unlockedBadgeIds: [],
+      equippedBadges: initialEquipped,
+      unlockedBadgeIds: initialUnlocked,
       badgeHealth: {},
       lastActivityTimestamp: now.toISOString(),
       weeklyHistory: [],
@@ -1579,11 +1629,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       };
 
       const fetchProfile = async () => {
-        const local = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (local.data) return local;
-        const fsProfile = await fetchFirestoreDoc(userId);
-        if (fsProfile) return { data: fsProfile, error: null };
-        return local;
+        const [localRes, fsProfile] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', userId).single().catch(() => ({ data: null })),
+          fetchFirestoreDoc(userId).catch(() => null)
+        ]);
+        const local = localRes?.data || {};
+        const fs = fsProfile || {};
+        
+        // Smart merge: Firestore + Supabase (prefer whichever has the latest or more complete data)
+        const merged = {
+          ...fs,
+          ...local,
+          // Explicitly merge badge & stats fields so neither source accidentally blanks out the other
+          equipped_badges: fs.equipped_badges || fs.equippedBadges || local.equipped_badges || local.equippedBadges || null,
+          badges: fs.badges || fs.unlocked_badges || fs.unlockedBadgeIds || local.badges || local.unlocked_badges || null,
+          xp: Math.max(Number(local.xp || 0), Number(fs.xp || 0)),
+          level: Math.max(Number(local.level || 1), Number(fs.level || 1)),
+          total_xp: Math.max(Number(local.total_xp || 0), Number(fs.total_xp || 0)),
+        };
+        
+        return { data: (Object.keys(local).length > 0 || Object.keys(fs).length > 0) ? merged : null, error: null };
       };
 
       const fetchTasks = async () => {
@@ -1706,7 +1771,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
           next.gender = pd.gender || prev.gender;
 
           // Sync & sanitize unlocked & equipped badges from Firestore / Supabase database
-          const sanitizedEquipped = sanitizeEquippedBadges(pd.equipped_badges || pd.equippedBadges);
+          const rawEquipped = pd.equipped_badges ?? pd.equippedBadges;
+          let sanitizedEquipped = rawEquipped !== undefined ? sanitizeEquippedBadges(rawEquipped) : prev.equippedBadges;
+          // If remote had no equipped badges but local state/storage has them, preserve local
+          if (!sanitizedEquipped.some(Boolean) && prev.equippedBadges.some(Boolean)) {
+            sanitizedEquipped = prev.equippedBadges;
+          }
+
           const rawBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
           const sanitizedBadges = sanitizeUnlockedBadges(rawBadges);
           const combinedBadges = Array.from(new Set([
@@ -1717,6 +1788,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
           next.unlockedBadgeIds = combinedBadges;
           next.equippedBadges = sanitizedEquipped;
+
+          try {
+            localStorage.setItem('byd_equipped_badges', JSON.stringify(sanitizedEquipped));
+            localStorage.setItem('byd_unlocked_badges', JSON.stringify(combinedBadges));
+          } catch {}
 
           // XP, Level & Total XP Persistence from Firestore/Supabase
           const remoteXP = Number(pd.xp ?? pd.xp_points ?? 0);
@@ -2097,7 +2173,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onProfile: (pd) => {
         if (!pd) return;
         setState(prev => {
-          const sanitizedEquipped = sanitizeEquippedBadges(pd.equipped_badges || pd.equippedBadges);
+          const rawEquipped = pd.equipped_badges ?? pd.equippedBadges;
+          let sanitizedEquipped = rawEquipped !== undefined ? sanitizeEquippedBadges(rawEquipped) : prev.equippedBadges;
+          if (!sanitizedEquipped.some(Boolean) && prev.equippedBadges.some(Boolean)) {
+            sanitizedEquipped = prev.equippedBadges;
+          }
+
           const rawBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
           const sanitizedBadges = sanitizeUnlockedBadges(rawBadges);
           const combinedBadges = Array.from(new Set([
@@ -2105,6 +2186,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
             ...(prev.unlockedBadgeIds || []),
             ...sanitizedEquipped.filter(Boolean) as string[]
           ]));
+
+          try {
+            localStorage.setItem('byd_equipped_badges', JSON.stringify(sanitizedEquipped));
+            localStorage.setItem('byd_unlocked_badges', JSON.stringify(combinedBadges));
+          } catch {}
 
           return {
             ...prev,
@@ -3654,6 +3740,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
+      // Immediately cache to localStorage so it never disappears on refresh
+      try {
+        localStorage.setItem('byd_equipped_badges', JSON.stringify(newEquipped));
+      } catch {}
+
       if (prev.user) {
         addToSyncQueue({
           table: 'profiles',
@@ -3661,7 +3752,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: prev.user.id,
           data: { equipped_badges: newEquipped }
         });
-        syncItemToFirestore(prev.user.id, 'profiles', { equipped_badges: newEquipped }, 'update');
+        syncItemToFirestore(prev.user.id, 'profiles', { equipped_badges: newEquipped }, 'upsert');
       }
 
       return { ...prev, equippedBadges: newEquipped };
