@@ -3770,13 +3770,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
   }
 };
 
-  const equipBadge = (badgeId: string) => {
-    setState(prev => {
-      // Find the badge to get its category
+  const equipBadge = useCallback((badgeId: string) => {
+    try {
       const badge = BADGES.find(b => b.id === badgeId);
-      if (!badge) return prev;
+      if (!badge) return;
 
-      const newEquipped = [...prev.equippedBadges];
+      const currentEquipped = stateRef.current.equippedBadges || [null, null, null];
+      const newEquipped = [...currentEquipped];
       const currentIndex = newEquipped.indexOf(badgeId);
 
       // If already equipped, unequip it
@@ -3793,30 +3793,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Immediately cache to localStorage so it never disappears on refresh or app switch
+      // Immediately cache to localStorage
       try {
         localStorage.setItem('byd_equipped_badges', JSON.stringify(newEquipped));
       } catch {}
 
-      if (prev.user?.id) {
-        const uid = prev.user.id;
-        // Direct eager write to Firestore profiles/users doc
-        syncItemToFirestore(uid, 'profiles', { equipped_badges: newEquipped }, 'upsert');
-        
-        // Also update local Supabase profiles table
+      // Update state
+      setState(prev => ({ ...prev, equippedBadges: newEquipped }));
+
+      // Safe background cloud sync
+      const uid = stateRef.current.user?.id;
+      if (uid) {
+        syncItemToFirestore(uid, 'profiles', { equipped_badges: newEquipped }, 'upsert').catch(() => {});
         supabase.from('profiles').upsert({ id: uid, equipped_badges: newEquipped }).catch(() => {});
-
-        addToSyncQueue({
-          table: 'profiles',
-          type: 'update',
-          id: uid,
-          data: { equipped_badges: newEquipped }
-        });
       }
-
-      return { ...prev, equippedBadges: newEquipped };
-    });
-  };
+    } catch (err) {
+      console.error("[equipBadge] Error:", err);
+    }
+  }, []);
 
   const login = (fullName: string, email: string) => {
     // This is now handled by Supabase Auth in AuthModal

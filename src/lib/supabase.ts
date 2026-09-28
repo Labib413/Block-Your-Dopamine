@@ -267,6 +267,14 @@ class QueryBuilder {
   then(onfulfilled?: (value: any) => any, onrejected?: (reason: any) => any) {
     return Promise.resolve(this.execute()).then(onfulfilled, onrejected);
   }
+
+  catch(onrejected?: (reason: any) => any) {
+    return Promise.resolve(this.execute()).catch(onrejected);
+  }
+
+  finally(onfinally?: (() => void) | undefined | null) {
+    return Promise.resolve(this.execute()).finally(onfinally);
+  }
 }
 
 const authListeners = new Set<(event: string, session: any) => void>();
