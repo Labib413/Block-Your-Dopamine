@@ -201,20 +201,26 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     else if (table === 'macro_data') subcollection = 'macro_data';
     else if (table === 'profiles') {
       const userRef = doc(db, 'users', userId);
-      const cleanPayload = { ...data, userId };
-      if (cleanPayload.equipped_badges && Array.isArray(cleanPayload.equipped_badges)) {
-        cleanPayload.equipped_badges = [
-          (typeof cleanPayload.equipped_badges[0] === 'string' ? cleanPayload.equipped_badges[0] : (Array.isArray(cleanPayload.equipped_badges[0]) ? cleanPayload.equipped_badges[0][0] : null)) || null,
-          (typeof cleanPayload.equipped_badges[1] === 'string' ? cleanPayload.equipped_badges[1] : (Array.isArray(cleanPayload.equipped_badges[1]) ? cleanPayload.equipped_badges[1][0] : null)) || null,
-          (typeof cleanPayload.equipped_badges[2] === 'string' ? cleanPayload.equipped_badges[2] : (Array.isArray(cleanPayload.equipped_badges[2]) ? cleanPayload.equipped_badges[2][0] : null)) || null,
+      const cleanPayload = { ...data, userId, updatedAt: new Date().toISOString() };
+      const rawEquipped = cleanPayload.equipped_badges || cleanPayload.equippedBadges;
+      if (rawEquipped && Array.isArray(rawEquipped)) {
+        const sanitized = [
+          (typeof rawEquipped[0] === 'string' && rawEquipped[0].trim().length > 0 && rawEquipped[0] !== 'null' ? rawEquipped[0].trim() : (Array.isArray(rawEquipped[0]) ? rawEquipped[0][0] : null)) || null,
+          (typeof rawEquipped[1] === 'string' && rawEquipped[1].trim().length > 0 && rawEquipped[1] !== 'null' ? rawEquipped[1].trim() : (Array.isArray(rawEquipped[1]) ? rawEquipped[1][0] : null)) || null,
+          (typeof rawEquipped[2] === 'string' && rawEquipped[2].trim().length > 0 && rawEquipped[2] !== 'null' ? rawEquipped[2].trim() : (Array.isArray(rawEquipped[2]) ? rawEquipped[2][0] : null)) || null,
         ];
+        cleanPayload.equipped_badges = sanitized;
+        cleanPayload.equippedBadges = sanitized;
       }
-      if (cleanPayload.badges && Array.isArray(cleanPayload.badges)) {
-        cleanPayload.badges = Array.from(new Set(
-          cleanPayload.badges
+      const rawBadges = cleanPayload.badges || cleanPayload.unlocked_badges || cleanPayload.unlockedBadgeIds;
+      if (rawBadges && Array.isArray(rawBadges)) {
+        const normalizedBadges = Array.from(new Set(
+          rawBadges
             .flat(2)
-            .filter((b: any) => typeof b === 'string' && b.trim().length > 0)
+            .filter((b: any) => typeof b === 'string' && b.trim().length > 0 && b !== 'null')
         ));
+        cleanPayload.badges = normalizedBadges;
+        cleanPayload.unlocked_badges = normalizedBadges;
       }
       await setDoc(userRef, cleanPayload, { merge: true });
       return;

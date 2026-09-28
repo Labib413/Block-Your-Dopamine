@@ -1636,12 +1636,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const local = localRes?.data || {};
         const fs = fsProfile || {};
         
-        // Smart merge: Firestore + Supabase (prefer whichever has the latest or more complete data)
+        let localSavedEquipped: (string | null)[] = [null, null, null];
+        try {
+          const rawLocalEquipped = localStorage.getItem('byd_equipped_badges');
+          if (rawLocalEquipped) localSavedEquipped = sanitizeEquippedBadges(rawLocalEquipped);
+        } catch {}
+
+        const fsEquipped = fs.equipped_badges || fs.equippedBadges;
+        const localEquipped = local.equipped_badges || local.equippedBadges;
+
+        // Smart merge: Firestore + LocalStorage + Supabase (prefer whichever has non-empty equipped badges)
+        let resolvedEquipped: (string | null)[] = [null, null, null];
+        if (fsEquipped && sanitizeEquippedBadges(fsEquipped).some(Boolean)) {
+          resolvedEquipped = sanitizeEquippedBadges(fsEquipped);
+        } else if (localSavedEquipped.some(Boolean)) {
+          resolvedEquipped = localSavedEquipped;
+        } else if (localEquipped && sanitizeEquippedBadges(localEquipped).some(Boolean)) {
+          resolvedEquipped = sanitizeEquippedBadges(localEquipped);
+        }
+
         const merged = {
           ...fs,
           ...local,
           // Explicitly merge badge & stats fields so neither source accidentally blanks out the other
-          equipped_badges: fs.equipped_badges || fs.equippedBadges || local.equipped_badges || local.equippedBadges || null,
+          equipped_badges: resolvedEquipped,
           badges: fs.badges || fs.unlocked_badges || fs.unlockedBadgeIds || local.badges || local.unlocked_badges || null,
           xp: Math.max(Number(local.xp || 0), Number(fs.xp || 0)),
           level: Math.max(Number(local.level || 1), Number(fs.level || 1)),
@@ -1773,16 +1791,34 @@ export function AppProvider({ children }: { children: ReactNode }) {
           // Sync & sanitize unlocked & equipped badges from Firestore / Supabase database
           const rawEquipped = pd.equipped_badges ?? pd.equippedBadges;
           let sanitizedEquipped = rawEquipped !== undefined ? sanitizeEquippedBadges(rawEquipped) : prev.equippedBadges;
-          // If remote had no equipped badges but local state/storage has them, preserve local
-          if (!sanitizedEquipped.some(Boolean) && prev.equippedBadges.some(Boolean)) {
-            sanitizedEquipped = prev.equippedBadges;
+          
+          let localCachedEquipped: (string | null)[] = [null, null, null];
+          try {
+            const rawCache = localStorage.getItem('byd_equipped_badges');
+            if (rawCache) localCachedEquipped = sanitizeEquippedBadges(rawCache);
+          } catch {}
+
+          // If remote had no equipped badges but local state or localStorage has them, preserve local
+          if (!sanitizedEquipped.some(Boolean)) {
+            if (prev.equippedBadges.some(Boolean)) {
+              sanitizedEquipped = prev.equippedBadges;
+            } else if (localCachedEquipped.some(Boolean)) {
+              sanitizedEquipped = localCachedEquipped;
+            }
           }
+
+          let localCachedUnlocked: string[] = [];
+          try {
+            const rawUnl = localStorage.getItem('byd_unlocked_badges');
+            if (rawUnl) localCachedUnlocked = sanitizeUnlockedBadges(rawUnl);
+          } catch {}
 
           const rawBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
           const sanitizedBadges = sanitizeUnlockedBadges(rawBadges);
           const combinedBadges = Array.from(new Set([
             ...sanitizedBadges,
             ...(prev.unlockedBadgeIds || []),
+            ...localCachedUnlocked,
             ...sanitizedEquipped.filter(Boolean) as string[]
           ]));
 
@@ -2173,17 +2209,39 @@ export function AppProvider({ children }: { children: ReactNode }) {
       onProfile: (pd) => {
         if (!pd) return;
         setState(prev => {
+          let localCachedEquipped: (string | null)[] = [null, null, null];
+          try {
+            const rawCache = localStorage.getItem('byd_equipped_badges');
+            if (rawCache) localCachedEquipped = sanitizeEquippedBadges(rawCache);
+          } catch {}
+
           const rawEquipped = pd.equipped_badges ?? pd.equippedBadges;
           let sanitizedEquipped = rawEquipped !== undefined ? sanitizeEquippedBadges(rawEquipped) : prev.equippedBadges;
-          if (!sanitizedEquipped.some(Boolean) && prev.equippedBadges.some(Boolean)) {
-            sanitizedEquipped = prev.equippedBadges;
+          
+          // If remote had no equipped badges but local state or localStorage has them, preserve local
+          if (!sanitizedEquipped.some(Boolean)) {
+            if (prev.equippedBadges.some(Boolean)) {
+              sanitizedEquipped = prev.equippedBadges;
+            } else if (localCachedEquipped.some(Boolean)) {
+              sanitizedEquipped = localCachedEquipped;
+            }
+            if (sanitizedEquipped.some(Boolean) && uId) {
+              syncItemToFirestore(uId, 'profiles', { equipped_badges: sanitizedEquipped }, 'upsert');
+            }
           }
+
+          let localCachedUnlocked: string[] = [];
+          try {
+            const rawUnl = localStorage.getItem('byd_unlocked_badges');
+            if (rawUnl) localCachedUnlocked = sanitizeUnlockedBadges(rawUnl);
+          } catch {}
 
           const rawBadges = pd.badges || pd.unlocked_badges || pd.unlockedBadgeIds || pd.badges_unlocked;
           const sanitizedBadges = sanitizeUnlockedBadges(rawBadges);
           const combinedBadges = Array.from(new Set([
             ...sanitizedBadges,
             ...(prev.unlockedBadgeIds || []),
+            ...localCachedUnlocked,
             ...sanitizedEquipped.filter(Boolean) as string[]
           ]));
 
@@ -2610,11 +2668,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const uid = state.user.id;
       try {
         statsLastSyncTimeRef.current = Date.now();
-        // 1. Sync Profiles (XP, Level)
+        // 1. Sync Profiles (XP, Level, equipped_badges)
         await supabase.from('profiles').upsert({
            id: uid,
            xp: state.xp,
            level: state.level,
+           equipped_badges: state.equippedBadges,
            updated_at: new Date().toISOString()
         });
 
@@ -2759,22 +2818,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let newEquipped = [...prev.equippedBadges];
     let newHealth = { ...prev.badgeHealth };
 
-    // Only decrease health if a full day has passed without activity
+    // Update health metrics without un-equipping the user's loadout
     if (diffDays >= 1) {
-      prev.equippedBadges.forEach((id, index) => {
+      prev.equippedBadges.forEach((id) => {
         if (!id) return;
         const badge = BADGES.find(b => b.id === id);
         if (badge && (badge.category === 'Health' || badge.category === 'Focus')) {
           const currentHealth = prev.badgeHealth[id] ?? 100;
           const healthDecrease = (1 / 7) * 100;
-          const updatedHealth = Math.max(0, currentHealth - healthDecrease);
-          
+          const updatedHealth = Math.max(10, currentHealth - healthDecrease);
           newHealth[id] = updatedHealth;
-
-          if (updatedHealth <= 0) {
-            newUnlockedIds = newUnlockedIds.filter(bid => bid !== id);
-            newEquipped[index] = null;
-          }
         }
       });
     }
@@ -3740,19 +3793,25 @@ export function AppProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      // Immediately cache to localStorage so it never disappears on refresh
+      // Immediately cache to localStorage so it never disappears on refresh or app switch
       try {
         localStorage.setItem('byd_equipped_badges', JSON.stringify(newEquipped));
       } catch {}
 
-      if (prev.user) {
+      if (prev.user?.id) {
+        const uid = prev.user.id;
+        // Direct eager write to Firestore profiles/users doc
+        syncItemToFirestore(uid, 'profiles', { equipped_badges: newEquipped }, 'upsert');
+        
+        // Also update local Supabase profiles table
+        supabase.from('profiles').upsert({ id: uid, equipped_badges: newEquipped }).catch(() => {});
+
         addToSyncQueue({
           table: 'profiles',
           type: 'update',
-          id: prev.user.id,
+          id: uid,
           data: { equipped_badges: newEquipped }
         });
-        syncItemToFirestore(prev.user.id, 'profiles', { equipped_badges: newEquipped }, 'upsert');
       }
 
       return { ...prev, equippedBadges: newEquipped };
