@@ -1,0 +1,3 @@
+## 2026-05-17 - Optimize chapter lookups with Map-based O(1) searches
+**Learning:** The `calculateAllSubjectsProgress` function in `AppContext.tsx` and similar loops in `SyllabusView.tsx` and `CustomizeSyllabusView.tsx` were performing $O(n)$ `.find()` operations inside loops, leading to $O(n^2)$ or $O(n \cdot m)$ complexity. Given the structured nature of the syllabus, these lookups are frequent and can be optimized using a Map.
+**Action:** Always check for repeated `.find()` or `.filter()` operations inside loops or `useMemo` hooks when dealing with large datasets like the syllabus chapters, and replace them with Map lookups for $O(1)$ complexity.
