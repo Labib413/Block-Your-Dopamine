@@ -1,0 +1,3 @@
+## 2026-07-03 - Map-to-Array Anti-pattern in Syllabus Calculations
+**Learning:** Linear searches using `.find()` inside mapping functions for academic chapters (O(N^2)) constituted a recurring performance bottleneck during state hydration and master sync. Converting arrays to Maps for O(1) lookups significantly improves performance, especially as the syllabus dataset grows.
+**Action:** Consistently use Maps for lookups when iterating over the HSC syllabus dataset or any collection where frequent lookups by ID are required. Avoid the Map-to-Array anti-pattern (creating a Map only to convert it back to an array for searching).
