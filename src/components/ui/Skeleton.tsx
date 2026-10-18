@@ -3,6 +3,7 @@ import { cn } from "../../lib/utils";
 
 export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
   className?: string;
+  key?: React.Key;
 }
 
 export const Skeleton: React.FC<SkeletonProps> = ({ className, ...props }) => (
