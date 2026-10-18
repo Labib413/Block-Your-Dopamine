@@ -1,0 +1,6 @@
+src/components/Dashboard.tsx(453,41): error TS2322: Type '{ key: number; className: string; }' is not assignable to type 'SkeletonProps'.
+  Property 'key' does not exist on type 'SkeletonProps'.
+src/components/DetoxView.tsx(84,58): error TS2339: Property 'deleteData' does not exist on type '{ updateData: UseMutateFunction<void, Error, any, any>; data: any[]; error: Error; isError: true; isPending: false; isLoading: false; isLoadingError: false; ... 19 more ...; promise: Promise<...>; } | ... 4 more ... | { ...; }'.
+src/components/ReportsView.tsx(79,3): error TS2304: Cannot find name 'useEffect'.
+src/components/ReportsView.tsx(100,44): error TS2304: Cannot find name 'supabase'.
+src/components/ReportsView.tsx(154,9): error TS2304: Cannot find name 'logger'.
