@@ -20,6 +20,7 @@
     "@tanstack/react-query-persist-client": "^5.100.10",
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
+    "dev": "^0.1.5",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "firebase": "^12.18.0",
