@@ -35,12 +35,19 @@ import {
 } from 'firebase/firestore';
 import localFirebaseConfig from '../../firebase-applet-config.json';
 
+const rawProjectId = import.meta.env.VITE_FIREBASE_PROJECT_ID || (localFirebaseConfig as any)?.projectId || "byd-block-your-dopamine";
+const rawDatabaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID || (localFirebaseConfig as any)?.firestoreDatabaseId;
+const effectiveDatabaseId =
+  (!rawDatabaseId || rawDatabaseId === "(default)") && rawProjectId === "byd-block-your-dopamine"
+    ? "block-your-dopamine-testing"
+    : (rawDatabaseId || "(default)");
+
 const resolvedConfig = {
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (localFirebaseConfig as any)?.projectId || "byd-block-your-dopamine",
+  projectId: rawProjectId,
   appId: import.meta.env.VITE_FIREBASE_APP_ID || (localFirebaseConfig as any)?.appId || "1:745556836846:web:78f106f621f631cdfd4eff",
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (localFirebaseConfig as any)?.apiKey || "AIzaSyAKXUQRtdmZcF603nYAYhD_7qII75I_SWE",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (localFirebaseConfig as any)?.authDomain || "byd-block-your-dopamine.firebaseapp.com",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || (localFirebaseConfig as any)?.firestoreDatabaseId || "(default)",
+  firestoreDatabaseId: effectiveDatabaseId,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (localFirebaseConfig as any)?.storageBucket || "byd-block-your-dopamine.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (localFirebaseConfig as any)?.messagingSenderId || "745556836846",
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (localFirebaseConfig as any)?.measurementId || "G-P4LJ3HDY7G"
@@ -141,9 +148,11 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // Test Firestore Connection quietly upon app initialization
 async function testConnection() {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   try {
     await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
     if (error instanceof Error && error.message.includes('the client is offline')) {
       console.error("Please check your Firebase configuration.");
     }

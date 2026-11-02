@@ -1,5 +1,4 @@
 import { 
-  getFirestore, 
   Firestore, 
   doc, 
   collection, 
@@ -19,6 +18,7 @@ import {
 import {
   app,
   auth,
+  db as sharedDb,
   signInWithGoogle,
   signInWithFirebaseEmail,
   signUpWithFirebaseEmail,
@@ -38,31 +38,12 @@ export {
   signOutFirebase
 };
 
-// Standard/Default Firestore instance
-export const standardDb: Firestore = getFirestore(app);
-
 // Custom database identifier for the Chrome Extension & Distraction Guard
 export const CUSTOM_DATABASE_ID = "block-your-dopamine-testing";
 
-/**
- * Cleanly handle custom database initialization alongside standard Firestore initialization.
- * Initializes with "block-your-dopamine-testing", providing safe fallback to standardDb if needed.
- */
-function initCustomFirestore(): Firestore {
-  try {
-    const customInstance = getFirestore(app, CUSTOM_DATABASE_ID);
-    return customInstance;
-  } catch (error) {
-    console.warn(
-      `[Firebase] Could not initialize custom database "${CUSTOM_DATABASE_ID}". Falling back to standard Firestore:`,
-      error
-    );
-    return standardDb;
-  }
-}
-
-// Primary export: db initialized with the custom database ID "block-your-dopamine-testing"
-export const db: Firestore = initCustomFirestore();
+// Unified Firestore instance ("block-your-dopamine-testing")
+export const db: Firestore = sharedDb;
+export const standardDb: Firestore = sharedDb;
 
 // Standardized Operation Types & Error handling
 export enum OperationType {
