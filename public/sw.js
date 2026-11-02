@@ -48,11 +48,14 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Bypass Google APIs, Firebase, Supabase auth/data endpoints
+  // Bypass Google APIs, Firebase Auth/Token Refresh, Firestore, Supabase endpoints
   const url = new URL(request.url);
   if (
     url.hostname.includes('firestore.googleapis.com') ||
     url.hostname.includes('identitytoolkit.googleapis.com') ||
+    url.hostname.includes('securetoken.googleapis.com') ||
+    url.hostname.includes('firebaseinstallations.googleapis.com') ||
+    url.hostname.includes('apis.google.com') ||
     url.hostname.includes('supabase.co') ||
     url.pathname.startsWith('/api/')
   ) {

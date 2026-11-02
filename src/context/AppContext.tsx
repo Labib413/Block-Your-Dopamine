@@ -4,6 +4,12 @@ import { supabase, localUser } from "../lib/supabase";
 import { 
   auth as firebaseAuth, 
   onAuthStateChanged as onFirebaseAuthStateChanged, 
+  onIdTokenChanged as onFirebaseIdTokenChanged,
+  backupFirebaseAuthSession,
+  clearPersistedAuthBackup,
+  BYD_EXPLICIT_LOGOUT_KEY,
+  BYD_PERSISTED_USER_KEY,
+  BYD_PERSISTED_PROFILE_KEY,
   syncItemToFirestore, 
   subscribeToFirestoreUserData,
   signOutFirebase,
@@ -523,6 +529,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     let initialTotalXP = 0;
     let initialEquipped: (string | null)[] = [null, null, null];
     let initialUnlocked: string[] = [];
+    let initialUser: User | null = null;
+    let initialProfile: any = null;
     try {
       const savedXP = localStorage.getItem('byd_user_xp');
       const savedLevel = localStorage.getItem('byd_user_level');
@@ -538,6 +546,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
       const savedUnlocked = localStorage.getItem('byd_unlocked_badges');
       if (savedUnlocked) {
         initialUnlocked = sanitizeUnlockedBadges(savedUnlocked);
+      }
+
+      if (localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) !== 'true') {
+        const rawPersistedUser = localStorage.getItem(BYD_PERSISTED_USER_KEY);
+        if (rawPersistedUser) {
+          const parsedUser = JSON.parse(rawPersistedUser);
+          if (parsedUser && parsedUser.id && parsedUser.id !== 'local-user-001') {
+            initialUser = parsedUser;
+          }
+        }
+        const rawPersistedProfile = localStorage.getItem(BYD_PERSISTED_PROFILE_KEY);
+        if (rawPersistedProfile) {
+          initialProfile = JSON.parse(rawPersistedProfile);
+        }
       }
     } catch {}
 
@@ -587,8 +609,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       tasks: [],
       notificationsEnabled: true,
       notifications: [],
-      user: null,
-      profile: null,
+      user: initialUser,
+      profile: initialProfile,
       daysActive: 1,
       equippedBadges: initialEquipped,
       unlockedBadgeIds: initialUnlocked,
@@ -1779,14 +1801,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (results.profile?.data) {
           const pd = results.profile.data;
           next.profile = {
-            username: pd.username || '',
-            fullName: pd.full_name || prev.profile?.fullName || '',
-            avatarUrl: pd.avatar_url || prev.profile?.avatarUrl,
-            institution: pd.institution || '', class: pd.class || '',
-            subjectGroup: pd.subject_group || '', year: pd.year || '',
-            gender: pd.gender || 'Male'
+            username: pd.username || prev.profile?.username || '',
+            fullName: pd.full_name || pd.fullName || prev.profile?.fullName || '',
+            avatarUrl: pd.avatar_url || pd.avatarUrl || prev.profile?.avatarUrl,
+            institution: pd.institution || prev.profile?.institution || '',
+            class: pd.class || prev.profile?.class || '',
+            subjectGroup: pd.subject_group || pd.subjectGroup || prev.profile?.subjectGroup || '',
+            year: pd.year || prev.profile?.year || '',
+            gender: pd.gender || prev.profile?.gender || 'Male'
           };
           next.gender = pd.gender || prev.gender;
+          try {
+            localStorage.setItem(BYD_PERSISTED_PROFILE_KEY, JSON.stringify(next.profile));
+          } catch {}
 
           // Sync & sanitize unlocked & equipped badges from Firestore / Supabase database
           const rawEquipped = pd.equipped_badges ?? pd.equippedBadges;
@@ -2055,6 +2082,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // Auth & Sync
   useEffect(() => {
+    let isMounted = true;
+    let lastSyncedUid: string | null = null;
+
     // Clean up any stale legacy mock sessions from localStorage
     try {
       const raw = localStorage.getItem('byd_auth_session');
@@ -2063,44 +2093,110 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch {}
 
-    // Listen for Firebase auth changes as primary source of truth
-    const unregisterFirebase = onFirebaseAuthStateChanged(firebaseAuth, (fbUser) => {
-      if (fbUser) {
-        const username = fbUser.displayName?.toLowerCase().replace(/\s+/g, '_') || fbUser.email?.split('@')[0] || 'user';
-        const user: User = {
-          id: fbUser.uid,
-          email: fbUser.email || '',
-          uniqueId: fbUser.uid,
-          daysActive: 1,
-          lastActiveDate: new Date().toISOString(),
-          user_metadata: {
-            full_name: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
-            username,
-            avatar_url: fbUser.photoURL || undefined,
-          },
-        };
-        const profile = { 
-          fullName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+    const applyAuthenticatedFirebaseUser = (fbUser: any) => {
+      if (!isMounted || !fbUser) return;
+      const existingProfile = stateRef.current.profile;
+      const fallbackUsername = fbUser.displayName?.toLowerCase().replace(/\s+/g, '_') || fbUser.email?.split('@')[0] || 'user';
+      const username = existingProfile?.username || fallbackUsername;
+      const user: User = {
+        id: fbUser.uid,
+        email: fbUser.email || '',
+        uniqueId: fbUser.uid,
+        daysActive: stateRef.current.daysActive || 1,
+        lastActiveDate: new Date().toISOString(),
+        user_metadata: {
+          full_name: fbUser.displayName || existingProfile?.fullName || fbUser.email?.split('@')[0] || 'User',
           username,
-          avatarUrl: fbUser.photoURL || undefined 
-        };
-        stateRef.current.user = user;
-        stateRef.current.profile = profile;
-        setState(prev => ({ ...prev, user, profile }));
+          avatar_url: fbUser.photoURL || existingProfile?.avatarUrl || undefined,
+        },
+      };
+      const profile = {
+        ...existingProfile,
+        fullName: existingProfile?.fullName || fbUser.displayName || fbUser.email?.split('@')[0] || 'User',
+        username,
+        avatarUrl: existingProfile?.avatarUrl || fbUser.photoURL || undefined,
+      };
+
+      try {
+        localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY);
+        localStorage.setItem(BYD_PERSISTED_USER_KEY, JSON.stringify(user));
+        localStorage.setItem(BYD_PERSISTED_PROFILE_KEY, JSON.stringify(profile));
+      } catch {}
+      backupFirebaseAuthSession(fbUser);
+
+      stateRef.current.user = user;
+      stateRef.current.profile = profile;
+      setState(prev => ({ ...prev, user, profile }));
+
+      if (lastSyncedUid !== fbUser.uid) {
+        lastSyncedUid = fbUser.uid;
         masterSync(undefined, user);
-        setIsAuthReady(true);
-      } else {
-        // No Firebase user authenticated -> ensure state.user is null
-        stateRef.current.user = null;
-        stateRef.current.profile = null;
-        setState(prev => ({ ...prev, user: null, profile: null }));
+      }
+      setIsAuthReady(true);
+    };
+
+    // Listen for Firebase auth & token refresh changes as primary source of truth
+    const unregisterFirebase = onFirebaseIdTokenChanged(firebaseAuth, async (fbUser) => {
+      if (fbUser) {
+        applyAuthenticatedFirebaseUser(fbUser);
+        return;
+      }
+
+      // Wait for Firebase Auth persistence initialization to finish completely before deciding user is logged out
+      try {
+        if (typeof (firebaseAuth as any).authStateReady === 'function') {
+          await (firebaseAuth as any).authStateReady();
+        }
+      } catch {}
+
+      if (!isMounted) return;
+
+      // Re-check currentUser after authStateReady resolves
+      if (firebaseAuth.currentUser) {
+        applyAuthenticatedFirebaseUser(firebaseAuth.currentUser);
+        return;
+      }
+
+      const explicitLogout = (() => {
+        try {
+          return localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) === 'true';
+        } catch {
+          return false;
+        }
+      })();
+
+      // If offline and user never explicitly logged out, preserve cached session so offline wakeup never logs user out
+      if (!explicitLogout && typeof navigator !== 'undefined' && !navigator.onLine && stateRef.current.user) {
         setIsDataLoading(false);
         setIsAuthReady(true);
+        return;
       }
+
+      // Genuine unauthenticated state
+      lastSyncedUid = null;
+      clearPersistedAuthBackup();
+      stateRef.current.user = null;
+      stateRef.current.profile = null;
+      setState(prev => ({ ...prev, user: null, profile: null }));
+      setIsDataLoading(false);
+      setIsAuthReady(true);
     });
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Silently refresh token when user returns to app after days/hours or regains internet
+    const refreshSessionOnResume = () => {
+      const current = firebaseAuth.currentUser;
+      if (current && (typeof document === 'undefined' || document.visibilityState === 'visible')) {
+        current.getIdToken(false)
+          .then(() => backupFirebaseAuthSession(current))
+          .catch(() => {});
+      }
+    };
+
+    window.addEventListener('online', refreshSessionOnResume);
+    document.addEventListener('visibilitychange', refreshSessionOnResume);
+
+    // Listen for fallback local auth changes without wiping active Firebase sessions
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (session?.user) {
         const user = session.user as unknown as User;
         const profile = { 
@@ -2111,16 +2207,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
         stateRef.current.profile = profile;
         setState(prev => ({ ...prev, user, profile }));
         masterSync(undefined, user);
-      } else if (!firebaseAuth.currentUser) {
-        setIsDataLoading(false);
-        stateRef.current.user = null;
-        stateRef.current.profile = null;
-        clearState();
+        setIsAuthReady(true);
+      } else {
+        try {
+          if (typeof (firebaseAuth as any).authStateReady === 'function') {
+            await (firebaseAuth as any).authStateReady();
+          }
+        } catch {}
+        if (!isMounted) return;
+        const explicitLogout = (() => {
+          try {
+            return localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) === 'true';
+          } catch {
+            return false;
+          }
+        })();
+        if (!firebaseAuth.currentUser && (explicitLogout || !stateRef.current.user)) {
+          setIsDataLoading(false);
+          stateRef.current.user = null;
+          stateRef.current.profile = null;
+          if (explicitLogout) {
+            clearState();
+          }
+          setIsAuthReady(true);
+        }
       }
-      setIsAuthReady(true);
     });
 
     return () => {
+      isMounted = false;
+      window.removeEventListener('online', refreshSessionOnResume);
+      document.removeEventListener('visibilitychange', refreshSessionOnResume);
       subscription.unsubscribe();
       unregisterFirebase();
     };
@@ -3817,8 +3934,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // 1. Set loading state
+    // 1. Set loading state & mark explicit user-initiated logout
     setIsLoggingOut(true);
+    try {
+      localStorage.setItem(BYD_EXPLICIT_LOGOUT_KEY, 'true');
+    } catch {}
+    clearPersistedAuthBackup();
     
     // 2. Wipe remote auth session
     await signOutFirebase().catch(() => {});

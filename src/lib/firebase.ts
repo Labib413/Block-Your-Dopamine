@@ -1,6 +1,11 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
   getAuth, 
+  initializeAuth,
+  browserLocalPersistence,
+  indexedDBLocalPersistence,
+  browserPopupRedirectResolver,
+  setPersistence,
   signInWithPopup, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -9,7 +14,9 @@ import {
   GoogleAuthProvider, 
   signOut as firebaseSignOut, 
   onAuthStateChanged,
-  User as FirebaseUser
+  onIdTokenChanged,
+  User as FirebaseUser,
+  Auth
 } from 'firebase/auth';
 import { 
   getFirestore, 
@@ -39,16 +46,94 @@ const resolvedConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (localFirebaseConfig as any)?.measurementId || "G-P4LJ3HDY7G"
 };
 
-// Initialize Firebase App
-const app = initializeApp(resolvedConfig);
+const FB_AUTH_STORAGE_KEY = `firebase:authUser:${resolvedConfig.apiKey}:[DEFAULT]`;
+const BYD_FB_AUTH_BACKUP_KEY = 'byd_fb_auth_backup';
+export const BYD_EXPLICIT_LOGOUT_KEY = 'byd_explicit_logout';
+export const BYD_PERSISTED_USER_KEY = 'byd_persisted_user';
+export const BYD_PERSISTED_PROFILE_KEY = 'byd_persisted_profile';
+
+// Request durable browser storage so mobile/desktop browsers never evict IndexedDB/localStorage after days of inactivity
+if (typeof window !== 'undefined') {
+  try {
+    if (navigator.storage && typeof navigator.storage.persist === 'function') {
+      navigator.storage.persist().catch(() => {});
+    }
+    // Restore Firebase Auth localStorage session from backup if evicted or cleared by transient network/captive-portal errors
+    const explicitLogout = localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) === 'true';
+    if (!explicitLogout) {
+      const existingFbSession = localStorage.getItem(FB_AUTH_STORAGE_KEY);
+      const backupFbSession = localStorage.getItem(BYD_FB_AUTH_BACKUP_KEY);
+      if (!existingFbSession && backupFbSession) {
+        localStorage.setItem(FB_AUTH_STORAGE_KEY, backupFbSession);
+      }
+    }
+  } catch {
+    // Ignore storage access errors in restricted contexts
+  }
+}
+
+export function backupFirebaseAuthSession(fbUser?: FirebaseUser | null) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) === 'true') return;
+    const rawSession = localStorage.getItem(FB_AUTH_STORAGE_KEY);
+    if (rawSession) {
+      localStorage.setItem(BYD_FB_AUTH_BACKUP_KEY, rawSession);
+    } else if (fbUser && typeof (fbUser as any).toJSON === 'function') {
+      const serialized = JSON.stringify((fbUser as any).toJSON());
+      if (serialized && serialized.includes('stsTokenManager')) {
+        localStorage.setItem(BYD_FB_AUTH_BACKUP_KEY, serialized);
+        localStorage.setItem(FB_AUTH_STORAGE_KEY, serialized);
+      }
+    }
+  } catch {
+    // Ignore storage quota/access errors
+  }
+}
+
+export function clearPersistedAuthBackup() {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(BYD_FB_AUTH_BACKUP_KEY);
+    localStorage.removeItem(FB_AUTH_STORAGE_KEY);
+    localStorage.removeItem(BYD_PERSISTED_USER_KEY);
+    localStorage.removeItem(BYD_PERSISTED_PROFILE_KEY);
+  } catch {}
+}
+
+// Initialize or reuse singleton Firebase App
+export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(resolvedConfig);
 
 // Initialize Firestore Database (handles both custom db name and standard default)
 export const db = resolvedConfig.firestoreDatabaseId && resolvedConfig.firestoreDatabaseId !== '(default)'
   ? getFirestore(app, resolvedConfig.firestoreDatabaseId)
   : getFirestore(app);
 
-// Initialize Authentication
-export const auth = getAuth(app);
+// Initialize Authentication with durable localStorage + IndexedDB persistence
+function initDurableAuth(firebaseApp: FirebaseApp): Auth {
+  try {
+    return initializeAuth(firebaseApp, {
+      persistence: [browserLocalPersistence, indexedDBLocalPersistence],
+      popupRedirectResolver: browserPopupRedirectResolver,
+    });
+  } catch {
+    return getAuth(firebaseApp);
+  }
+}
+
+export const auth: Auth = initDurableAuth(app);
+
+// Keep backup synced whenever Firebase refreshes the ID token or restores auth state
+if (typeof window !== 'undefined') {
+  onIdTokenChanged(auth, (fbUser) => {
+    if (fbUser) {
+      try {
+        localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY);
+      } catch {}
+      backupFirebaseAuthSession(fbUser);
+    }
+  });
+}
 
 // Google Auth Provider
 const googleProvider = new GoogleAuthProvider();
@@ -57,9 +142,11 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 // Test Firestore Connection quietly upon app initialization
 async function testConnection() {
   try {
-    await getDoc(doc(db, 'test', 'connection'));
+    await getDocFromServer(doc(db, 'test', 'connection'));
   } catch (error) {
-    // Silent catch - allows offline and delayed initialization without throwing errors
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.error("Please check your Firebase configuration.");
+    }
   }
 }
 testConnection();
@@ -115,7 +202,10 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 // Google Authentication
 export async function signInWithGoogle(): Promise<FirebaseUser> {
   try {
-    const result = await signInWithPopup(auth, googleProvider);
+    try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
+    await setPersistence(auth, browserLocalPersistence).catch(() => {});
+    const result = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
+    backupFirebaseAuthSession(result.user);
     return result.user;
   } catch (error) {
     console.error("[Firebase Auth] Google Sign-In Error:", error);
@@ -126,7 +216,10 @@ export async function signInWithGoogle(): Promise<FirebaseUser> {
 // Sign In with Email & Password via Firebase Auth
 export async function signInWithFirebaseEmail(email: string, password: string): Promise<FirebaseUser> {
   try {
+    try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
+    await setPersistence(auth, browserLocalPersistence).catch(() => {});
     const cred = await signInWithEmailAndPassword(auth, email, password);
+    backupFirebaseAuthSession(cred.user);
     return cred.user;
   } catch (error) {
     console.error("[Firebase Auth] Email Sign-In Error:", error);
@@ -137,6 +230,8 @@ export async function signInWithFirebaseEmail(email: string, password: string): 
 // Sign Up / Create Account with Email & Password via Firebase Auth
 export async function signUpWithFirebaseEmail(email: string, password: string, fullName?: string): Promise<FirebaseUser> {
   try {
+    try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
+    await setPersistence(auth, browserLocalPersistence).catch(() => {});
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (fullName && cred.user) {
       try {
@@ -145,6 +240,7 @@ export async function signUpWithFirebaseEmail(email: string, password: string, f
         console.warn("[Firebase Auth] Failed to update displayName:", profileErr);
       }
     }
+    backupFirebaseAuthSession(cred.user);
     return cred.user;
   } catch (error) {
     console.error("[Firebase Auth] Email Sign-Up Error:", error);
@@ -165,6 +261,8 @@ export async function sendFirebasePasswordReset(email: string): Promise<void> {
 // Sign Out
 export async function signOutFirebase(): Promise<void> {
   try {
+    try { localStorage.setItem(BYD_EXPLICIT_LOGOUT_KEY, 'true'); } catch {}
+    clearPersistedAuthBackup();
     await firebaseSignOut(auth);
   } catch (error) {
     console.error("[Firebase Auth] Sign-Out Error:", error);
@@ -172,7 +270,7 @@ export async function signOutFirebase(): Promise<void> {
   }
 }
 
-export { onAuthStateChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query, where };
+export { onAuthStateChanged, onIdTokenChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query, where };
 export type { FirebaseUser };
 
 // Mirror sync item to Firestore

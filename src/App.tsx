@@ -247,6 +247,22 @@ function AuthPage() {
   );
 }
 
+function PublicWorkspaceRoute() {
+  const { view } = useParams<{ view: string }>();
+  const { user, isAuthReady, profile } = useApp();
+
+  if (!isAuthReady) {
+    return <div className="min-h-screen bg-[#050505]" />;
+  }
+
+  if (user) {
+    const currentUsername = profile?.username || user.user_metadata?.username || user.email?.split('@')[0] || "user";
+    return <Navigate to={`/${currentUsername}/${view || "dashboard"}`} replace />;
+  }
+
+  return <AppWorkspace />;
+}
+
 function RootRedirect() {
   const { user, isAuthReady, profile } = useApp();
   
@@ -278,7 +294,7 @@ export default function App() {
           <Routes>
             <Route path="/" element={<RootRedirect />} />
             <Route path="/login" element={<AuthPage />} />
-            <Route path="/public/:view" element={<AppWorkspace />} />
+            <Route path="/public/:view" element={<PublicWorkspaceRoute />} />
             <Route path="/public" element={<Navigate to="/public/dashboard" replace />} />
             <Route path="/:username" element={<RequireAuthMatch />}>
                <Route index element={<Navigate to="dashboard" replace />} />

@@ -1,4 +1,3 @@
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
   getFirestore, 
   Firestore, 
@@ -17,35 +16,27 @@ import {
   serverTimestamp,
   Unsubscribe 
 } from 'firebase/firestore';
-import { 
-  getAuth, 
-  signInWithPopup, 
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  updateProfile,
-  sendPasswordResetEmail,
-  GoogleAuthProvider, 
-  signOut as firebaseSignOut, 
+import {
+  app,
+  auth,
+  signInWithGoogle,
+  signInWithFirebaseEmail,
+  signUpWithFirebaseEmail,
+  sendFirebasePasswordReset,
+  signOutFirebase,
   onAuthStateChanged,
-  User as FirebaseUser,
-  Auth
-} from 'firebase/auth';
-import localFirebaseConfig from '../firebase-applet-config.json';
+  FirebaseUser
+} from './lib/firebase';
 
-// Resolve configuration safely from environment or local config
-const resolvedConfig = {
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || (localFirebaseConfig as any)?.projectId || "byd-block-your-dopamine",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || (localFirebaseConfig as any)?.appId || "1:745556836846:web:78f106f621f631cdfd4eff",
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || (localFirebaseConfig as any)?.apiKey || "AIzaSyAKXUQRtdmZcF603nYAYhD_7qII75I_SWE",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (localFirebaseConfig as any)?.authDomain || "byd-block-your-dopamine.firebaseapp.com",
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_DATABASE_ID || (localFirebaseConfig as any)?.firestoreDatabaseId || "(default)",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (localFirebaseConfig as any)?.storageBucket || "byd-block-your-dopamine.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (localFirebaseConfig as any)?.messagingSenderId || "745556836846",
-  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (localFirebaseConfig as any)?.measurementId || "G-P4LJ3HDY7G"
+export {
+  app,
+  auth,
+  signInWithGoogle,
+  signInWithFirebaseEmail,
+  signUpWithFirebaseEmail,
+  sendFirebasePasswordReset,
+  signOutFirebase
 };
-
-// Initialize or retrieve existing Firebase App instance
-export const app: FirebaseApp = getApps().length > 0 ? getApp() : initializeApp(resolvedConfig);
 
 // Standard/Default Firestore instance
 export const standardDb: Firestore = getFirestore(app);
@@ -72,73 +63,6 @@ function initCustomFirestore(): Firestore {
 
 // Primary export: db initialized with the custom database ID "block-your-dopamine-testing"
 export const db: Firestore = initCustomFirestore();
-
-// Initialize Authentication
-export const auth: Auth = getAuth(app);
-
-// Google Auth Provider setup
-const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
-
-// Sign in with Google Popup
-export async function signInWithGoogle(): Promise<FirebaseUser> {
-  try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
-  } catch (error) {
-    console.error("[Firebase Auth] Google Sign-In Error:", error);
-    throw error;
-  }
-}
-
-// Sign In with Email & Password via Firebase Auth
-export async function signInWithFirebaseEmail(email: string, password: string): Promise<FirebaseUser> {
-  try {
-    const cred = await signInWithEmailAndPassword(auth, email, password);
-    return cred.user;
-  } catch (error) {
-    console.error("[Firebase Auth] Email Sign-In Error:", error);
-    throw error;
-  }
-}
-
-// Sign Up / Create Account with Email & Password via Firebase Auth
-export async function signUpWithFirebaseEmail(email: string, password: string, fullName?: string): Promise<FirebaseUser> {
-  try {
-    const cred = await createUserWithEmailAndPassword(auth, email, password);
-    if (fullName && cred.user) {
-      try {
-        await updateProfile(cred.user, { displayName: fullName });
-      } catch (profileErr) {
-        console.warn("[Firebase Auth] Failed to update displayName:", profileErr);
-      }
-    }
-    return cred.user;
-  } catch (error) {
-    console.error("[Firebase Auth] Email Sign-Up Error:", error);
-    throw error;
-  }
-}
-
-// Password Reset via Firebase Auth
-export async function sendFirebasePasswordReset(email: string): Promise<void> {
-  try {
-    await sendPasswordResetEmail(auth, email);
-  } catch (error) {
-    console.error("[Firebase Auth] Password Reset Error:", error);
-    throw error;
-  }
-}
-
-// Sign Out helper
-export async function signOutFirebase(): Promise<void> {
-  try {
-    await firebaseSignOut(auth);
-  } catch (error) {
-    console.error("[Firebase Auth] Sign-Out Error:", error);
-    throw error;
-  }
-}
 
 // Standardized Operation Types & Error handling
 export enum OperationType {
