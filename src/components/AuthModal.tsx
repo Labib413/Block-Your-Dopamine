@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { X, Mail, Lock, User, ArrowRight, Loader2, Copy, Check, AlertTriangle, KeyRound } from "lucide-react";
 import { GlassCard } from "./GlassCard";
+import { useApp } from "../context/AppContext";
 import { 
   signInWithFirebaseEmail, 
   signUpWithFirebaseEmail, 
@@ -17,6 +18,7 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const navigate = useNavigate();
+  const { user, profile } = useApp();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +36,24 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     setError(null);
     setResetSent(false);
     setIsUnauthorizedDomain(false);
+    if (!isOpen) {
+      setLoading(false);
+    }
   }, [isOpen, isLogin]);
+
+  // Immediately close modal and navigate once Firebase Auth populates AppContext user
+  useEffect(() => {
+    if (isOpen && user) {
+      setLoading(false);
+      onClose();
+      const targetUsername =
+        profile?.username ||
+        user.user_metadata?.username ||
+        user.email?.split('@')[0] ||
+        "user";
+      navigate(`/${targetUsername}/dashboard`, { replace: true });
+    }
+  }, [isOpen, user, profile?.username, onClose, navigate]);
 
   const handleCopyDomain = () => {
     if (currentHost) {
@@ -164,6 +183,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         setError("This domain is not authorized in Firebase Console yet. Please add this domain under Firebase Authentication > Settings > Authorized domains, or use Email & Password below.");
       } else if (code === 'auth/popup-blocked') {
         setError("Browser blocked the Google pop-up. Please click the pop-up icon in your address bar to 'Always allow pop-ups', or sign in with email and password below.");
+      } else if (code === 'auth/web-storage-unsupported') {
+        setError("Browser third-party storage/cookies are blocked for Google Sign-In. Please allow third-party cookies for this site or sign in with Email & Password below.");
       } else if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
         console.warn("[Google Auth Notice]:", err);
         setError(msg || "Google sign-in failed. Please try again.");

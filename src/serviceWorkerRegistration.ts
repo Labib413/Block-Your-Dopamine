@@ -8,6 +8,7 @@ export function registerServiceWorker() {
         .register('/sw.js')
         .then((registration) => {
           console.log('[PWA] Service Worker registered with scope:', registration.scope);
+          registration.update().catch(() => {});
           
           // Check for service worker updates
           registration.onupdatefound = () => {

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'byd-cache-v2';
+const CACHE_NAME = 'byd-cache-v4';
 
 const PRECACHE_ASSETS = [
   '/',
@@ -48,16 +48,17 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Bypass Google APIs, Firebase Auth/Token Refresh, Firestore, Supabase endpoints
   const url = new URL(request.url);
+
+  // Never intercept cross-origin requests (Google OAuth, gstatic GAPI iframe relay, Firebase Auth/Firestore, Supabase)
+  // and never intercept Firebase Auth helper paths, API routes, or Vite dev module endpoints
   if (
-    url.hostname.includes('firestore.googleapis.com') ||
-    url.hostname.includes('identitytoolkit.googleapis.com') ||
-    url.hostname.includes('securetoken.googleapis.com') ||
-    url.hostname.includes('firebaseinstallations.googleapis.com') ||
-    url.hostname.includes('apis.google.com') ||
-    url.hostname.includes('supabase.co') ||
-    url.pathname.startsWith('/api/')
+    url.origin !== self.location.origin ||
+    url.pathname.startsWith('/__/auth') ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/src/') ||
+    url.pathname.startsWith('/node_modules/') ||
+    url.pathname.startsWith('/@')
   ) {
     return;
   }

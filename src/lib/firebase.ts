@@ -1,11 +1,6 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { 
   getAuth, 
-  initializeAuth,
-  browserLocalPersistence,
-  indexedDBLocalPersistence,
-  browserPopupRedirectResolver,
-  setPersistence,
   signInWithPopup, 
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -53,46 +48,27 @@ const resolvedConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || (localFirebaseConfig as any)?.measurementId || "G-P4LJ3HDY7G"
 };
 
-const FB_AUTH_STORAGE_KEY = `firebase:authUser:${resolvedConfig.apiKey}:[DEFAULT]`;
-const BYD_FB_AUTH_BACKUP_KEY = 'byd_fb_auth_backup';
 export const BYD_EXPLICIT_LOGOUT_KEY = 'byd_explicit_logout';
 export const BYD_PERSISTED_USER_KEY = 'byd_persisted_user';
 export const BYD_PERSISTED_PROFILE_KEY = 'byd_persisted_profile';
 
-// Request durable browser storage so mobile/desktop browsers never evict IndexedDB/localStorage after days of inactivity
+// Request durable browser storage so IndexedDB/localStorage are never evicted after days of inactivity
 if (typeof window !== 'undefined') {
   try {
     if (navigator.storage && typeof navigator.storage.persist === 'function') {
       navigator.storage.persist().catch(() => {});
     }
-    // Restore Firebase Auth localStorage session from backup if evicted or cleared by transient network/captive-portal errors
-    const explicitLogout = localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) === 'true';
-    if (!explicitLogout) {
-      const existingFbSession = localStorage.getItem(FB_AUTH_STORAGE_KEY);
-      const backupFbSession = localStorage.getItem(BYD_FB_AUTH_BACKUP_KEY);
-      if (!existingFbSession && backupFbSession) {
-        localStorage.setItem(FB_AUTH_STORAGE_KEY, backupFbSession);
-      }
-    }
+    // Clean up legacy manual auth backup key that could conflict with Firebase's internal persistence manager
+    localStorage.removeItem('byd_fb_auth_backup');
   } catch {
     // Ignore storage access errors in restricted contexts
   }
 }
 
 export function backupFirebaseAuthSession(fbUser?: FirebaseUser | null) {
-  if (typeof window === 'undefined') return;
+  if (typeof window === 'undefined' || !fbUser) return;
   try {
-    if (localStorage.getItem(BYD_EXPLICIT_LOGOUT_KEY) === 'true') return;
-    const rawSession = localStorage.getItem(FB_AUTH_STORAGE_KEY);
-    if (rawSession) {
-      localStorage.setItem(BYD_FB_AUTH_BACKUP_KEY, rawSession);
-    } else if (fbUser && typeof (fbUser as any).toJSON === 'function') {
-      const serialized = JSON.stringify((fbUser as any).toJSON());
-      if (serialized && serialized.includes('stsTokenManager')) {
-        localStorage.setItem(BYD_FB_AUTH_BACKUP_KEY, serialized);
-        localStorage.setItem(FB_AUTH_STORAGE_KEY, serialized);
-      }
-    }
+    localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY);
   } catch {
     // Ignore storage quota/access errors
   }
@@ -101,8 +77,7 @@ export function backupFirebaseAuthSession(fbUser?: FirebaseUser | null) {
 export function clearPersistedAuthBackup() {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.removeItem(BYD_FB_AUTH_BACKUP_KEY);
-    localStorage.removeItem(FB_AUTH_STORAGE_KEY);
+    localStorage.removeItem('byd_fb_auth_backup');
     localStorage.removeItem(BYD_PERSISTED_USER_KEY);
     localStorage.removeItem(BYD_PERSISTED_PROFILE_KEY);
   } catch {}
@@ -116,27 +91,14 @@ export const db = resolvedConfig.firestoreDatabaseId && resolvedConfig.firestore
   ? getFirestore(app, resolvedConfig.firestoreDatabaseId)
   : getFirestore(app);
 
-// Initialize Authentication with durable localStorage + IndexedDB persistence
-function initDurableAuth(firebaseApp: FirebaseApp): Auth {
-  try {
-    return initializeAuth(firebaseApp, {
-      persistence: [browserLocalPersistence, indexedDBLocalPersistence],
-      popupRedirectResolver: browserPopupRedirectResolver,
-    });
-  } catch {
-    return getAuth(firebaseApp);
-  }
-}
+// Standard getAuth(app) configures [indexedDBLocalPersistence, browserLocalPersistence, browserSessionPersistence]
+// + browserPopupRedirectResolver, ensuring both multi-week IndexedDB persistence and reliable OAuth popup relay
+export const auth: Auth = getAuth(app);
 
-export const auth: Auth = initDurableAuth(app);
-
-// Keep backup synced whenever Firebase refreshes the ID token or restores auth state
+// Keep explicit logout flag cleared whenever Firebase refreshes or restores an authenticated user
 if (typeof window !== 'undefined') {
   onIdTokenChanged(auth, (fbUser) => {
     if (fbUser) {
-      try {
-        localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY);
-      } catch {}
       backupFirebaseAuthSession(fbUser);
     }
   });
@@ -208,15 +170,18 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Google Authentication
+// Google Authentication (invoked synchronously on user gesture without pre-popup async queue delays)
 export async function signInWithGoogle(): Promise<FirebaseUser> {
   try {
     try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
-    await setPersistence(auth, browserLocalPersistence).catch(() => {});
-    const result = await signInWithPopup(auth, googleProvider, browserPopupRedirectResolver);
+    const result = await signInWithPopup(auth, googleProvider);
     backupFirebaseAuthSession(result.user);
     return result.user;
   } catch (error) {
+    if (auth.currentUser) {
+      backupFirebaseAuthSession(auth.currentUser);
+      return auth.currentUser;
+    }
     console.error("[Firebase Auth] Google Sign-In Error:", error);
     throw error;
   }
@@ -226,7 +191,6 @@ export async function signInWithGoogle(): Promise<FirebaseUser> {
 export async function signInWithFirebaseEmail(email: string, password: string): Promise<FirebaseUser> {
   try {
     try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
-    await setPersistence(auth, browserLocalPersistence).catch(() => {});
     const cred = await signInWithEmailAndPassword(auth, email, password);
     backupFirebaseAuthSession(cred.user);
     return cred.user;
@@ -240,7 +204,6 @@ export async function signInWithFirebaseEmail(email: string, password: string): 
 export async function signUpWithFirebaseEmail(email: string, password: string, fullName?: string): Promise<FirebaseUser> {
   try {
     try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
-    await setPersistence(auth, browserLocalPersistence).catch(() => {});
     const cred = await createUserWithEmailAndPassword(auth, email, password);
     if (fullName && cred.user) {
       try {
