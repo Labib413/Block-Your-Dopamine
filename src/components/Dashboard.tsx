@@ -1,4 +1,5 @@
-import { useState, useEffect, Fragment, memo, useMemo } from "react";
+import { useState, Fragment, memo, useMemo } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { 
   Clock, 
   CheckCircle2, 
@@ -263,8 +264,7 @@ const TrendsChart = memo(({ displayChartData, visibleLines }: { displayChartData
 ));
 
 export function Dashboard() {
-  const [quote, setQuote] = useState({ text: "Loading inspiration...", author: "" });
-  const [aiInsight, setAiInsight] = useState("Analyzing your performance...");
+  const [manualInsight, setManualInsight] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"Day" | "Week" | "Month" | "Year">("Week");
   const [periodOffset, setPeriodOffset] = useState(0);
 
@@ -336,19 +336,48 @@ export function Dashboard() {
   const requiredXP = getRequiredXP(level) || 100;
   const progressPercent = Math.min(100, Math.max(0, (xp / requiredXP) * 100));
 
-  useEffect(() => {
-    getDailyQuote().then(setQuote);
-  }, []);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const { data: quoteData } = useQuery({
+    queryKey: ["dailyQuote", todayKey],
+    queryFn: getDailyQuote,
+    staleTime: 1000 * 60 * 60 * 12,
+    gcTime: 1000 * 60 * 60 * 24,
+    retry: false,
+  });
+  const quote = quoteData ?? { text: "Loading inspiration...", author: "" };
 
-  // Debounce AI insight calls to prevent hitting rate limits
-  useEffect(() => {
-    if ((tasksCompleted > 0 || focusTime > 0) && !isDataLoading) {
-      const timer = setTimeout(() => {
-        getAIInsight({ focusTime, tasks: tasksCompleted }).then(setAiInsight);
-      }, 5000); // Only update every 5 seconds of activity
-      return () => clearTimeout(timer);
-    }
-  }, [tasksCompleted, Math.floor(focusTime / 60), isDataLoading]); // Only trigger on task change or every minute of focus
+  // Refresh automatic AI insight only on 15-minute focus milestones or task completions
+  const focusMilestone = Math.floor(focusTime / 900);
+  const hasActivity = tasksCompleted > 0 || focusTime > 0;
+  const { data: queriedInsight } = useQuery({
+    queryKey: ["aiInsight", "auto", focusMilestone, tasksCompleted],
+    queryFn: () => getAIInsight({ focusTime: focusMilestone * 900, tasks: tasksCompleted }),
+    enabled: hasActivity && !isDataLoading,
+    staleTime: 1000 * 60 * 15,
+    gcTime: 1000 * 60 * 60 * 24,
+    retry: false,
+  });
+
+  const aiInsightMutation = useMutation({
+    mutationFn: (type: "consistency" | "peak") =>
+      getAIInsight({ type, focusTime, tasks: tasksCompleted, level, xp }),
+    onMutate: () => {
+      setManualInsight("AI is thinking...");
+    },
+    onSuccess: (result) => {
+      setManualInsight(result);
+    },
+    onError: () => {
+      setManualInsight("Focus on deep work blocks to accelerate your progress.");
+    },
+  });
+
+  const aiInsight =
+    manualInsight ??
+    queriedInsight ??
+    (hasActivity
+      ? "Analyzing your performance..."
+      : "Protect your first deep-work block today; momentum compounds fastest when distractions are locked out early.");
 
   const { displayChartData, periodLabel } = useMemo(() => {
     const today = new Date();
@@ -626,16 +655,8 @@ export function Dashboard() {
     return { displayChartData: dataPoints, periodLabel: label };
   }, [focusHistory, healthHistory, tasks, activeTab, periodOffset]);
 
-  const handleAIAction = async (type: 'consistency' | 'peak') => {
-    setAiInsight("AI is thinking...");
-    const insight = await getAIInsight({ 
-      type, 
-      focusTime, 
-      tasks: tasksCompleted, 
-      level, 
-      xp 
-    });
-    setAiInsight(insight);
+  const handleAIAction = (type: 'consistency' | 'peak') => {
+    aiInsightMutation.mutate(type);
   };
 
   if (connectionError && user) {

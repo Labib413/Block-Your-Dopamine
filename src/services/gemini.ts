@@ -110,20 +110,7 @@ export async function getDailyQuote() {
       return quoteObj;
     }
     throw new Error("Invalid response format");
-  } catch (error: any) {
-    const errorMsg = error?.message?.toLowerCase() || "";
-    const isHighDemand =
-      errorMsg.includes("503") ||
-      errorMsg.includes("unavailable") ||
-      errorMsg.includes("high demand") ||
-      errorMsg.includes("429") ||
-      errorMsg.includes("quota");
-
-    if (isHighDemand) {
-      console.warn("[Gemini] Quote generation: models busy/high demand, seamlessly serving curated stoic quote.");
-    } else {
-      console.warn("[Gemini] Quote notice:", error?.message || error);
-    }
+  } catch {
     const fallback = FALLBACK_QUOTES[Math.floor(Math.random() * FALLBACK_QUOTES.length)];
     localStorage.setItem("dailyQuote", JSON.stringify({ date: today, quote: fallback }));
     return fallback;
@@ -131,28 +118,45 @@ export async function getDailyQuote() {
 }
 
 export async function getAIInsight(metrics: any) {
+  const focusBucket = Math.floor((Number(metrics?.focusTime) || 0) / 900);
+  const tasksCount = Number(metrics?.tasks) || 0;
+  const actionType = String(metrics?.type || "auto");
+  const cacheKey = `byd_ai_insight_${actionType}_${focusBucket}_${tasksCount}`;
+
+  try {
+    const cachedRaw = localStorage.getItem(cacheKey);
+    if (cachedRaw) {
+      const parsed = JSON.parse(cachedRaw);
+      if (parsed?.text && parsed?.expiresAt > Date.now()) {
+        return parsed.text as string;
+      }
+    }
+  } catch {
+    // ignore storage read issues
+  }
+
   try {
     const res = await fetch("/api/insight", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ metrics }),
     });
-    const data = await parseApiResponse<{ text: string }>(res);
-    return data.text || FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
-  } catch (error: any) {
-    const errorMsg = error?.message?.toLowerCase() || "";
-    const isHighDemand =
-      errorMsg.includes("503") ||
-      errorMsg.includes("unavailable") ||
-      errorMsg.includes("high demand") ||
-      errorMsg.includes("429") ||
-      errorMsg.includes("quota");
+    const data = await parseApiResponse<{ text: string; source?: string }>(res);
+    const resolvedText =
+      data.text || FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
 
-    if (isHighDemand) {
-      console.warn("[Gemini] Insight generation: models busy/high demand, seamlessly serving curated insight.");
-    } else {
-      console.warn("[Gemini] Insight notice:", error?.message || error);
+    try {
+      const ttlMs = data.source === "fallback" ? 5 * 60 * 1000 : 15 * 60 * 1000;
+      localStorage.setItem(
+        cacheKey,
+        JSON.stringify({ text: resolvedText, expiresAt: Date.now() + ttlMs })
+      );
+    } catch {
+      // ignore storage quota errors
     }
+
+    return resolvedText;
+  } catch {
     return FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
   }
 }

@@ -508,20 +508,67 @@ export function DistractionGuard() {
     }
   };
 
-  // Inspect / simulate interception when locked
-  const handleTargetActionClick = (target: BlockedTargetDoc) => {
-    const remaining = getRemainingMinutes(target.lockedUntil);
-    const isLocked = target.isActive && remaining > 0;
+  // Cancel active lock on a target while keeping the link saved in Blocked Targets
+  const handleCancelTargetLock = async (target: BlockedTargetDoc) => {
+    if (depexMode) {
+      setErrorMessage("Cancelling lock is forbidden while DEPEX Mode is engaged.");
+      return;
+    }
 
-    if (isLocked) {
-      setDeniedTarget(target);
-      if (ownerUid) {
-        logDistractionEventInFirestore(ownerUid, {
-          websiteName: target.targetName,
-          websiteUrl: target.targetName,
-          action: 'access_intercepted'
+    const activeOwnerUid = requireAuthenticatedOwner();
+    if (!activeOwnerUid) return;
+
+    if (target.userId && target.userId !== activeOwnerUid) {
+      setErrorMessage("Unauthorized: You can only modify your own targets.");
+      return;
+    }
+
+    // Optimistic UI update for instant feel
+    const previousTargets = blockedTargets;
+    setBlockedTargets((prev) =>
+      prev.map((item) =>
+        item.targetName === target.targetName
+          ? { ...item, isActive: false, lockedUntil: "" }
+          : item
+      )
+    );
+
+    try {
+      const batch = writeBatch(db);
+      const primaryId = target.id || getTargetDocId(target.targetName);
+      const targetRef = doc(db, "users", activeOwnerUid, "blocked_targets", primaryId);
+
+      batch.set(targetRef, {
+        userId: activeOwnerUid,
+        targetName: target.targetName,
+        type: target.type || "website",
+        lockedUntil: "",
+        duration: 0,
+        isActive: false,
+        createdAt: target.createdAt || new Date().toISOString()
+      });
+
+      if (target.docIds && target.docIds.length > 1) {
+        target.docIds.forEach((dupId) => {
+          if (dupId !== primaryId) {
+            batch.delete(doc(db, "users", activeOwnerUid, "blocked_targets", dupId));
+          }
         });
       }
+
+      await batch.commit();
+
+      logDistractionEventInFirestore(activeOwnerUid, {
+        websiteName: target.targetName,
+        websiteUrl: target.targetName,
+        action: "site_unlocked"
+      });
+
+      setSuccessMessage(`Guard cancelled for ${target.targetName}`);
+    } catch (err: any) {
+      console.error("[DistractionGuard] Cancel lock error:", err);
+      setBlockedTargets(previousTargets);
+      setErrorMessage("Failed to cancel lock. Please try again.");
     }
   };
 
@@ -854,16 +901,16 @@ export function DistractionGuard() {
                     </div>
                   </div>
                   
-                  {/* Actions: Test when locked + Delete saved link */}
+                  {/* Actions: Cancel active lock + Delete saved link */}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {isLocked && (
+                    {isLocked && !depexMode && (
                       <button 
                         type="button"
-                        onClick={() => handleTargetActionClick(target)}
-                        className="px-2.5 py-1 rounded-lg bg-red-500 hover:bg-red-600 text-white text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
-                        title="Simulate Interception"
+                        onClick={() => handleCancelTargetLock(target)}
+                        className="px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500 border border-red-500/30 hover:border-red-500 text-red-400 hover:text-white text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                        title="Cancel active lock"
                       >
-                        TEST
+                        CANCEL
                       </button>
                     )}
 
