@@ -24,18 +24,18 @@ import { cn } from "../lib/utils";
 import { 
   db, 
   collection, 
-  addDoc, 
   deleteDoc, 
-  updateDoc, 
   doc, 
   onSnapshot,
   handleFirestoreError,
   OperationType 
 } from "../firebase";
+import { writeBatch } from "firebase/firestore";
 import { logDistractionEventInFirestore } from "../lib/firebase";
 
 export interface BlockedTargetDoc {
   id: string;
+  docIds: string[];
   targetName: string;
   type: string;
   lockedUntil: string;
@@ -61,17 +61,15 @@ export function sanitizeDomain(input: string): string {
   return domain;
 }
 
-// Preset duration options in minutes
-const DURATION_OPTIONS = [
-  { value: 15, label: "15 Minutes" },
-  { value: 30, label: "30 Minutes" },
-  { value: 60, label: "60 Minutes (1 hr)" },
-  { value: 120, label: "120 Minutes (2 hrs)" },
-  { value: 180, label: "180 Minutes (3 hrs)" },
-  { value: 240, label: "240 Minutes (4 hrs)" },
-  { value: 480, label: "480 Minutes (8 hrs)" },
-  { value: 1440, label: "1440 Minutes (24 hrs)" },
-];
+function parseDomainsFromInput(rawInput: string): string[] {
+  if (!rawInput.trim()) return [];
+  const parts = rawInput.split(/[\s,;]+/).map(sanitizeDomain).filter(Boolean);
+  return Array.from(new Set(parts));
+}
+
+function getTargetDocId(domain: string): string {
+  return `target_${domain.replace(/[^a-z0-9_\-]/gi, "_")}`;
+}
 
 export function DistractionGuard() {
   const { 
@@ -85,19 +83,21 @@ export function DistractionGuard() {
   const [domainInput, setDomainInput] = useState("");
   const [durationInput, setDurationInput] = useState<string>("30");
   const [selectedDuration, setSelectedDuration] = useState<number>(30);
+  const [isSavingLink, setIsSavingLink] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Realtime Blocked Targets from Firestore "blocked_targets" collection
+  // Realtime Saved & Blocked Targets from Firestore "blocked_targets" collection
   const [blockedTargets, setBlockedTargets] = useState<BlockedTargetDoc[]>([]);
   const [isLoadingTargets, setIsLoadingTargets] = useState(true);
   const [deniedTarget, setDeniedTarget] = useState<BlockedTargetDoc | null>(null);
   const [showConfirmDepex, setShowConfirmDepex] = useState(false);
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
 
-  // Clean sanitized preview of current input
-  const cleanPreview = useMemo(() => sanitizeDomain(domainInput), [domainInput]);
+  // Clean sanitized preview of current input (supports single or comma-separated domains)
+  const parsedInputDomains = useMemo(() => parseDomainsFromInput(domainInput), [domainInput]);
+  const cleanPreview = parsedInputDomains[0] || "";
 
   // Keep countdowns refreshed every 15 seconds
   useEffect(() => {
@@ -107,7 +107,7 @@ export function DistractionGuard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Real-time synchronization with Firestore collection "blocked_targets"
+  // Real-time synchronization with Firestore collection "blocked_targets" (deduplicated by domain)
   useEffect(() => {
     setIsLoadingTargets(true);
     const targetsCol = collection(db, "blocked_targets");
@@ -115,25 +115,59 @@ export function DistractionGuard() {
     const unsubscribe = onSnapshot(
       targetsCol,
       (snapshot) => {
-        const items: BlockedTargetDoc[] = snapshot.docs.map((docSnap) => {
+        const domainMap = new Map<string, BlockedTargetDoc>();
+        const now = Date.now();
+
+        snapshot.docs.forEach((docSnap) => {
           const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            targetName: data.targetName || "",
-            type: data.type || "website",
-            lockedUntil: data.lockedUntil || "",
-            isActive: data.isActive !== undefined ? Boolean(data.isActive) : true,
-            createdAt: data.createdAt || new Date().toISOString()
-          };
+          const normalizedName = sanitizeDomain(data.targetName || "");
+          if (!normalizedName) return;
+
+          const candidateLockedUntil = data.lockedUntil || "";
+          const candidateActive = data.isActive !== undefined ? Boolean(data.isActive) : false;
+          const candidateExpiry = candidateLockedUntil ? new Date(candidateLockedUntil).getTime() : 0;
+          const candidateIsLocked = candidateActive && candidateExpiry > now;
+          const candidateCreatedAt = data.createdAt || new Date().toISOString();
+
+          const existing = domainMap.get(normalizedName);
+          if (!existing) {
+            domainMap.set(normalizedName, {
+              id: docSnap.id,
+              docIds: [docSnap.id],
+              targetName: normalizedName,
+              type: data.type || "website",
+              lockedUntil: candidateLockedUntil,
+              isActive: candidateActive,
+              createdAt: candidateCreatedAt
+            });
+          } else {
+            existing.docIds.push(docSnap.id);
+            const existingExpiry = existing.lockedUntil ? new Date(existing.lockedUntil).getTime() : 0;
+            const existingIsLocked = existing.isActive && existingExpiry > now;
+
+            // Prefer the active locked state or latest expiry/creation if legacy duplicates exist
+            if (
+              (candidateIsLocked && !existingIsLocked) ||
+              (candidateIsLocked && existingIsLocked && candidateExpiry > existingExpiry) ||
+              (!candidateIsLocked && !existingIsLocked && candidateCreatedAt > existing.createdAt)
+            ) {
+              existing.id = docSnap.id;
+              existing.lockedUntil = candidateLockedUntil;
+              existing.isActive = candidateActive;
+              existing.createdAt = candidateCreatedAt;
+            }
+          }
         });
 
-        // Sort: active locks first, then newest
+        const items = Array.from(domainMap.values());
+
+        // Sort: active locks first, then alphabetical/saved order so targets stay steady
         items.sort((a, b) => {
-          const aTime = new Date(a.lockedUntil).getTime();
-          const bTime = new Date(b.lockedUntil).getTime();
-          if (a.isActive && !b.isActive) return -1;
-          if (!a.isActive && b.isActive) return 1;
-          return bTime - aTime;
+          const aLocked = a.isActive && (a.lockedUntil ? new Date(a.lockedUntil).getTime() > now : false);
+          const bLocked = b.isActive && (b.lockedUntil ? new Date(b.lockedUntil).getTime() > now : false);
+          if (aLocked && !bLocked) return -1;
+          if (!aLocked && bLocked) return 1;
+          return a.createdAt.localeCompare(b.createdAt);
         });
 
         setBlockedTargets(items);
@@ -168,129 +202,202 @@ export function DistractionGuard() {
   const getRemainingMinutes = (lockedUntilIso: string): number => {
     if (!lockedUntilIso) return 0;
     const expiry = new Date(lockedUntilIso).getTime();
+    if (isNaN(expiry)) return 0;
     const diffMs = expiry - currentTime;
     return Math.max(0, Math.ceil(diffMs / (60 * 1000)));
   };
 
-  // Form submission handler
-  const handleBlockWebsite = async (e: React.FormEvent) => {
+  const activeLockedCount = useMemo(
+    () => blockedTargets.filter((t) => t.isActive && getRemainingMinutes(t.lockedUntil) > 0).length,
+    [blockedTargets, currentTime]
+  );
+
+  // Save one or more domains into Blocked Targets list without locking yet
+  const handleSaveTarget = async (e?: React.FormEvent | React.MouseEvent) => {
+    e?.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (parsedInputDomains.length === 0) {
+      setErrorMessage("Enter a link to save (e.g. facebook.com, instagram.com).");
+      return;
+    }
+
+    const invalidDomain = parsedInputDomains.find((d) => !d.includes(".") || d.length < 4);
+    if (invalidDomain) {
+      setErrorMessage(`Invalid domain "${invalidDomain}". Use format like facebook.com.`);
+      return;
+    }
+
+    const existingSet = new Set(blockedTargets.map((t) => t.targetName));
+    const newDomains = parsedInputDomains.filter((d) => !existingSet.has(d));
+
+    if (newDomains.length === 0) {
+      setDomainInput("");
+      setSuccessMessage("Already saved in Blocked Targets.");
+      return;
+    }
+
+    setIsSavingLink(true);
+    try {
+      const batch = writeBatch(db);
+      const nowIso = new Date().toISOString();
+
+      newDomains.forEach((domain) => {
+        const docRef = doc(db, "blocked_targets", getTargetDocId(domain));
+        batch.set(docRef, {
+          targetName: domain,
+          type: "website",
+          lockedUntil: "",
+          duration: 0,
+          isActive: false,
+          createdAt: nowIso
+        });
+      });
+
+      await batch.commit();
+      setDomainInput("");
+      setSuccessMessage(
+        newDomains.length === 1
+          ? `Saved ${newDomains[0]} to Blocked Targets`
+          : `Saved ${newDomains.length} links to Blocked Targets`
+      );
+    } catch (err: any) {
+      console.error("[DistractionGuard] Save link error:", err);
+      setErrorMessage(err?.message || "Failed to save link to Firebase.");
+    } finally {
+      setIsSavingLink(false);
+    }
+  };
+
+  // Engage Guard: Locks ALL saved links in Blocked Targets (plus any valid link currently typed) at once
+  const handleEngageGuard = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const cleanDomain = sanitizeDomain(domainInput);
+    // Validate any pending typed domains if user typed a link and clicked Engage Guard directly
+    if (parsedInputDomains.length > 0) {
+      const invalidDomain = parsedInputDomains.find((d) => !d.includes(".") || d.length < 4);
+      if (invalidDomain) {
+        setErrorMessage(`Invalid domain "${invalidDomain}". Use format like facebook.com.`);
+        return;
+      }
+    }
 
-    if (!cleanDomain) {
-      setErrorMessage("Please enter a valid website domain.");
+    const allTargetDomains = Array.from(
+      new Set([
+        ...blockedTargets.map((t) => t.targetName),
+        ...parsedInputDomains
+      ])
+    );
+
+    if (allTargetDomains.length === 0) {
+      setErrorMessage("Save at least one website link first, then click Engage Guard.");
       return;
     }
 
-    // Basic domain validation
-    if (!cleanDomain.includes(".") || cleanDomain.length < 4) {
-      setErrorMessage("Please enter a valid hostname (e.g. facebook.com, youtube.com).");
+    const parsedMinutes = parseInt(durationInput, 10);
+    const minutes = !isNaN(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : selectedDuration;
+
+    if (!minutes || minutes <= 0) {
+      setErrorMessage("Please enter a valid duration in minutes (e.g. 15, 30, 60).");
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      // Calculate expiration time (lockedUntil) in ISO string format
-      const parsedMinutes = parseInt(durationInput, 10);
-      const minutes = !isNaN(parsedMinutes) && parsedMinutes > 0 ? parsedMinutes : selectedDuration;
-
-      if (!minutes || minutes <= 0) {
-        setErrorMessage("Please enter a valid duration in minutes (e.g. 15, 30, 45).");
-        setIsSubmitting(false);
-        return;
-      }
-
+      const nowIso = new Date().toISOString();
       const lockedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+      const batch = writeBatch(db);
+      const existingByDomain = new Map<string, BlockedTargetDoc>(
+        blockedTargets.map((t): [string, BlockedTargetDoc] => [t.targetName, t])
+      );
 
-      // Required payload structure for Chrome Extension & Backend
-      const payload = {
-        targetName: cleanDomain,
-        type: "website",
-        lockedUntil: lockedUntil,
-        duration: minutes,
-        isActive: true,
-        createdAt: new Date().toISOString()
-      };
+      allTargetDomains.forEach((domain) => {
+        const existing = existingByDomain.get(domain);
+        const primaryId = existing ? existing.id : getTargetDocId(domain);
+        const targetRef = doc(db, "blocked_targets", primaryId);
 
-      // Write to Firestore collection "blocked_targets"
-      await addDoc(collection(db, "blocked_targets"), payload);
+        batch.set(
+          targetRef,
+          {
+            targetName: domain,
+            type: "website",
+            lockedUntil,
+            duration: minutes,
+            isActive: true,
+            createdAt: existing?.createdAt || nowIso
+          },
+          { merge: true }
+        );
 
-      // Log event in user analytics if logged in
+        // Clean up any legacy duplicate documents for the same domain
+        if (existing && existing.docIds.length > 1) {
+          existing.docIds.forEach((dupId) => {
+            if (dupId !== primaryId) {
+              batch.delete(doc(db, "blocked_targets", dupId));
+            }
+          });
+        }
+      });
+
+      await batch.commit();
+
       if (user?.id) {
-        logDistractionEventInFirestore(user.id, {
-          websiteName: cleanDomain,
-          websiteUrl: cleanDomain,
-          action: 'lock_activated'
+        allTargetDomains.forEach((domain) => {
+          logDistractionEventInFirestore(user.id, {
+            websiteName: domain,
+            websiteUrl: domain,
+            action: "lock_activated"
+          });
         });
       }
 
       addNotification?.(
-        "Website Blocked",
-        `${cleanDomain} is locked for ${minutes} minutes via Distraction Guard.`
+        "Distraction Guard Engaged",
+        `Locked ${allTargetDomains.length} saved ${allTargetDomains.length === 1 ? "target" : "targets"} for ${minutes} minutes.`
       );
 
-      setSuccessMessage(`Shield Active: ${cleanDomain} locked for ${minutes}m`);
-      setDomainInput("");
+      setSuccessMessage(
+        `Shield Active: ${allTargetDomains.length} ${allTargetDomains.length === 1 ? "target" : "targets"} locked for ${minutes}m`
+      );
+      if (domainInput) setDomainInput("");
     } catch (err: any) {
-      console.error("[DistractionGuard] Write error:", err);
+      console.error("[DistractionGuard] Batch lock error:", err);
       setErrorMessage(
-        err?.message || "Failed to block website. Check your Firebase database connection."
+        err?.message || "Failed to engage guard. Check your Firebase database connection."
       );
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  // Toggle active status or unlock target
-  const handleToggleTargetStatus = async (target: BlockedTargetDoc) => {
-    if (depexMode && target.isActive) {
-      setErrorMessage("Cannot unlock targets while DEPEX Mode is active.");
-      return;
-    }
-
-    try {
-      const targetRef = doc(db, "blocked_targets", target.id);
-      const newStatus = !target.isActive;
-      await updateDoc(targetRef, {
-        isActive: newStatus
-      });
-
-      if (user?.id && !newStatus) {
-        logDistractionEventInFirestore(user.id, {
-          websiteName: target.targetName,
-          websiteUrl: target.targetName,
-          action: 'site_unlocked'
-        });
-      }
-
-      setSuccessMessage(`${target.targetName} ${newStatus ? 're-locked' : 'unlocked'}.`);
-    } catch (err: any) {
-      console.error("[DistractionGuard] Update error:", err);
-      setErrorMessage("Failed to update target status.");
-    }
-  };
-
-  // Delete target from Firestore
-  const handleDeleteTarget = async (id: string, targetName: string) => {
+  // Delete saved target (and any legacy duplicates) from Firestore
+  const handleDeleteTarget = async (target: BlockedTargetDoc) => {
     if (depexMode) {
       setErrorMessage("Deletion is forbidden while DEPEX Mode is engaged.");
       return;
     }
 
     try {
-      await deleteDoc(doc(db, "blocked_targets", id));
-      setSuccessMessage(`Removed ${targetName} from guarded list.`);
+      const idsToDelete = target.docIds?.length ? target.docIds : [target.id];
+      if (idsToDelete.length === 1) {
+        await deleteDoc(doc(db, "blocked_targets", idsToDelete[0]));
+      } else {
+        const batch = writeBatch(db);
+        idsToDelete.forEach((docId) => batch.delete(doc(db, "blocked_targets", docId)));
+        await batch.commit();
+      }
+      setSuccessMessage(`Removed ${target.targetName} from saved targets.`);
     } catch (err: any) {
       console.error("[DistractionGuard] Delete error:", err);
-      setErrorMessage("Failed to remove blocked target.");
+      setErrorMessage("Failed to remove saved target.");
     }
   };
 
-  // Inspect or attempt navigation to target
+  // Inspect / simulate interception when locked
   const handleTargetActionClick = (target: BlockedTargetDoc) => {
     const remaining = getRemainingMinutes(target.lockedUntil);
     const isLocked = target.isActive && remaining > 0;
@@ -304,8 +411,6 @@ export function DistractionGuard() {
           action: 'access_intercepted'
         });
       }
-    } else {
-      window.open(`https://${target.targetName}`, '_blank', 'noopener,noreferrer');
     }
   };
 
@@ -415,41 +520,64 @@ export function DistractionGuard() {
         )}
       </AnimatePresence>
 
-      {/* Block Form: Input Domain + Duration Dropdown */}
-      <form onSubmit={handleBlockWebsite} className="space-y-3 mb-5">
+      {/* Save Target Links + Global Timer Engage Guard Form */}
+      <form onSubmit={handleEngageGuard} className="space-y-3 mb-5">
         <div className="space-y-2">
-          {/* Target Domain Input */}
-          <div className="relative">
-            <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-            <input
-              type="text"
-              placeholder="e.g. facebook.com, youtube.com"
-              value={domainInput}
-              onChange={(e) => setDomainInput(e.target.value)}
-              disabled={isSubmitting}
-              className="w-full bg-black/50 border border-white/10 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-red-500/60 transition-all font-mono shadow-inner disabled:opacity-50"
-            />
-            {domainInput && (
-              <button
-                type="button"
-                onClick={() => setDomainInput("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
+          {/* Save Domain Input + Save Button */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+              <input
+                type="text"
+                placeholder="Save link (e.g. facebook.com)"
+                value={domainInput}
+                onChange={(e) => setDomainInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && domainInput.trim()) {
+                    e.preventDefault();
+                    handleSaveTarget();
+                  }
+                }}
+                disabled={isSavingLink || isSubmitting}
+                className="w-full bg-black/50 border border-white/10 rounded-xl pl-10 pr-8 py-2.5 text-xs text-white placeholder:text-white/25 focus:outline-none focus:border-red-500/60 transition-all font-mono shadow-inner disabled:opacity-50"
+              />
+              {domainInput && (
+                <button
+                  type="button"
+                  onClick={() => setDomainInput("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-white/30 hover:text-white"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveTarget}
+              disabled={isSavingLink || isSubmitting || !cleanPreview}
+              className="px-3.5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-white font-bold text-[10px] uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-[0.98]"
+              title="Save link to Blocked Targets"
+            >
+              {isSavingLink ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Plus className="w-3.5 h-3.5 text-red-400" />
+              )}
+              <span>Save</span>
+            </button>
           </div>
 
           {/* Sanitized Domain Preview Hint */}
-          {cleanPreview && cleanPreview !== domainInput && (
+          {cleanPreview && cleanPreview !== domainInput.trim().toLowerCase() && (
             <div className="text-[10px] text-white/40 px-1 font-mono flex items-center gap-1">
               <span>Sanitized target:</span>
-              <span className="text-red-400 font-bold">{cleanPreview}</span>
+              <span className="text-red-400 font-bold">{parsedInputDomains.join(", ")}</span>
             </div>
           )}
         </div>
 
-        {/* Duration Input (Keyboard + Quick Presets) & Action Button */}
+        {/* Duration Input (Keyboard + Quick Presets) & Bulk Engage Guard Button */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
           <div className="relative">
             <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/30">
@@ -479,13 +607,14 @@ export function DistractionGuard() {
 
           <button 
             type="submit"
-            disabled={isSubmitting || !cleanPreview}
+            disabled={isSubmitting || (blockedTargets.length === 0 && !cleanPreview)}
             className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] uppercase tracking-[0.18em] transition-all shadow-[0_2px_12px_rgba(220,38,38,0.3)] hover:shadow-[0_0_18px_rgba(220,38,38,0.5)] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
+            title="Lock all saved targets in Blocked Targets for the selected duration"
           >
             {isSubmitting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Locking...</span>
+                <span>Locking All...</span>
               </>
             ) : (
               <>
@@ -520,18 +649,24 @@ export function DistractionGuard() {
         </div>
       </form>
 
-      {/* Blocked Targets Realtime Feed */}
+      {/* Blocked Targets Saved Links List */}
       <div className="flex-1 flex flex-col min-h-0">
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-white/5">
           <div className="flex items-center gap-2">
-            <Radio className="w-3 h-3 text-red-500 animate-pulse" />
+            <Radio className={cn("w-3 h-3", activeLockedCount > 0 ? "text-red-500 animate-pulse" : "text-white/30")} />
             <span className="text-[10px] font-mono font-bold text-white/50 uppercase tracking-wider">
               BLOCKED TARGETS ({blockedTargets.length})
             </span>
           </div>
-          <span className="text-[9px] font-mono text-white/30">
-            collection: blocked_targets
-          </span>
+          {activeLockedCount > 0 ? (
+            <span className="text-[9px] font-mono font-bold text-red-400 bg-red-500/15 border border-red-500/30 px-2 py-0.5 rounded-full">
+              {activeLockedCount} LOCKED
+            </span>
+          ) : (
+            <span className="text-[9px] font-mono text-white/30">
+              {blockedTargets.length > 0 ? "Ready to lock" : "Saved targets"}
+            </span>
+          )}
         </div>
 
         <div className="space-y-2 flex-1 overflow-y-auto pr-1 min-h-[160px] max-h-[300px] custom-scrollbar">
@@ -540,13 +675,13 @@ export function DistractionGuard() {
               <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
             </div>
           ) : blockedTargets.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center py-8 border border-dashed border-white/5 rounded-xl opacity-40 text-center px-4">
+            <div className="h-full flex flex-col items-center justify-center py-8 border border-dashed border-white/5 rounded-xl opacity-50 text-center px-4">
               <ShieldCheck className="w-7 h-7 mb-2 text-white/40" />
               <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
-                No Websites Currently Blocked
+                No Saved Targets Yet
               </p>
-              <p className="text-[9px] text-white/30 mt-1">
-                Targets added here sync immediately with your BYD Chrome Extension.
+              <p className="text-[9px] text-white/35 mt-1">
+                Save links like facebook.com or instagram.com once, then click Engage Guard anytime to lock all together.
               </p>
             </div>
           ) : (
@@ -556,21 +691,23 @@ export function DistractionGuard() {
 
               return (
                 <div 
-                  key={target.id}
+                  key={target.targetName}
                   className={cn(
-                    "flex items-center justify-between p-3 rounded-xl bg-red-500/5 border border-red-500/10 group/item transition-all duration-200",
+                    "flex items-center justify-between px-3 py-2.5 rounded-xl border group/item transition-all duration-200",
                     isLocked 
                       ? "border-red-500/40 bg-red-500/[0.08] shadow-[inner_0_0_15px_rgba(239,68,68,0.08)]" 
-                      : "opacity-60 hover:opacity-100 hover:border-white/10"
+                      : "bg-white/[0.03] border-white/[0.08] hover:border-white/15 hover:bg-white/[0.05]"
                   )}
                 >
-                  {/* Left info: Icon & Domain */}
+                  {/* Left info: Icon & Saved Domain */}
                   <div className="flex items-center gap-2.5 overflow-hidden flex-1 mr-2">
                     <div className={cn(
-                      "w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-all",
-                      isLocked ? "bg-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]" : "bg-white/5 text-white/40"
+                      "w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-all",
+                      isLocked
+                        ? "bg-red-500 text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                        : "bg-white/5 border border-white/10 text-white/50"
                     )}>
-                      {isLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+                      {isLocked ? <Lock className="w-3.5 h-3.5" /> : <Globe className="w-3.5 h-3.5" />}
                     </div>
                     
                     <div className="overflow-hidden min-w-0">
@@ -583,22 +720,22 @@ export function DistractionGuard() {
                             {remaining}m LEFT
                           </span>
                         ) : (
-                          <span className="text-[9px] font-mono text-white/30 bg-white/5 px-1.5 py-0.5 rounded-full flex-shrink-0">
-                            EXPIRED
+                          <span className="text-[8px] font-mono uppercase tracking-wider text-white/35 bg-white/5 px-1.5 py-0.5 rounded-full flex-shrink-0">
+                            Saved
                           </span>
                         )}
                       </div>
-                      <div className="text-[9px] font-mono text-white/30 truncate flex items-center gap-1.5 mt-0.5">
-                        <span>{target.type}</span>
-                        <span>•</span>
-                        <span>Locked until: {new Date(target.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      </div>
+                      {isLocked && (
+                        <div className="text-[9px] font-mono text-red-300/60 truncate flex items-center gap-1.5 mt-0.5">
+                          <span>Locked until {new Date(target.lockedUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   
-                  {/* Actions: Intercept / Unlock / Delete */}
+                  {/* Actions: Test when locked + Delete saved link */}
                   <div className="flex items-center gap-1.5 flex-shrink-0">
-                    {isLocked ? (
+                    {isLocked && (
                       <button 
                         type="button"
                         onClick={() => handleTargetActionClick(target)}
@@ -607,23 +744,14 @@ export function DistractionGuard() {
                       >
                         TEST
                       </button>
-                    ) : (
-                      <button 
-                        type="button"
-                        onClick={() => handleToggleTargetStatus(target)}
-                        className="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-white/60 hover:text-white text-[9px] font-bold uppercase tracking-wider transition-all cursor-pointer"
-                        title="Re-activate Lock"
-                      >
-                        RE-LOCK
-                      </button>
                     )}
 
                     {!depexMode && (
                       <button 
                         type="button"
-                        onClick={() => handleDeleteTarget(target.id, target.targetName)}
+                        onClick={() => handleDeleteTarget(target)}
                         className="p-1.5 rounded-lg hover:bg-red-500/20 text-white/30 hover:text-red-400 transition-all cursor-pointer"
-                        title="Delete from Blocked Targets"
+                        title="Remove saved link"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>

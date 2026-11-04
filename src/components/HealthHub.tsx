@@ -26,13 +26,11 @@ import {
   Loader2,
   Send,
   Check,
-  X,
-  Key
+  X
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { GlassCard } from './GlassCard';
-import { Type } from "@google/genai";
-import { callGemini } from '../services/gemini';
+import { analyzeMoodEntry, analyzeMealMacros } from '../services/gemini';
 
 import { useApp } from '../context/AppContext';
 import { supabase } from '../lib/supabase';
@@ -54,22 +52,11 @@ export const HealthHub: React.FC<HealthHubProps> = ({ onBack, onNavigate }) => {
     healthTargets, updateHealthTargets,
     latestMood, updateMood,
     macros, updateMacros,
-    geminiApiKey,
     addNotification
   } = useApp();
 
   const [activeCategory, setActiveCategory] = useState<'Physical' | 'Mental'>('Physical');
   const [updateStatus, setUpdateStatus] = useState<'idle' | 'updating' | 'success'>('idle');
-  const [showKeyModal, setShowKeyModal] = useState(false);
-
-  const checkApiKey = () => {
-    if (!geminiApiKey) {
-      setShowKeyModal(true);
-      addNotification("API Key Required", "Kindly set your API KEY to use AI features.");
-      return false;
-    }
-    return true;
-  };
 
   const handleUpdateTargets = () => {
     setUpdateStatus('updating');
@@ -407,7 +394,7 @@ export const HealthHub: React.FC<HealthHubProps> = ({ onBack, onNavigate }) => {
             <FootstepsCard goal={Number(healthTargets.footsteps) || 10000} steps={steps} onUpdate={updateSteps} />
             <ScreenTimeCard onUpdate={updateScreenTime} hours={screenTimeHours} minutes={screenTimeMinutes} />
             <BMICard />
-            <MacrosCard onAddMeal={handleMealAdd} goal={Number(healthTargets.calories) || 2000} consumed={consumedCalories} geminiApiKey={geminiApiKey} checkApiKey={checkApiKey} />
+            <MacrosCard onAddMeal={handleMealAdd} goal={Number(healthTargets.calories) || 2000} consumed={consumedCalories} />
           </motion.div>
         )}
         {activeCategory === 'Mental' && (
@@ -419,62 +406,8 @@ export const HealthHub: React.FC<HealthHubProps> = ({ onBack, onNavigate }) => {
             className="px-8 pb-6 grid grid-cols-2 gap-4 relative z-10 max-w-7xl mx-auto w-full"
           >
             <HealYourselfCard />
-            <MoodJournalCard onUpdate={handleMoodUpdate} geminiApiKey={geminiApiKey} checkApiKey={checkApiKey} />
+            <MoodJournalCard onUpdate={handleMoodUpdate} />
           </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* API Key Modal Interception */}
-      <AnimatePresence>
-        {showKeyModal && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="absolute inset-0 bg-black/80 backdrop-blur-md"
-              onClick={() => setShowKeyModal(false)}
-            />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.9, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="relative w-full max-w-md p-8 rounded-[32px] bg-black border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.5)] overflow-hidden"
-            >
-              <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#A855F7] to-[#00E5FF]" />
-              
-              <div className="flex flex-col items-center text-center gap-6">
-                <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center shadow-inner">
-                  <Key className="w-8 h-8 text-[#A855F7]" />
-                </div>
-                
-                <div>
-                  <h3 className="text-xl font-black text-white uppercase tracking-widest mb-2">Connect <span className="text-[#A855F7]">Gemini AI</span></h3>
-                  <p className="text-xs text-white/40 font-medium leading-relaxed">
-                    Kindly set your <span className="text-white font-bold">GEMINI API KEY</span> in the System Settings to enable advanced meal analysis and mood journals.
-                  </p>
-                </div>
-
-                <div className="flex flex-col w-full gap-3">
-                  <button 
-                    onClick={() => {
-                      setShowKeyModal(false);
-                      onNavigate?.("Personal");
-                    }}
-                    className="w-full py-4 rounded-xl bg-white text-black text-[10px] font-black uppercase tracking-[0.2em] shadow-[0_0_20px_rgba(255,255,255,0.2)] hover:bg-white hover:scale-[1.02] active:scale-[0.98] transition-all"
-                  >
-                    Go to Settings
-                  </button>
-                  <button 
-                    onClick={() => setShowKeyModal(false)}
-                    className="w-full py-4 rounded-xl bg-white/5 text-white/40 text-[10px] font-black uppercase tracking-[0.2em] hover:text-white transition-colors"
-                  >
-                    Maybe Later
-                  </button>
-                </div>
-              </div>
-            </motion.div>
-          </div>
         )}
       </AnimatePresence>
     </div>
@@ -895,48 +828,25 @@ const HealYourselfCard = () => {
   );
 };
 
-const MoodJournalCard = ({ onUpdate, geminiApiKey, checkApiKey }: { onUpdate: (text: string, emoji: string) => void, geminiApiKey: string | null, checkApiKey: () => boolean }) => {
+const MoodJournalCard = ({ onUpdate }: { onUpdate: (text: string, emoji: string) => void }) => {
   const [text, setText] = useState('');
   const [mood, setMood] = useState<{emoji: string, suggestion: string} | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const analyzeMood = async () => {
     if (!text.trim() || isAnalyzing) return;
-    if (!checkApiKey()) return;
     
     setIsAnalyzing(true);
     
     try {
-      const response = await callGemini({
-        model: "gemini-3.1-flash-lite-preview",
-        contents: `Analyze this journal entry and determine the mood. Provide a short, supportive response (max 20 words) and a single emoji that represents the mood. If the mood is sad or down, use the "😕" emoji. Entry: ${text}`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              emoji: { type: Type.STRING, description: "Representing emoji" },
-              suggestion: { type: Type.STRING, description: "Supportive response" }
-            },
-            required: ["emoji", "suggestion"]
-          }
-        }
-      }, geminiApiKey);
-
-      if (response.text) {
-        const result = JSON.parse(response.text);
-        const detectedEmoji = result.emoji || '😐';
-        const suggestion = result.suggestion || "I'm here to listen.";
-        
-        setMood({ emoji: detectedEmoji, suggestion });
-        onUpdate(text, detectedEmoji);
-      }
+      const result = await analyzeMoodEntry(text);
+      const detectedEmoji = result.emoji || '😐';
+      const suggestion = result.suggestion || "I'm here to listen.";
+      
+      setMood({ emoji: detectedEmoji, suggestion });
+      onUpdate(text, detectedEmoji);
     } catch (error: any) {
-      if (error?.message?.includes('Failed to fetch')) {
-        logger.error("Gemini API Error: Failed to fetch. Check your internet connection or API key.");
-      } else {
-        logger.error("Error analyzing mood:", error);
-      }
+      logger.error("Error analyzing mood:", error);
       // Fallback to local logic if AI fails
       const lowerText = text.toLowerCase();
       const sadKeywords = ['sad', 'tired', 'depressed', 'lonely', 'unhappy', 'down'];
@@ -1215,7 +1125,7 @@ const BMICard = () => {
   );
 };
 
-const MacrosCard = ({ onAddMeal, goal, consumed, geminiApiKey, checkApiKey }: { onAddMeal: (calories: number) => void, goal: number, consumed: number, geminiApiKey: string | null, checkApiKey: () => boolean }) => {
+const MacrosCard = ({ onAddMeal, goal, consumed }: { onAddMeal: (calories: number) => void, goal: number, consumed: number }) => {
   const { macros, updateMacros } = useApp();
   const color = "#F97316"; // Orange
   const fileInputRef = React.useRef<HTMLInputElement>(null);
@@ -1235,12 +1145,6 @@ const MacrosCard = ({ onAddMeal, goal, consumed, geminiApiKey, checkApiKey }: { 
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!checkApiKey()) {
-      // Clear file input
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
-    }
-
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     setIsScanning(true);
@@ -1253,45 +1157,17 @@ const MacrosCard = ({ onAddMeal, goal, consumed, geminiApiKey, checkApiKey }: { 
         const base64String = base64data.split(',')[1];
         
         try {
-          const response = await callGemini({
-            model: "gemini-3.1-pro-preview",
-            contents: {
-              parts: [
-                {
-                  inlineData: {
-                    mimeType: file.type,
-                    data: base64String
-                  }
-                },
-                {
-                  text: "Analyze this food image and estimate the macronutrients (protein, carbs, fats) in grams for the entire portion shown. Return only the numbers."
-                }
-              ]
-            },
-            config: {
-              responseMimeType: "application/json",
-              responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                  foodName: { type: Type.STRING, description: "Name of the food identified" },
-                  protein: { type: Type.NUMBER, description: "Estimated protein in grams" },
-                  carbs: { type: Type.NUMBER, description: "Estimated carbohydrates in grams" },
-                  fats: { type: Type.NUMBER, description: "Estimated fats in grams" }
-                },
-                required: ["foodName", "protein", "carbs", "fats"]
-              }
-            }
-          }, geminiApiKey);
+          const result = await analyzeMealMacros({
+            imageBase64: base64String,
+            mimeType: file.type,
+          });
 
-          if (response.text) {
-            const result = JSON.parse(response.text);
-            setPendingMeal({
-              foodName: result.foodName || "Unknown Food",
-              protein: result.protein || 0,
-              carbs: result.carbs || 0,
-              fats: result.fats || 0
-            });
-          }
+          setPendingMeal({
+            foodName: result.foodName || "Unknown Food",
+            protein: result.protein || 0,
+            carbs: result.carbs || 0,
+            fats: result.fats || 0
+          });
         } catch (error) {
           logger.error("Error analyzing image:", error);
         } finally {
@@ -1306,39 +1182,18 @@ const MacrosCard = ({ onAddMeal, goal, consumed, geminiApiKey, checkApiKey }: { 
 
   const handleTextSubmit = async () => {
     if (!foodText.trim() || isScanning) return;
-    if (!checkApiKey()) return;
     
     setIsScanning(true);
     setPreviewUrl(null); // Clear image preview if text is used
 
     try {
-      const response = await callGemini({
-        model: "gemini-3.1-pro-preview",
-        contents: `Analyze this food description and estimate the macronutrients (protein, carbs, fats) in grams for the entire portion described. Return only the numbers. Food: ${foodText}`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              foodName: { type: Type.STRING, description: "Name of the food identified" },
-              protein: { type: Type.NUMBER, description: "Estimated protein in grams" },
-              carbs: { type: Type.NUMBER, description: "Estimated carbohydrates in grams" },
-              fats: { type: Type.NUMBER, description: "Estimated fats in grams" }
-            },
-            required: ["foodName", "protein", "carbs", "fats"]
-          }
-        }
-      }, geminiApiKey);
-
-      if (response.text) {
-        const result = JSON.parse(response.text);
-        setPendingMeal({
-          foodName: result.foodName || foodText,
-          protein: result.protein || 0,
-          carbs: result.carbs || 0,
-          fats: result.fats || 0
-        });
-      }
+      const result = await analyzeMealMacros({ foodText });
+      setPendingMeal({
+        foodName: result.foodName || foodText,
+        protein: result.protein || 0,
+        carbs: result.carbs || 0,
+        fats: result.fats || 0
+      });
     } catch (error) {
       logger.error("Error scanning food text:", error);
     } finally {

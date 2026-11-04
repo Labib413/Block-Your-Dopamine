@@ -1,7 +1,7 @@
 {
   "name": "react-example",
   "private": true,
-  "version": "6.7.0",
+  "version": "6.8.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -12,7 +12,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@google/genai": "^1.29.0",
+    "@google/genai": "^2.32.0",
     "@supabase/supabase-js": "^2.101.1",
     "@tailwindcss/vite": "^4.1.14",
     "@tanstack/query-sync-storage-persister": "^5.100.10",

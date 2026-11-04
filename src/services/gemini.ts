@@ -1,5 +1,3 @@
-import { GoogleGenAI, Type } from "@google/genai";
-
 const FALLBACK_QUOTES = [
   { text: "Discipline is the bridge between goals and accomplishment.", author: "Jim Rohn" },
   { text: "The only limit to our realization of tomorrow will be our doubts of today.", author: "Franklin D. Roosevelt" },
@@ -21,95 +19,99 @@ const FALLBACK_INSIGHTS = [
   "The best way to predict the future is to create it through action."
 ];
 
-const FALLBACK_MODELS = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
-
-function getGenAI(apiKey?: string | null) {
-  const finalApiKey = apiKey || process.env.GEMINI_API_KEY;
-  if (!finalApiKey) {
-    throw new Error("GEMINI_API_KEY is not defined");
+async function parseApiResponse<T>(res: Response): Promise<T> {
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as any)?.error || `Request failed with status ${res.status}`);
   }
-  return new GoogleGenAI({ apiKey: finalApiKey });
+  return data as T;
 }
 
-export async function callGemini(params: any, apiKey?: string | null) {
-  const ai = getGenAI(apiKey);
-  const primaryModel = params.model || "gemini-3.8-flash";
-  const candidateModels = [
-    primaryModel,
-    ...FALLBACK_MODELS.filter(m => m !== primaryModel)
-  ];
+export async function callGemini(params: {
+  model?: string;
+  contents: any;
+  config?: any;
+}): Promise<{ text: string }> {
+  const res = await fetch("/api/gemini/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  return parseApiResponse<{ text: string }>(res);
+}
 
-  let lastError: any = null;
-  for (const model of candidateModels) {
-    try {
-      return await ai.models.generateContent({
-        ...params,
-        model
-      });
-    } catch (error: any) {
-      lastError = error;
-      const errorMsg = error?.message?.toLowerCase() || JSON.stringify(error).toLowerCase();
-      const isTransientOrUnavailable =
-        errorMsg.includes("503") ||
-        errorMsg.includes("unavailable") ||
-        errorMsg.includes("high demand") ||
-        errorMsg.includes("spike") ||
-        errorMsg.includes("429") ||
-        errorMsg.includes("quota") ||
-        errorMsg.includes("permission") ||
-        errorMsg.includes("403") ||
-        errorMsg.includes("not found");
+export async function streamGemini(
+  params: { model?: string; contents: any; config?: any },
+  onChunk: (text: string) => void
+): Promise<string> {
+  const res = await fetch("/api/gemini/stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
 
-      if (!isTransientOrUnavailable) {
-        throw error;
+  if (!res.ok || !res.body) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error((errData as any)?.error || `Stream request failed with status ${res.status}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullText = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() || "";
+
+    for (const event of events) {
+      const line = event.trim();
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (payload === "[DONE]") return fullText;
+      const parsed = JSON.parse(payload);
+      if (parsed.error) {
+        throw new Error(parsed.error);
       }
-      console.warn(`[Gemini] Model ${model} unavailable (${errorMsg.slice(0, 80)}...). Trying backup model...`);
+      if (parsed.text) {
+        fullText += parsed.text;
+        onChunk(parsed.text);
+      }
     }
   }
 
-  throw lastError;
+  return fullText;
 }
 
-export async function getDailyQuote(apiKey?: string | null) {
+export async function getDailyQuote() {
   const today = new Date().toDateString();
-  const cached = localStorage.getItem('dailyQuote');
-  
+  const cached = localStorage.getItem("dailyQuote");
+
   if (cached) {
     try {
       const parsed = JSON.parse(cached);
       if (parsed.date === today && parsed.quote && parsed.quote.text) {
         return parsed.quote;
       }
-    } catch (e) {
+    } catch {
       // ignore parsing error
     }
   }
 
   try {
-    const response = await callGemini({
-      model: "gemini-3.8-flash",
-      contents: "Generate a short, powerful, and unique productivity or self-improvement quote for a high-performance dashboard. The tone should be professional, slightly stoic, and inspiring. Return a JSON object with 'text' (the quote) and 'author' (the person who said it).",
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            text: { type: Type.STRING },
-            author: { type: Type.STRING }
-          },
-          required: ["text", "author"]
-        }
-      }
-    }, apiKey);
-    
-    const quoteObj = JSON.parse(response.text || "{}");
+    const res = await fetch("/api/quote");
+    const quoteObj = await parseApiResponse<{ text: string; author: string }>(res);
+
     if (quoteObj.text && quoteObj.author) {
-      localStorage.setItem('dailyQuote', JSON.stringify({ date: today, quote: quoteObj }));
+      localStorage.setItem("dailyQuote", JSON.stringify({ date: today, quote: quoteObj }));
       return quoteObj;
     }
     throw new Error("Invalid response format");
   } catch (error: any) {
-    const errorMsg = error?.message?.toLowerCase() || JSON.stringify(error).toLowerCase();
+    const errorMsg = error?.message?.toLowerCase() || "";
     const isHighDemand =
       errorMsg.includes("503") ||
       errorMsg.includes("unavailable") ||
@@ -123,20 +125,22 @@ export async function getDailyQuote(apiKey?: string | null) {
       console.warn("[Gemini] Quote notice:", error?.message || error);
     }
     const fallback = FALLBACK_QUOTES[Math.floor(Math.random() * FALLBACK_QUOTES.length)];
-    localStorage.setItem('dailyQuote', JSON.stringify({ date: today, quote: fallback }));
+    localStorage.setItem("dailyQuote", JSON.stringify({ date: today, quote: fallback }));
     return fallback;
   }
 }
 
-export async function getAIInsight(metrics: any, apiKey?: string | null) {
+export async function getAIInsight(metrics: any) {
   try {
-    const response = await callGemini({
-      model: "gemini-3.8-flash",
-      contents: `Analyze these productivity metrics: ${JSON.stringify(metrics)}. Provide a one-sentence peak performance advice.`,
-    }, apiKey);
-    return response.text || FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
+    const res = await fetch("/api/insight", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metrics }),
+    });
+    const data = await parseApiResponse<{ text: string }>(res);
+    return data.text || FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
   } catch (error: any) {
-    const errorMsg = error?.message?.toLowerCase() || JSON.stringify(error).toLowerCase();
+    const errorMsg = error?.message?.toLowerCase() || "";
     const isHighDemand =
       errorMsg.includes("503") ||
       errorMsg.includes("unavailable") ||
@@ -151,4 +155,26 @@ export async function getAIInsight(metrics: any, apiKey?: string | null) {
     }
     return FALLBACK_INSIGHTS[Math.floor(Math.random() * FALLBACK_INSIGHTS.length)];
   }
+}
+
+export async function analyzeMoodEntry(text: string): Promise<{ emoji: string; suggestion: string }> {
+  const res = await fetch("/api/health/mood", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  return parseApiResponse<{ emoji: string; suggestion: string }>(res);
+}
+
+export async function analyzeMealMacros(payload: {
+  imageBase64?: string;
+  mimeType?: string;
+  foodText?: string;
+}): Promise<{ foodName: string; protein: number; carbs: number; fats: number }> {
+  const res = await fetch("/api/health/macros", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return parseApiResponse<{ foodName: string; protein: number; carbs: number; fats: number }>(res);
 }

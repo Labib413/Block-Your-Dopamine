@@ -290,7 +290,6 @@ export function Dashboard() {
     tasks,
     hydrationIntake,
     sleepHours,
-    geminiApiKey,
     focusHistory,
     healthHistory,
     isDataLoading,
@@ -338,18 +337,18 @@ export function Dashboard() {
   const progressPercent = Math.min(100, Math.max(0, (xp / requiredXP) * 100));
 
   useEffect(() => {
-    getDailyQuote(geminiApiKey).then(setQuote);
-  }, [geminiApiKey]);
+    getDailyQuote().then(setQuote);
+  }, []);
 
   // Debounce AI insight calls to prevent hitting rate limits
   useEffect(() => {
     if ((tasksCompleted > 0 || focusTime > 0) && !isDataLoading) {
       const timer = setTimeout(() => {
-        getAIInsight({ focusTime, tasks: tasksCompleted }, geminiApiKey).then(setAiInsight);
+        getAIInsight({ focusTime, tasks: tasksCompleted }).then(setAiInsight);
       }, 5000); // Only update every 5 seconds of activity
       return () => clearTimeout(timer);
     }
-  }, [tasksCompleted, Math.floor(focusTime / 60), geminiApiKey, isDataLoading]); // Only trigger on task change or every minute of focus
+  }, [tasksCompleted, Math.floor(focusTime / 60), isDataLoading]); // Only trigger on task change or every minute of focus
 
   const { displayChartData, periodLabel } = useMemo(() => {
     const today = new Date();
@@ -635,7 +634,7 @@ export function Dashboard() {
       tasks: tasksCompleted, 
       level, 
       xp 
-    }, geminiApiKey);
+    });
     setAiInsight(insight);
   };
 

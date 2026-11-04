@@ -17,7 +17,6 @@ import {
   School,
   Calendar,
   Users,
-  Key,
   Info,
   UserCircle,
   Fingerprint,
@@ -210,12 +209,9 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
     equippedBadges,
     badgeHealth,
     isSyncing,
-    syncData,
-    geminiApiKey,
-    updateGeminiApiKey
+    syncData
   } = useApp();
 
-  const [apiKey, setApiKey] = useState(geminiApiKey || "");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [copiedId, setCopiedId] = useState(false);
@@ -679,48 +675,6 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
             <h2 className="text-[11px] font-black uppercase tracking-[0.3em] text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)]">
               SYSTEM <span className="text-[#00ff66]">SETTINGS</span>
             </h2>
-          </div>
-
-          {/* AI Configuration Card - Neon Glass Style */}
-          <div className="p-7 rounded-[32px] bg-white/[0.02] backdrop-blur-2xl border border-white/10 shadow-2xl relative overflow-hidden">
-            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-[#00ff66]/5 to-transparent pointer-events-none" />
-            
-            <div className="flex items-center gap-3 mb-5 relative z-10">
-              <Sparkles className="w-4.5 h-4.5 text-[#00ff66]" />
-              <h3 className="text-base font-bold text-white/90">AI Configuration</h3>
-            </div>
-            
-            <p className="text-[11px] text-white/50 leading-relaxed mb-6 relative z-10 font-medium">
-              Enable advanced AI features by connecting your Gemini API key.
-            </p>
-
-            <div className="relative group z-10">
-              <div className="absolute left-4 top-1/2 -translate-y-1/2">
-                <Key className="w-4 h-4 text-[#00ff66]/70" />
-              </div>
-              <input 
-                type="password"
-                placeholder="GEMINI API KEY"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                className="w-full pl-12 pr-24 py-4 rounded-xl bg-white/5 backdrop-blur-md border border-white/10 text-sm font-mono text-[#00ff66] placeholder:text-white/10 focus:outline-none focus:ring-2 focus:ring-[#00ff66]/50 transition-all"
-              />
-              <button 
-                onClick={async () => {
-                  if (!apiKey.trim()) return;
-                  await updateGeminiApiKey(apiKey.trim());
-                  addNotification("API Key Connected", "Your Gemini API Key has been successfully linked and stored.");
-                }}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-5 py-2 rounded-lg bg-[#00ff66] text-black text-[10px] font-black shadow-[0_0_12px_rgba(0,255,102,0.3)] hover:brightness-110 active:scale-[0.95] transition-all"
-              >
-                CONNECT
-              </button>
-            </div>
-            
-            <div className="mt-6 flex items-center gap-3 px-4 py-3 rounded-xl bg-white/5 border border-white/10 relative z-10">
-              <ShieldCheck className="w-4 h-4 text-[#00ff66]/80" />
-              <span className="text-[10px] text-white/50 uppercase tracking-[0.2em] font-bold">End-to-End Encrypted Storage</span>
-            </div>
           </div>
 
           {/* Notification Settings Card */}

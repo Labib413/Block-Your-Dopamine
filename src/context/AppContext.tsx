@@ -219,7 +219,6 @@ interface AppState {
   hasFetchedFocusData: boolean;
   latestMood: { text: string; emoji: string } | null;
   macros: { protein: number; carbs: number; fats: number };
-  geminiApiKey: string | null;
   syncQueue: any[];
   currentSessionStartTime: string | null;
   offlineSyncQueue: any[];
@@ -275,7 +274,6 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   updateProfile: (profileData: Partial<NonNullable<AppState['profile']>>) => Promise<void>;
   updateMood: (text: string, emoji: string) => Promise<void>;
   updateMacros: (protein: number, carbs: number, fats: number, calories?: number) => Promise<void>;
-  updateGeminiApiKey: (key: string | null) => Promise<void>;
   // Task Actions
   addTask: (task: Task) => void;
   deleteTask: (id: string) => void;
@@ -624,7 +622,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       hasFetchedFocusData: false,
       latestMood: null,
       macros: { protein: 0, carbs: 0, fats: 0 },
-      geminiApiKey: null,
       syncQueue: [],
       offlineSyncQueue: [],
       currentSessionStartTime: null,
@@ -1523,7 +1520,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
       hasFetchedFocusData: false,
       latestMood: null,
       macros: { protein: 0, carbs: 0, fats: 0 },
-      geminiApiKey: null,
       syncQueue: [],
       offlineSyncQueue: [],
       currentSessionStartTime: null,
@@ -3772,30 +3768,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
   });
 };
 
-  const updateGeminiApiKey = async (key: string | null) => {
-    setState(prev => ({ ...prev, geminiApiKey: key }));
-    
-    if (key) {
-      localStorage.setItem('byd_user_gemini_key', key);
-    } else {
-      localStorage.removeItem('byd_user_gemini_key');
-    }
-
-    if (state.user) {
-      addToSyncQueue({
-        table: 'profiles',
-        type: 'upsert',
-        onConflict: 'id',
-        key: `profile_key_${state.user.id}`,
-        data: {
-          id: state.user.id,
-          gemini_api_key: key,
-          updated_at: new Date().toISOString()
-        }
-      });
-    }
-  };
-
   const addTask = (task: Task) => {
     logActivity();
     
@@ -3999,7 +3971,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     updateProfile,
     updateMood,
     updateMacros,
-    updateGeminiApiKey,
     addTask,
     deleteTask,
     updateTaskStatus,
