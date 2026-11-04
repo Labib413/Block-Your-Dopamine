@@ -279,22 +279,28 @@
     },
     "BlockedTarget": {
       "title": "BlockedTarget",
-      "description": "Distraction guard target blocked for dopamine detox and Chrome Extension sync",
+      "description": "User-scoped distraction guard target saved and locked for dopamine detox and Chrome Extension sync",
       "type": "object",
       "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
         "targetName": { "type": "string", "maxLength": 255 },
         "type": { "type": "string", "maxLength": 50 },
-        "lockedUntil": { "type": "string" },
+        "lockedUntil": { "type": "string", "maxLength": 64 },
+        "duration": { "type": "number" },
         "isActive": { "type": "boolean" },
-        "createdAt": { "type": "string" }
+        "createdAt": { "type": "string", "maxLength": 64 }
       },
-      "required": ["targetName", "type", "lockedUntil", "isActive", "createdAt"]
+      "required": ["userId", "targetName", "type", "lockedUntil", "isActive", "createdAt"]
     }
   },
   "firestore": {
     "/blocked_targets/{targetId}": {
       "schema": "BlockedTarget",
-      "description": "Website targets blocked by the Chrome extension and Distraction Guard"
+      "description": "Legacy user-owned website targets gated strictly by userId == request.auth.uid"
+    },
+    "/users/{userId}/blocked_targets/{targetId}": {
+      "schema": "BlockedTarget",
+      "description": "Private per-user saved and locked distraction guard targets"
     },
     "/users/{userId}": {
       "schema": "UserProfile",

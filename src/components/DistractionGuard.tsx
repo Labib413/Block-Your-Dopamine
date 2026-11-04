@@ -22,11 +22,13 @@ import { GlassCard } from "./GlassCard";
 import { useApp } from "../context/AppContext";
 import { cn } from "../lib/utils";
 import { 
+  auth,
   db, 
   collection, 
   deleteDoc, 
   doc, 
   onSnapshot,
+  onAuthStateChanged,
   handleFirestoreError,
   OperationType 
 } from "../firebase";
@@ -36,6 +38,7 @@ import { logDistractionEventInFirestore } from "../lib/firebase";
 export interface BlockedTargetDoc {
   id: string;
   docIds: string[];
+  userId: string;
   targetName: string;
   type: string;
   lockedUntil: string;
@@ -68,7 +71,11 @@ function parseDomainsFromInput(rawInput: string): string[] {
 }
 
 function getTargetDocId(domain: string): string {
-  return `target_${domain.replace(/[^a-z0-9_\-]/gi, "_")}`;
+  return `target_${domain.replace(/[^a-z0-9_\-]/gi, "_")}`.slice(0, 120);
+}
+
+function getUserTargetsCacheKey(uid: string): string {
+  return `byd_user_blocked_targets_${uid}`;
 }
 
 export function DistractionGuard() {
@@ -76,8 +83,13 @@ export function DistractionGuard() {
     user,
     depexMode, 
     toggleDepexMode, 
-    addNotification 
+    addNotification,
+    setIsAuthModalOpen
   } = useApp();
+
+  // Track verified Firebase Auth UID so Firestore queries strictly match request.auth.uid
+  const [firebaseUid, setFirebaseUid] = useState<string | null>(() => auth.currentUser?.uid || null);
+  const [authChecked, setAuthChecked] = useState<boolean>(() => Boolean(auth.currentUser));
 
   // Form State
   const [domainInput, setDomainInput] = useState("");
@@ -88,7 +100,7 @@ export function DistractionGuard() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Realtime Saved & Blocked Targets from Firestore "blocked_targets" collection
+  // Realtime Per-User Saved & Blocked Targets from "/users/{uid}/blocked_targets"
   const [blockedTargets, setBlockedTargets] = useState<BlockedTargetDoc[]>([]);
   const [isLoadingTargets, setIsLoadingTargets] = useState(true);
   const [deniedTarget, setDeniedTarget] = useState<BlockedTargetDoc | null>(null);
@@ -99,6 +111,35 @@ export function DistractionGuard() {
   const parsedInputDomains = useMemo(() => parseDomainsFromInput(domainInput), [domainInput]);
   const cleanPreview = parsedInputDomains[0] || "";
 
+  // Sync Firebase Auth UID directly from Firebase SDK
+  useEffect(() => {
+    let mounted = true;
+    const unsub = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        if (mounted) {
+          setFirebaseUid(fbUser.uid);
+          setAuthChecked(true);
+        }
+        return;
+      }
+      try {
+        if (typeof (auth as any).authStateReady === "function") {
+          await (auth as any).authStateReady();
+        }
+      } catch {}
+      if (!mounted) return;
+      setFirebaseUid(auth.currentUser?.uid || null);
+      setAuthChecked(true);
+    });
+    return () => {
+      mounted = false;
+      unsub();
+    };
+  }, []);
+
+  // Effective authenticated owner UID (must match both AppContext user and Firebase Auth session)
+  const ownerUid = user?.id && firebaseUid && user.id === firebaseUid ? firebaseUid : null;
+
   // Keep countdowns refreshed every 15 seconds
   useEffect(() => {
     const timer = setInterval(() => {
@@ -107,10 +148,38 @@ export function DistractionGuard() {
     return () => clearInterval(timer);
   }, []);
 
-  // Real-time synchronization with Firestore collection "blocked_targets" (deduplicated by domain)
+  // Real-time synchronization strictly scoped to "/users/{ownerUid}/blocked_targets"
   useEffect(() => {
+    // Reset transient UI whenever user account changes or logs out
+    setDomainInput("");
+    setDeniedTarget(null);
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    if (!user || !ownerUid) {
+      setBlockedTargets([]);
+      setIsLoadingTargets(!authChecked && Boolean(user));
+      return;
+    }
+
+    // Hydrate current user's own cached targets immediately while realtime snapshot connects
+    try {
+      const rawCache = localStorage.getItem(getUserTargetsCacheKey(ownerUid));
+      if (rawCache) {
+        const parsed = JSON.parse(rawCache);
+        if (Array.isArray(parsed)) {
+          setBlockedTargets(parsed.filter((item) => item && item.userId === ownerUid));
+        }
+      } else {
+        setBlockedTargets([]);
+      }
+    } catch {
+      setBlockedTargets([]);
+    }
+
     setIsLoadingTargets(true);
-    const targetsCol = collection(db, "blocked_targets");
+    const userTargetsPath = `users/${ownerUid}/blocked_targets`;
+    const targetsCol = collection(db, "users", ownerUid, "blocked_targets");
 
     const unsubscribe = onSnapshot(
       targetsCol,
@@ -120,6 +189,9 @@ export function DistractionGuard() {
 
         snapshot.docs.forEach((docSnap) => {
           const data = docSnap.data();
+          // Strict ownership guard: ignore any document that belongs to a different userId
+          if (data.userId && data.userId !== ownerUid) return;
+
           const normalizedName = sanitizeDomain(data.targetName || "");
           if (!normalizedName) return;
 
@@ -134,6 +206,7 @@ export function DistractionGuard() {
             domainMap.set(normalizedName, {
               id: docSnap.id,
               docIds: [docSnap.id],
+              userId: ownerUid,
               targetName: normalizedName,
               type: data.type || "website",
               lockedUntil: candidateLockedUntil,
@@ -145,7 +218,6 @@ export function DistractionGuard() {
             const existingExpiry = existing.lockedUntil ? new Date(existing.lockedUntil).getTime() : 0;
             const existingIsLocked = existing.isActive && existingExpiry > now;
 
-            // Prefer the active locked state or latest expiry/creation if legacy duplicates exist
             if (
               (candidateIsLocked && !existingIsLocked) ||
               (candidateIsLocked && existingIsLocked && candidateExpiry > existingExpiry) ||
@@ -161,7 +233,7 @@ export function DistractionGuard() {
 
         const items = Array.from(domainMap.values());
 
-        // Sort: active locks first, then alphabetical/saved order so targets stay steady
+        // Sort: active locks first, then creation order
         items.sort((a, b) => {
           const aLocked = a.isActive && (a.lockedUntil ? new Date(a.lockedUntil).getTime() > now : false);
           const bLocked = b.isActive && (b.lockedUntil ? new Date(b.lockedUntil).getTime() > now : false);
@@ -172,16 +244,27 @@ export function DistractionGuard() {
 
         setBlockedTargets(items);
         setIsLoadingTargets(false);
+        try {
+          localStorage.setItem(getUserTargetsCacheKey(ownerUid), JSON.stringify(items));
+        } catch {}
       },
       (error) => {
-        console.error("[DistractionGuard] Firestore snapshot error:", error);
-        setErrorMessage("Failed to sync blocked targets from Firebase.");
-        setIsLoadingTargets(false);
+        if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
+          setBlockedTargets([]);
+          setIsLoadingTargets(false);
+          return;
+        }
+        try {
+          handleFirestoreError(error, OperationType.LIST, userTargetsPath);
+        } catch {
+          setErrorMessage("Failed to sync your private targets from Firebase.");
+          setIsLoadingTargets(false);
+        }
       }
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [user, ownerUid, authChecked]);
 
   // Clear notifications after timeout
   useEffect(() => {
@@ -212,11 +295,25 @@ export function DistractionGuard() {
     [blockedTargets, currentTime]
   );
 
-  // Save one or more domains into Blocked Targets list without locking yet
+  // Require an authenticated Firebase account before modifying personal targets
+  const requireAuthenticatedOwner = (): string | null => {
+    const currentAuthUid = auth.currentUser?.uid || null;
+    if (!user?.id || !currentAuthUid || user.id !== currentAuthUid) {
+      setErrorMessage("Please sign in to your account to save or lock personal targets.");
+      setIsAuthModalOpen?.(true);
+      return null;
+    }
+    return currentAuthUid;
+  };
+
+  // Save one or more domains into the current user's private Blocked Targets list
   const handleSaveTarget = async (e?: React.FormEvent | React.MouseEvent) => {
     e?.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
+
+    const activeOwnerUid = requireAuthenticatedOwner();
+    if (!activeOwnerUid) return;
 
     if (parsedInputDomains.length === 0) {
       setErrorMessage("Enter a link to save (e.g. facebook.com, instagram.com).");
@@ -234,7 +331,7 @@ export function DistractionGuard() {
 
     if (newDomains.length === 0) {
       setDomainInput("");
-      setSuccessMessage("Already saved in Blocked Targets.");
+      setSuccessMessage("Already saved in your Blocked Targets.");
       return;
     }
 
@@ -244,8 +341,9 @@ export function DistractionGuard() {
       const nowIso = new Date().toISOString();
 
       newDomains.forEach((domain) => {
-        const docRef = doc(db, "blocked_targets", getTargetDocId(domain));
+        const docRef = doc(db, "users", activeOwnerUid, "blocked_targets", getTargetDocId(domain));
         batch.set(docRef, {
+          userId: activeOwnerUid,
           targetName: domain,
           type: "website",
           lockedUntil: "",
@@ -259,24 +357,26 @@ export function DistractionGuard() {
       setDomainInput("");
       setSuccessMessage(
         newDomains.length === 1
-          ? `Saved ${newDomains[0]} to Blocked Targets`
-          : `Saved ${newDomains.length} links to Blocked Targets`
+          ? `Saved ${newDomains[0]} to your Blocked Targets`
+          : `Saved ${newDomains.length} links to your Blocked Targets`
       );
     } catch (err: any) {
       console.error("[DistractionGuard] Save link error:", err);
-      setErrorMessage(err?.message || "Failed to save link to Firebase.");
+      setErrorMessage(err?.message || "Failed to save link to your account.");
     } finally {
       setIsSavingLink(false);
     }
   };
 
-  // Engage Guard: Locks ALL saved links in Blocked Targets (plus any valid link currently typed) at once
+  // Engage Guard: Locks ALL saved links in the current user's Blocked Targets at once
   const handleEngageGuard = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    // Validate any pending typed domains if user typed a link and clicked Engage Guard directly
+    const activeOwnerUid = requireAuthenticatedOwner();
+    if (!activeOwnerUid) return;
+
     if (parsedInputDomains.length > 0) {
       const invalidDomain = parsedInputDomains.find((d) => !d.includes(".") || d.length < 4);
       if (invalidDomain) {
@@ -287,7 +387,7 @@ export function DistractionGuard() {
 
     const allTargetDomains = Array.from(
       new Set([
-        ...blockedTargets.map((t) => t.targetName),
+        ...blockedTargets.filter((t) => t.userId === activeOwnerUid).map((t) => t.targetName),
         ...parsedInputDomains
       ])
     );
@@ -312,17 +412,20 @@ export function DistractionGuard() {
       const lockedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
       const batch = writeBatch(db);
       const existingByDomain = new Map<string, BlockedTargetDoc>(
-        blockedTargets.map((t): [string, BlockedTargetDoc] => [t.targetName, t])
+        blockedTargets
+          .filter((t) => t.userId === activeOwnerUid)
+          .map((t): [string, BlockedTargetDoc] => [t.targetName, t])
       );
 
       allTargetDomains.forEach((domain) => {
         const existing = existingByDomain.get(domain);
         const primaryId = existing ? existing.id : getTargetDocId(domain);
-        const targetRef = doc(db, "blocked_targets", primaryId);
+        const targetRef = doc(db, "users", activeOwnerUid, "blocked_targets", primaryId);
 
         batch.set(
           targetRef,
           {
+            userId: activeOwnerUid,
             targetName: domain,
             type: "website",
             lockedUntil,
@@ -333,11 +436,11 @@ export function DistractionGuard() {
           { merge: true }
         );
 
-        // Clean up any legacy duplicate documents for the same domain
+        // Clean up any duplicate documents owned by this user for the same domain
         if (existing && existing.docIds.length > 1) {
           existing.docIds.forEach((dupId) => {
             if (dupId !== primaryId) {
-              batch.delete(doc(db, "blocked_targets", dupId));
+              batch.delete(doc(db, "users", activeOwnerUid, "blocked_targets", dupId));
             }
           });
         }
@@ -345,15 +448,13 @@ export function DistractionGuard() {
 
       await batch.commit();
 
-      if (user?.id) {
-        allTargetDomains.forEach((domain) => {
-          logDistractionEventInFirestore(user.id, {
-            websiteName: domain,
-            websiteUrl: domain,
-            action: "lock_activated"
-          });
+      allTargetDomains.forEach((domain) => {
+        logDistractionEventInFirestore(activeOwnerUid, {
+          websiteName: domain,
+          websiteUrl: domain,
+          action: "lock_activated"
         });
-      }
+      });
 
       addNotification?.(
         "Distraction Guard Engaged",
@@ -374,23 +475,33 @@ export function DistractionGuard() {
     }
   };
 
-  // Delete saved target (and any legacy duplicates) from Firestore
+  // Delete saved target strictly from the signed-in owner's subcollection
   const handleDeleteTarget = async (target: BlockedTargetDoc) => {
     if (depexMode) {
       setErrorMessage("Deletion is forbidden while DEPEX Mode is engaged.");
       return;
     }
 
+    const activeOwnerUid = requireAuthenticatedOwner();
+    if (!activeOwnerUid) return;
+
+    if (target.userId && target.userId !== activeOwnerUid) {
+      setErrorMessage("Unauthorized: You can only modify your own targets.");
+      return;
+    }
+
     try {
       const idsToDelete = target.docIds?.length ? target.docIds : [target.id];
       if (idsToDelete.length === 1) {
-        await deleteDoc(doc(db, "blocked_targets", idsToDelete[0]));
+        await deleteDoc(doc(db, "users", activeOwnerUid, "blocked_targets", idsToDelete[0]));
       } else {
         const batch = writeBatch(db);
-        idsToDelete.forEach((docId) => batch.delete(doc(db, "blocked_targets", docId)));
+        idsToDelete.forEach((docId) =>
+          batch.delete(doc(db, "users", activeOwnerUid, "blocked_targets", docId))
+        );
         await batch.commit();
       }
-      setSuccessMessage(`Removed ${target.targetName} from saved targets.`);
+      setSuccessMessage(`Removed ${target.targetName} from your saved targets.`);
     } catch (err: any) {
       console.error("[DistractionGuard] Delete error:", err);
       setErrorMessage("Failed to remove saved target.");
@@ -404,8 +515,8 @@ export function DistractionGuard() {
 
     if (isLocked) {
       setDeniedTarget(target);
-      if (user?.id) {
-        logDistractionEventInFirestore(user.id, {
+      if (ownerUid) {
+        logDistractionEventInFirestore(ownerUid, {
           websiteName: target.targetName,
           websiteUrl: target.targetName,
           action: 'access_intercepted'
@@ -557,7 +668,7 @@ export function DistractionGuard() {
               onClick={handleSaveTarget}
               disabled={isSavingLink || isSubmitting || !cleanPreview}
               className="px-3.5 py-2.5 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 hover:border-white/20 text-white font-bold text-[10px] uppercase tracking-wider transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center gap-1.5 shrink-0 cursor-pointer active:scale-[0.98]"
-              title="Save link to Blocked Targets"
+              title="Save link to your personal Blocked Targets"
             >
               {isSavingLink ? (
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -609,7 +720,7 @@ export function DistractionGuard() {
             type="submit"
             disabled={isSubmitting || (blockedTargets.length === 0 && !cleanPreview)}
             className="w-full py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-[10px] uppercase tracking-[0.18em] transition-all shadow-[0_2px_12px_rgba(220,38,38,0.3)] hover:shadow-[0_0_18px_rgba(220,38,38,0.5)] disabled:opacity-35 disabled:cursor-not-allowed flex items-center justify-center gap-2 active:scale-[0.98] cursor-pointer"
-            title="Lock all saved targets in Blocked Targets for the selected duration"
+            title="Lock all saved targets in your Blocked Targets for the selected duration"
           >
             {isSubmitting ? (
               <>
@@ -664,7 +775,7 @@ export function DistractionGuard() {
             </span>
           ) : (
             <span className="text-[9px] font-mono text-white/30">
-              {blockedTargets.length > 0 ? "Ready to lock" : "Saved targets"}
+              {!user ? "Sign in required" : blockedTargets.length > 0 ? "Ready to lock" : "Private targets"}
             </span>
           )}
         </div>
@@ -673,6 +784,16 @@ export function DistractionGuard() {
           {isLoadingTargets ? (
             <div className="h-full flex items-center justify-center py-8">
               <Loader2 className="w-5 h-5 text-red-500 animate-spin" />
+            </div>
+          ) : !user ? (
+            <div className="h-full flex flex-col items-center justify-center py-8 border border-dashed border-white/5 rounded-xl opacity-60 text-center px-4">
+              <Lock className="w-6 h-6 mb-2 text-white/40" />
+              <p className="text-[10px] font-bold uppercase tracking-widest text-white/60">
+                Sign In For Personal Targets
+              </p>
+              <p className="text-[9px] text-white/35 mt-1">
+                Your saved websites and locks are private to your account only.
+              </p>
             </div>
           ) : blockedTargets.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center py-8 border border-dashed border-white/5 rounded-xl opacity-50 text-center px-4">

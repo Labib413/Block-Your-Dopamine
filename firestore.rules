@@ -20,15 +20,35 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isValidBlockedTarget(data, expectedUserId) {
+      return data.keys().hasAll(['userId', 'targetName', 'type', 'lockedUntil', 'isActive', 'createdAt']) &&
+        data.keys().hasOnly(['userId', 'targetName', 'type', 'lockedUntil', 'duration', 'isActive', 'createdAt']) &&
+        data.userId is string && data.userId.size() <= 128 && data.userId == expectedUserId &&
+        data.targetName is string && data.targetName.size() >= 4 && data.targetName.size() <= 255 &&
+        data.type is string && data.type.size() <= 50 &&
+        data.lockedUntil is string && data.lockedUntil.size() <= 64 &&
+        (!('duration' in data) || (data.duration is number && data.duration >= 0 && data.duration <= 10080)) &&
+        data.isActive is bool &&
+        data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
     // Connection verification endpoint
     match /test/{docId} {
       allow read: if true;
       allow write: if false;
     }
 
-    // Blocked targets for Chrome Extension & Distraction Guard
+    // User-isolated blocked targets (legacy top-level path strictly restricted to document owner)
     match /blocked_targets/{targetId} {
-      allow read, write: if true;
+      allow get: if isSignedIn() && isValidId(targetId) && resource.data.userId == request.auth.uid;
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidId(targetId) && isValidBlockedTarget(request.resource.data, request.auth.uid);
+      allow update: if isSignedIn() && isValidId(targetId) &&
+        resource.data.userId == request.auth.uid &&
+        isValidBlockedTarget(request.resource.data, request.auth.uid) &&
+        request.resource.data.userId == resource.data.userId &&
+        request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if isSignedIn() && isValidId(targetId) && resource.data.userId == request.auth.uid;
     }
 
     // Guilds and study groups
@@ -72,6 +92,16 @@ service cloud.firestore {
       allow list: if false;
       allow create, update: if isOwner(userId) && isValidId(userId);
       allow delete: if isOwner(userId);
+
+      // Dedicated per-user Distraction Guard saved & locked targets
+      match /blocked_targets/{targetId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(targetId) && isValidBlockedTarget(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidId(targetId) &&
+          isValidBlockedTarget(request.resource.data, userId) &&
+          request.resource.data.userId == userId;
+        allow delete: if isOwner(userId) && isValidId(targetId);
+      }
 
       // User subcollections (sessions, focus_logs, streaks, preferences, guarded_websites,
       // planner_tasks, health_logs, academic_progress, academic_chapters, academic_settings,
