@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { 
   ShieldAlert, 
@@ -74,6 +74,12 @@ function getTargetDocId(domain: string): string {
   return `target_${domain.replace(/[^a-z0-9_\-]/gi, "_")}`.slice(0, 120);
 }
 
+function getExtensionSyncDocId(uid: string, domain: string): string {
+  const safeUid = uid.replace(/[^a-zA-Z0-9_\-]/g, "_").slice(0, 48);
+  const safeDomain = domain.replace(/[^a-zA-Z0-9_\-]/gi, "_").slice(0, 64);
+  return `sync_${safeUid}_${safeDomain}`;
+}
+
 function getUserTargetsCacheKey(uid: string): string {
   return `byd_user_blocked_targets_${uid}`;
 }
@@ -106,6 +112,7 @@ export function DistractionGuard() {
   const [deniedTarget, setDeniedTarget] = useState<BlockedTargetDoc | null>(null);
   const [showConfirmDepex, setShowConfirmDepex] = useState(false);
   const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  const syncedExtFingerprintsRef = useRef<Map<string, string>>(new Map());
 
   // Clean sanitized preview of current input (supports single or comma-separated domains)
   const parsedInputDomains = useMemo(() => parseDomainsFromInput(domainInput), [domainInput]);
@@ -155,6 +162,7 @@ export function DistractionGuard() {
     setDeniedTarget(null);
     setErrorMessage(null);
     setSuccessMessage(null);
+    syncedExtFingerprintsRef.current.clear();
 
     if (!user || !ownerUid) {
       setBlockedTargets([]);
@@ -247,6 +255,60 @@ export function DistractionGuard() {
         try {
           localStorage.setItem(getUserTargetsCacheKey(ownerUid), JSON.stringify(items));
         } catch {}
+
+        // Auto-reconcile active & expired locks with top-level "/blocked_targets" so Chrome Extension stays connected
+        if (auth.currentUser?.uid === ownerUid) {
+          const reconBatch = writeBatch(db);
+          let hasReconOps = false;
+
+          items.forEach((item) => {
+            const expiry = item.lockedUntil ? new Date(item.lockedUntil).getTime() : 0;
+            const isCurrentlyLocked = item.isActive && expiry > now;
+            const fingerprint = `${isCurrentlyLocked ? "1" : "0"}:${item.lockedUntil}`;
+            const prevFingerprint = syncedExtFingerprintsRef.current.get(item.targetName);
+
+            if (prevFingerprint === fingerprint) return;
+            syncedExtFingerprintsRef.current.set(item.targetName, fingerprint);
+
+            const extRef = doc(db, "blocked_targets", getExtensionSyncDocId(ownerUid, item.targetName));
+            const legacyUnownedRef = doc(db, "blocked_targets", getTargetDocId(item.targetName));
+
+            if (isCurrentlyLocked) {
+              reconBatch.set(extRef, {
+                userId: ownerUid,
+                targetName: item.targetName,
+                type: item.type || "website",
+                lockedUntil: item.lockedUntil,
+                duration: Math.max(1, Math.ceil((expiry - now) / (60 * 1000))),
+                isActive: true,
+                createdAt: item.createdAt || new Date().toISOString()
+              });
+              reconBatch.delete(legacyUnownedRef);
+              hasReconOps = true;
+            } else if (item.isActive && expiry > 0 && expiry <= now) {
+              // Clean up naturally expired lock in both private subcollection and Chrome Extension mirror
+              const userDocRef = doc(db, "users", ownerUid, "blocked_targets", item.id);
+              reconBatch.set(userDocRef, {
+                userId: ownerUid,
+                targetName: item.targetName,
+                type: item.type || "website",
+                lockedUntil: "",
+                duration: 0,
+                isActive: false,
+                createdAt: item.createdAt || new Date().toISOString()
+              });
+              reconBatch.delete(extRef);
+              reconBatch.delete(legacyUnownedRef);
+              hasReconOps = true;
+            }
+          });
+
+          if (hasReconOps) {
+            reconBatch.commit().catch((err) => {
+              console.warn("[DistractionGuard] Extension sync reconciliation warning:", err);
+            });
+          }
+        }
       },
       (error) => {
         if (!auth.currentUser || auth.currentUser.uid !== ownerUid) {
@@ -294,6 +356,37 @@ export function DistractionGuard() {
     () => blockedTargets.filter((t) => t.isActive && getRemainingMinutes(t.lockedUntil) > 0).length,
     [blockedTargets, currentTime]
   );
+
+  // Broadcast live lock state to any installed BYD Chrome Extension content script
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      if (ownerUid) {
+        document.documentElement.dataset.bydUid = ownerUid;
+      } else {
+        delete document.documentElement.dataset.bydUid;
+      }
+      const activeDomains = blockedTargets
+        .filter((t) => t.isActive && getRemainingMinutes(t.lockedUntil) > 0)
+        .map((t) => ({
+          userId: ownerUid,
+          targetName: t.targetName,
+          type: t.type,
+          lockedUntil: t.lockedUntil,
+          isActive: true
+        }));
+      window.postMessage(
+        {
+          source: "BYD_WEB_APP",
+          type: "BYD_EXTENSION_SYNC",
+          userId: ownerUid,
+          depexMode,
+          blockedTargets: activeDomains
+        },
+        "*"
+      );
+    } catch {}
+  }, [ownerUid, depexMode, blockedTargets, currentTime]);
 
   // Require an authenticated Firebase account before modifying personal targets
   const requireAuthenticatedOwner = (): string | null => {
@@ -421,20 +514,25 @@ export function DistractionGuard() {
         const existing = existingByDomain.get(domain);
         const primaryId = existing ? existing.id : getTargetDocId(domain);
         const targetRef = doc(db, "users", activeOwnerUid, "blocked_targets", primaryId);
+        const extSyncRef = doc(db, "blocked_targets", getExtensionSyncDocId(activeOwnerUid, domain));
 
-        batch.set(
-          targetRef,
-          {
-            userId: activeOwnerUid,
-            targetName: domain,
-            type: "website",
-            lockedUntil,
-            duration: minutes,
-            isActive: true,
-            createdAt: existing?.createdAt || nowIso
-          },
-          { merge: true }
-        );
+        const lockPayload = {
+          userId: activeOwnerUid,
+          targetName: domain,
+          type: "website",
+          lockedUntil,
+          duration: minutes,
+          isActive: true,
+          createdAt: existing?.createdAt || nowIso
+        };
+
+        // 1. Update private per-user target document (for Web Dashboard)
+        batch.set(targetRef, lockPayload);
+        // 2. Mirror active lock to top-level "/blocked_targets" (for real-time Chrome Extension blocking)
+        batch.set(extSyncRef, lockPayload);
+        // Remove any legacy unowned doc for the same domain so it cannot shadow active lock state
+        batch.delete(doc(db, "blocked_targets", getTargetDocId(domain)));
+        syncedExtFingerprintsRef.current.set(domain, `1:${lockedUntil}`);
 
         // Clean up any duplicate documents owned by this user for the same domain
         if (existing && existing.docIds.length > 1) {
@@ -491,16 +589,17 @@ export function DistractionGuard() {
     }
 
     try {
+      const batch = writeBatch(db);
       const idsToDelete = target.docIds?.length ? target.docIds : [target.id];
-      if (idsToDelete.length === 1) {
-        await deleteDoc(doc(db, "users", activeOwnerUid, "blocked_targets", idsToDelete[0]));
-      } else {
-        const batch = writeBatch(db);
-        idsToDelete.forEach((docId) =>
-          batch.delete(doc(db, "users", activeOwnerUid, "blocked_targets", docId))
-        );
-        await batch.commit();
-      }
+      idsToDelete.forEach((docId) => {
+        batch.delete(doc(db, "users", activeOwnerUid, "blocked_targets", docId));
+      });
+      // Also remove from Chrome Extension sync mirror immediately
+      batch.delete(doc(db, "blocked_targets", getExtensionSyncDocId(activeOwnerUid, target.targetName)));
+      batch.delete(doc(db, "blocked_targets", getTargetDocId(target.targetName)));
+      syncedExtFingerprintsRef.current.delete(target.targetName);
+
+      await batch.commit();
       setSuccessMessage(`Removed ${target.targetName} from your saved targets.`);
     } catch (err: any) {
       console.error("[DistractionGuard] Delete error:", err);
@@ -537,6 +636,7 @@ export function DistractionGuard() {
       const batch = writeBatch(db);
       const primaryId = target.id || getTargetDocId(target.targetName);
       const targetRef = doc(db, "users", activeOwnerUid, "blocked_targets", primaryId);
+      const extSyncRef = doc(db, "blocked_targets", getExtensionSyncDocId(activeOwnerUid, target.targetName));
 
       batch.set(targetRef, {
         userId: activeOwnerUid,
@@ -547,6 +647,10 @@ export function DistractionGuard() {
         isActive: false,
         createdAt: target.createdAt || new Date().toISOString()
       });
+      // Immediately remove active lock from Chrome Extension sync collection so site unblocks right away
+      batch.delete(extSyncRef);
+      batch.delete(doc(db, "blocked_targets", getTargetDocId(target.targetName)));
+      syncedExtFingerprintsRef.current.set(target.targetName, "0:");
 
       if (target.docIds && target.docIds.length > 1) {
         target.docIds.forEach((dupId) => {

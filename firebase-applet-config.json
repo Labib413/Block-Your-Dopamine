@@ -3,7 +3,7 @@
   "appId": "1:745556836846:web:78f106f621f631cdfd4eff",
   "apiKey": "AIzaSyAKXUQRtdmZcF603nYAYhD_7qII75I_SWE",
   "authDomain": "byd-block-your-dopamine.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
+  "firestoreDatabaseId": "block-your-dopamine-testing",
   "storageBucket": "byd-block-your-dopamine.firebasestorage.app",
   "messagingSenderId": "745556836846",
   "measurementId": "G-P4LJ3HDY7G"

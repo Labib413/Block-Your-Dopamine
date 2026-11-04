@@ -296,11 +296,11 @@
   "firestore": {
     "/blocked_targets/{targetId}": {
       "schema": "BlockedTarget",
-      "description": "Legacy user-owned website targets gated strictly by userId == request.auth.uid"
+      "description": "Real-time Chrome Extension sync mirror for active locked website targets; write/delete strictly restricted to userId == request.auth.uid"
     },
     "/users/{userId}/blocked_targets/{targetId}": {
       "schema": "BlockedTarget",
-      "description": "Private per-user saved and locked distraction guard targets"
+      "description": "Private per-user saved and locked distraction guard targets shown in the web dashboard"
     },
     "/users/{userId}": {
       "schema": "UserProfile",

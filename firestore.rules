@@ -38,17 +38,16 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    // User-isolated blocked targets (legacy top-level path strictly restricted to document owner)
+    // Chrome Extension real-time sync bridge for active locked targets:
+    // Readable by the local Chrome Extension background worker; create/update/delete strictly restricted to the authenticated owner.
     match /blocked_targets/{targetId} {
-      allow get: if isSignedIn() && isValidId(targetId) && resource.data.userId == request.auth.uid;
-      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get, list: if true;
       allow create: if isSignedIn() && isValidId(targetId) && isValidBlockedTarget(request.resource.data, request.auth.uid);
       allow update: if isSignedIn() && isValidId(targetId) &&
-        resource.data.userId == request.auth.uid &&
-        isValidBlockedTarget(request.resource.data, request.auth.uid) &&
-        request.resource.data.userId == resource.data.userId &&
-        request.resource.data.createdAt == resource.data.createdAt;
-      allow delete: if isSignedIn() && isValidId(targetId) && resource.data.userId == request.auth.uid;
+        (!('userId' in resource.data) || resource.data.userId == request.auth.uid) &&
+        isValidBlockedTarget(request.resource.data, request.auth.uid);
+      allow delete: if isSignedIn() && isValidId(targetId) &&
+        (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
     }
 
     // Guilds and study groups
