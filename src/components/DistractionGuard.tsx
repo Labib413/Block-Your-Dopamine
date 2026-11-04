@@ -29,11 +29,12 @@ import {
   doc, 
   onSnapshot,
   onAuthStateChanged,
+  Timestamp,
   handleFirestoreError,
   OperationType 
 } from "../firebase";
 import { writeBatch } from "firebase/firestore";
-import { logDistractionEventInFirestore } from "../lib/firebase";
+import { logDistractionEventInFirestore, syncDepexStateInFirestore } from "../lib/firebase";
 
 export interface BlockedTargetDoc {
   id: string;
@@ -43,6 +44,7 @@ export interface BlockedTargetDoc {
   type: string;
   lockedUntil: string;
   isActive: boolean;
+  depexLocked?: boolean;
   createdAt: string;
 }
 
@@ -88,7 +90,9 @@ export function DistractionGuard() {
   const { 
     user,
     depexMode, 
+    depexLockedUntil,
     toggleDepexMode, 
+    lockDepexTimer,
     addNotification,
     setIsAuthModalOpen
   } = useApp();
@@ -147,11 +151,11 @@ export function DistractionGuard() {
   // Effective authenticated owner UID (must match both AppContext user and Firebase Auth session)
   const ownerUid = user?.id && firebaseUid && user.id === firebaseUid ? firebaseUid : null;
 
-  // Keep countdowns refreshed every 15 seconds
+  // Keep countdowns & DEPEX timer lock status refreshed every 5 seconds
   useEffect(() => {
     const timer = setInterval(() => {
       setCurrentTime(Date.now());
-    }, 15000);
+    }, 5000);
     return () => clearInterval(timer);
   }, []);
 
@@ -205,6 +209,7 @@ export function DistractionGuard() {
 
           const candidateLockedUntil = data.lockedUntil || "";
           const candidateActive = data.isActive !== undefined ? Boolean(data.isActive) : false;
+          const candidateDepexLocked = Boolean(data.depexLocked);
           const candidateExpiry = candidateLockedUntil ? new Date(candidateLockedUntil).getTime() : 0;
           const candidateIsLocked = candidateActive && candidateExpiry > now;
           const candidateCreatedAt = data.createdAt || new Date().toISOString();
@@ -219,6 +224,7 @@ export function DistractionGuard() {
               type: data.type || "website",
               lockedUntil: candidateLockedUntil,
               isActive: candidateActive,
+              depexLocked: candidateDepexLocked,
               createdAt: candidateCreatedAt
             });
           } else {
@@ -234,6 +240,7 @@ export function DistractionGuard() {
               existing.id = docSnap.id;
               existing.lockedUntil = candidateLockedUntil;
               existing.isActive = candidateActive;
+              existing.depexLocked = candidateDepexLocked || Boolean(existing.depexLocked);
               existing.createdAt = candidateCreatedAt;
             }
           }
@@ -264,10 +271,12 @@ export function DistractionGuard() {
           items.forEach((item) => {
             const expiry = item.lockedUntil ? new Date(item.lockedUntil).getTime() : 0;
             const isCurrentlyLocked = item.isActive && expiry > now;
-            const fingerprint = `${isCurrentlyLocked ? "1" : "0"}:${item.lockedUntil}`;
+            // Allow 8s clock-skew buffer before auto-cleaning DEPEX-locked targets against Firestore request.time
+            const canCleanExpired = item.isActive && expiry > 0 && (item.depexLocked ? expiry + 8000 <= now : expiry <= now);
+            const fingerprint = `${isCurrentlyLocked ? "1" : "0"}:${item.depexLocked ? "1" : "0"}:${item.lockedUntil}`;
             const prevFingerprint = syncedExtFingerprintsRef.current.get(item.targetName);
 
-            if (prevFingerprint === fingerprint) return;
+            if (prevFingerprint === fingerprint && !canCleanExpired) return;
             syncedExtFingerprintsRef.current.set(item.targetName, fingerprint);
 
             const extRef = doc(db, "blocked_targets", getExtensionSyncDocId(ownerUid, item.targetName));
@@ -279,13 +288,15 @@ export function DistractionGuard() {
                 targetName: item.targetName,
                 type: item.type || "website",
                 lockedUntil: item.lockedUntil,
+                lockedUntilTs: item.depexLocked ? Timestamp.fromMillis(expiry) : null,
                 duration: Math.max(1, Math.ceil((expiry - now) / (60 * 1000))),
                 isActive: true,
+                depexLocked: Boolean(item.depexLocked),
                 createdAt: item.createdAt || new Date().toISOString()
               });
               reconBatch.delete(legacyUnownedRef);
               hasReconOps = true;
-            } else if (item.isActive && expiry > 0 && expiry <= now) {
+            } else if (canCleanExpired) {
               // Clean up naturally expired lock in both private subcollection and Chrome Extension mirror
               const userDocRef = doc(db, "users", ownerUid, "blocked_targets", item.id);
               reconBatch.set(userDocRef, {
@@ -293,8 +304,10 @@ export function DistractionGuard() {
                 targetName: item.targetName,
                 type: item.type || "website",
                 lockedUntil: "",
+                lockedUntilTs: null,
                 duration: 0,
                 isActive: false,
+                depexLocked: false,
                 createdAt: item.createdAt || new Date().toISOString()
               });
               reconBatch.delete(extRef);
@@ -357,6 +370,45 @@ export function DistractionGuard() {
     [blockedTargets, currentTime]
   );
 
+  // Compute authoritative DEPEX timer lock expiry (max of Firebase depex_state and DEPEX-locked targets)
+  const effectiveDepexLockMs = useMemo(() => {
+    const contextMs = depexLockedUntil ? new Date(depexLockedUntil).getTime() : 0;
+    const targetsMs = blockedTargets.reduce((maxMs, t) => {
+      if (!t.isActive || !t.depexLocked || !t.lockedUntil) return maxMs;
+      const exp = new Date(t.lockedUntil).getTime();
+      return !isNaN(exp) ? Math.max(maxMs, exp) : maxMs;
+    }, 0);
+    return Math.max(contextMs, targetsMs);
+  }, [depexLockedUntil, blockedTargets]);
+
+  // Self-heal DEPEX Mode if Firebase targets carry an active DEPEX lock (e.g., after storage clear or new device login)
+  useEffect(() => {
+    if (!depexMode && effectiveDepexLockMs > currentTime) {
+      lockDepexTimer(new Date(effectiveDepexLockMs).toISOString()).catch(() => {});
+    }
+  }, [depexMode, effectiveDepexLockMs, currentTime, lockDepexTimer]);
+
+  const depexRemainingMinutes = useMemo(() => {
+    if (!effectiveDepexLockMs || effectiveDepexLockMs <= currentTime) return 0;
+    return Math.max(1, Math.ceil((effectiveDepexLockMs - currentTime) / (60 * 1000)));
+  }, [effectiveDepexLockMs, currentTime]);
+
+  const isDepexTimerLocked = (depexMode || effectiveDepexLockMs > currentTime) && depexRemainingMinutes > 0;
+
+  // Release expired DEPEX timer lock in Firestore once countdown finishes (with 8s server clock grace)
+  useEffect(() => {
+    if (!ownerUid || !depexMode || !depexLockedUntil) return;
+    const lockMs = new Date(depexLockedUntil).getTime();
+    if (!isNaN(lockMs) && lockMs + 8000 <= currentTime && depexRemainingMinutes === 0) {
+      syncDepexStateInFirestore(ownerUid, {
+        isActive: true,
+        isTimerLocked: false,
+        lockedUntil: "",
+        lockedUntilMs: null
+      }).catch(() => {});
+    }
+  }, [ownerUid, depexMode, depexLockedUntil, currentTime, depexRemainingMinutes]);
+
   // Broadcast live lock state to any installed BYD Chrome Extension content script
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -373,6 +425,7 @@ export function DistractionGuard() {
           targetName: t.targetName,
           type: t.type,
           lockedUntil: t.lockedUntil,
+          depexLocked: Boolean(t.depexLocked || isDepexTimerLocked),
           isActive: true
         }));
       window.postMessage(
@@ -381,12 +434,13 @@ export function DistractionGuard() {
           type: "BYD_EXTENSION_SYNC",
           userId: ownerUid,
           depexMode,
+          depexLockedUntil: isDepexTimerLocked ? new Date(effectiveDepexLockMs).toISOString() : null,
           blockedTargets: activeDomains
         },
         "*"
       );
     } catch {}
-  }, [ownerUid, depexMode, blockedTargets, currentTime]);
+  }, [ownerUid, depexMode, isDepexTimerLocked, effectiveDepexLockMs, blockedTargets, currentTime]);
 
   // Require an authenticated Firebase account before modifying personal targets
   const requireAuthenticatedOwner = (): string | null => {
@@ -501,8 +555,15 @@ export function DistractionGuard() {
     setIsSubmitting(true);
 
     try {
-      const nowIso = new Date().toISOString();
-      const lockedUntil = new Date(Date.now() + minutes * 60 * 1000).toISOString();
+      const nowMs = Date.now();
+      const nowIso = new Date(nowMs).toISOString();
+      const requestedExpiryMs = nowMs + minutes * 60 * 1000;
+      // Never allow shortening an already active DEPEX timer lock
+      const effectiveGlobalExpiryMs = depexMode
+        ? Math.max(requestedExpiryMs, effectiveDepexLockMs || 0)
+        : requestedExpiryMs;
+      const effectiveGlobalIso = new Date(effectiveGlobalExpiryMs).toISOString();
+
       const batch = writeBatch(db);
       const existingByDomain = new Map<string, BlockedTargetDoc>(
         blockedTargets
@@ -516,13 +577,25 @@ export function DistractionGuard() {
         const targetRef = doc(db, "users", activeOwnerUid, "blocked_targets", primaryId);
         const extSyncRef = doc(db, "blocked_targets", getExtensionSyncDocId(activeOwnerUid, domain));
 
+        const existingTargetMs =
+          existing?.isActive && existing?.depexLocked && existing?.lockedUntil
+            ? new Date(existing.lockedUntil).getTime()
+            : 0;
+        const targetExpiryMs = depexMode
+          ? Math.max(effectiveGlobalExpiryMs, existingTargetMs)
+          : requestedExpiryMs;
+        const targetLockedUntil = new Date(targetExpiryMs).toISOString();
+        const isDepexProtected = Boolean(depexMode || (existingTargetMs > nowMs));
+
         const lockPayload = {
           userId: activeOwnerUid,
           targetName: domain,
           type: "website",
-          lockedUntil,
-          duration: minutes,
+          lockedUntil: targetLockedUntil,
+          lockedUntilTs: isDepexProtected ? Timestamp.fromMillis(targetExpiryMs) : null,
+          duration: Math.max(minutes, Math.ceil((targetExpiryMs - nowMs) / (60 * 1000))),
           isActive: true,
+          depexLocked: isDepexProtected,
           createdAt: existing?.createdAt || nowIso
         };
 
@@ -532,7 +605,10 @@ export function DistractionGuard() {
         batch.set(extSyncRef, lockPayload);
         // Remove any legacy unowned doc for the same domain so it cannot shadow active lock state
         batch.delete(doc(db, "blocked_targets", getTargetDocId(domain)));
-        syncedExtFingerprintsRef.current.set(domain, `1:${lockedUntil}`);
+        syncedExtFingerprintsRef.current.set(
+          domain,
+          `1:${isDepexProtected ? "1" : "0"}:${targetLockedUntil}`
+        );
 
         // Clean up any duplicate documents owned by this user for the same domain
         if (existing && existing.docIds.length > 1) {
@@ -544,7 +620,35 @@ export function DistractionGuard() {
         }
       });
 
+      // 3. If DEPEX Mode is ON, atomically lock DEPEX state in Firestore until timer finishes
+      if (depexMode) {
+        const depexStateRef = doc(db, "users", activeOwnerUid, "depex_state", "active");
+        const userRef = doc(db, "users", activeOwnerUid);
+        batch.set(depexStateRef, {
+          userId: activeOwnerUid,
+          isActive: true,
+          isTimerLocked: true,
+          lockedUntil: effectiveGlobalIso,
+          lockedUntilTs: Timestamp.fromMillis(effectiveGlobalExpiryMs),
+          updatedAt: nowIso
+        });
+        batch.set(
+          userRef,
+          {
+            userId: activeOwnerUid,
+            depex_mode: true,
+            depex_locked_until: effectiveGlobalIso,
+            updatedAt: nowIso
+          },
+          { merge: true }
+        );
+      }
+
       await batch.commit();
+
+      if (depexMode) {
+        await lockDepexTimer(effectiveGlobalIso);
+      }
 
       allTargetDomains.forEach((domain) => {
         logDistractionEventInFirestore(activeOwnerUid, {
@@ -554,13 +658,19 @@ export function DistractionGuard() {
         });
       });
 
+      const lockedDurationMins = Math.ceil((effectiveGlobalExpiryMs - nowMs) / (60 * 1000));
+
       addNotification?.(
-        "Distraction Guard Engaged",
-        `Locked ${allTargetDomains.length} saved ${allTargetDomains.length === 1 ? "target" : "targets"} for ${minutes} minutes.`
+        depexMode ? "DEPEX Guard Locked" : "Distraction Guard Engaged",
+        depexMode
+          ? `Unbreakable DEPEX lock active on ${allTargetDomains.length} ${allTargetDomains.length === 1 ? "target" : "targets"} for ${lockedDurationMins} minutes.`
+          : `Locked ${allTargetDomains.length} saved ${allTargetDomains.length === 1 ? "target" : "targets"} for ${minutes} minutes.`
       );
 
       setSuccessMessage(
-        `Shield Active: ${allTargetDomains.length} ${allTargetDomains.length === 1 ? "target" : "targets"} locked for ${minutes}m`
+        depexMode
+          ? `DEPEX Locked: Cannot turn off for ${lockedDurationMins}m`
+          : `Shield Active: ${allTargetDomains.length} ${allTargetDomains.length === 1 ? "target" : "targets"} locked for ${minutes}m`
       );
       if (domainInput) setDomainInput("");
     } catch (err: any) {
@@ -643,14 +753,16 @@ export function DistractionGuard() {
         targetName: target.targetName,
         type: target.type || "website",
         lockedUntil: "",
+        lockedUntilTs: null,
         duration: 0,
         isActive: false,
+        depexLocked: false,
         createdAt: target.createdAt || new Date().toISOString()
       });
       // Immediately remove active lock from Chrome Extension sync collection so site unblocks right away
       batch.delete(extSyncRef);
       batch.delete(doc(db, "blocked_targets", getTargetDocId(target.targetName)));
-      syncedExtFingerprintsRef.current.set(target.targetName, "0:");
+      syncedExtFingerprintsRef.current.set(target.targetName, "0:0:");
 
       if (target.docIds && target.docIds.length > 1) {
         target.docIds.forEach((dupId) => {
@@ -713,24 +825,53 @@ export function DistractionGuard() {
 
         {/* Depex Mode Toggle */}
         <div className="flex items-center gap-2">
-          <span className={cn(
-            "text-[9px] font-black uppercase tracking-[0.15em] transition-colors",
-            depexMode ? "text-red-500" : "text-white/25"
-          )}>
-            DEPEX
-          </span>
+          <div className="flex items-center gap-1">
+            {isDepexTimerLocked && (
+              <Lock className="w-2.5 h-2.5 text-red-500 animate-pulse" />
+            )}
+            <span className={cn(
+              "text-[9px] font-black uppercase tracking-[0.15em] transition-colors",
+              depexMode ? "text-red-500" : "text-white/25"
+            )}>
+              {isDepexTimerLocked ? `DEPEX ${depexRemainingMinutes}M` : "DEPEX"}
+            </span>
+          </div>
           <button 
             type="button"
-            onClick={() => depexMode ? toggleDepexMode() : setShowConfirmDepex(true)}
+            onClick={async () => {
+              if (depexMode) {
+                if (isDepexTimerLocked) {
+                  setErrorMessage(
+                    `DEPEX Mode is locked! Cannot turn off until timer ends (${depexRemainingMinutes}m left).`
+                  );
+                  return;
+                }
+                const allowed = await toggleDepexMode();
+                if (!allowed) {
+                  setErrorMessage("DEPEX Mode is still locked by an active guard timer.");
+                } else {
+                  setSuccessMessage("DEPEX Mode deactivated.");
+                }
+              } else {
+                setShowConfirmDepex(true);
+              }
+            }}
             className={cn(
-              "w-9 h-5 rounded-full relative transition-all duration-300 border cursor-pointer",
-              depexMode ? "bg-red-500 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)]" : "bg-white/5 border-white/10"
+              "w-9 h-5 rounded-full relative transition-all duration-300 border",
+              depexMode ? "bg-red-500 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)]" : "bg-white/5 border-white/10",
+              isDepexTimerLocked ? "cursor-not-allowed opacity-90" : "cursor-pointer"
             )}
-            title={depexMode ? "Deactivate Depex Mode" : "Activate Depex Mode"}
+            title={
+              isDepexTimerLocked
+                ? `Locked for ${depexRemainingMinutes}m until guard timer finishes`
+                : depexMode
+                  ? "Deactivate Depex Mode"
+                  : "Activate Depex Mode"
+            }
           >
             <motion.div 
               className={cn(
-                "absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all",
+                "absolute top-0.5 w-3.5 h-3.5 rounded-full transition-all flex items-center justify-center",
                 depexMode ? "bg-white" : "bg-white/30"
               )}
               animate={{ left: depexMode ? 18 : 2 }}
@@ -1108,15 +1249,15 @@ export function DistractionGuard() {
                   <div className="w-full space-y-3 mb-6 text-left bg-black/40 p-4 sm:p-5 rounded-xl border border-white/5">
                     <div className="flex items-start gap-3">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">All active blocked targets become unbreakable.</p>
+                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Once Guard timer is engaged, DEPEX Mode cannot be turned off until the timer finishes.</p>
                     </div>
                     <div className="flex items-start gap-3">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Delete and early unlock controls are disabled.</p>
+                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Cancel and delete controls are locked in Firebase &amp; UI.</p>
                     </div>
                     <div className="flex items-start gap-3">
                       <div className="w-1.5 h-1.5 rounded-full bg-red-500 mt-1.5 flex-shrink-0" />
-                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Synced across your Chrome Extension and Web Dashboard.</p>
+                      <p className="text-xs sm:text-sm text-gray-300 leading-snug">Synced across Firebase, Chrome Extension, and Web Dashboard.</p>
                     </div>
                   </div>
 
@@ -1128,8 +1269,55 @@ export function DistractionGuard() {
                       Cancel
                     </button>
                     <button 
-                      onClick={() => {
-                        toggleDepexMode();
+                      onClick={async () => {
+                        await toggleDepexMode();
+                        const activeOwnerUid = auth.currentUser?.uid || ownerUid;
+
+                        // If targets are already running an active timer, bind DEPEX lock immediately in Firebase
+                        const maxActiveMs = blockedTargets.reduce((maxMs, t) => {
+                          if (!t.isActive || !t.lockedUntil) return maxMs;
+                          const exp = new Date(t.lockedUntil).getTime();
+                          return !isNaN(exp) && exp > Date.now() ? Math.max(maxMs, exp) : maxMs;
+                        }, 0);
+
+                        if (activeOwnerUid && maxActiveMs > Date.now()) {
+                          const maxIso = new Date(maxActiveMs).toISOString();
+                          const nowIso = new Date().toISOString();
+                          try {
+                            const batch = writeBatch(db);
+                            blockedTargets.forEach((t) => {
+                              const exp = t.lockedUntil ? new Date(t.lockedUntil).getTime() : 0;
+                              if (t.isActive && exp > Date.now()) {
+                                const payload = {
+                                  userId: activeOwnerUid,
+                                  targetName: t.targetName,
+                                  type: t.type || "website",
+                                  lockedUntil: t.lockedUntil,
+                                  lockedUntilTs: Timestamp.fromMillis(exp),
+                                  duration: Math.max(1, Math.ceil((exp - Date.now()) / (60 * 1000))),
+                                  isActive: true,
+                                  depexLocked: true,
+                                  createdAt: t.createdAt || nowIso
+                                };
+                                batch.set(doc(db, "users", activeOwnerUid, "blocked_targets", t.id), payload);
+                                batch.set(doc(db, "blocked_targets", getExtensionSyncDocId(activeOwnerUid, t.targetName)), payload);
+                              }
+                            });
+                            batch.set(doc(db, "users", activeOwnerUid, "depex_state", "active"), {
+                              userId: activeOwnerUid,
+                              isActive: true,
+                              isTimerLocked: true,
+                              lockedUntil: maxIso,
+                              lockedUntilTs: Timestamp.fromMillis(maxActiveMs),
+                              updatedAt: nowIso
+                            });
+                            await batch.commit();
+                            await lockDepexTimer(maxIso);
+                          } catch (err) {
+                            console.warn("[DistractionGuard] Confirm Depex active lock sync warning:", err);
+                          }
+                        }
+
                         if (user?.id) {
                           logDistractionEventInFirestore(user.id, {
                             websiteName: 'Global Shield',

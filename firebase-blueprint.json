@@ -288,19 +288,37 @@
         "lockedUntil": { "type": "string", "maxLength": 64 },
         "duration": { "type": "number" },
         "isActive": { "type": "boolean" },
+        "depexLocked": { "type": "boolean" },
         "createdAt": { "type": "string", "maxLength": 64 }
       },
       "required": ["userId", "targetName", "type", "lockedUntil", "isActive", "createdAt"]
+    },
+    "DepexState": {
+      "title": "DepexState",
+      "description": "Server-enforced unbreakable DEPEX Mode state locked until active guard timer finishes",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "maxLength": 128 },
+        "isActive": { "type": "boolean" },
+        "isTimerLocked": { "type": "boolean" },
+        "lockedUntil": { "type": "string", "maxLength": 64 },
+        "updatedAt": { "type": "string", "maxLength": 64 }
+      },
+      "required": ["userId", "isActive", "isTimerLocked", "lockedUntil", "updatedAt"]
     }
   },
   "firestore": {
     "/blocked_targets/{targetId}": {
       "schema": "BlockedTarget",
-      "description": "Real-time Chrome Extension sync mirror for active locked website targets; write/delete strictly restricted to userId == request.auth.uid"
+      "description": "Real-time Chrome Extension sync mirror for active locked website targets; write/delete strictly restricted to userId == request.auth.uid and locked during active DEPEX timer"
     },
     "/users/{userId}/blocked_targets/{targetId}": {
       "schema": "BlockedTarget",
       "description": "Private per-user saved and locked distraction guard targets shown in the web dashboard"
+    },
+    "/users/{userId}/depex_state/{stateId}": {
+      "schema": "DepexState",
+      "description": "Authoritative DEPEX Mode lock state protected by Firestore request.time until timer finishes"
     },
     "/users/{userId}": {
       "schema": "UserProfile",

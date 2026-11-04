@@ -22,14 +22,55 @@ service cloud.firestore {
 
     function isValidBlockedTarget(data, expectedUserId) {
       return data.keys().hasAll(['userId', 'targetName', 'type', 'lockedUntil', 'isActive', 'createdAt']) &&
-        data.keys().hasOnly(['userId', 'targetName', 'type', 'lockedUntil', 'duration', 'isActive', 'createdAt']) &&
+        data.keys().hasOnly(['userId', 'targetName', 'type', 'lockedUntil', 'lockedUntilTs', 'duration', 'isActive', 'depexLocked', 'createdAt']) &&
         data.userId is string && data.userId.size() <= 128 && data.userId == expectedUserId &&
         data.targetName is string && data.targetName.size() >= 4 && data.targetName.size() <= 255 &&
         data.type is string && data.type.size() <= 50 &&
         data.lockedUntil is string && data.lockedUntil.size() <= 64 &&
+        (!('lockedUntilTs' in data) || data.lockedUntilTs == null || data.lockedUntilTs is timestamp) &&
         (!('duration' in data) || (data.duration is number && data.duration >= 0 && data.duration <= 10080)) &&
         data.isActive is bool &&
+        (!('depexLocked' in data) || data.depexLocked is bool) &&
         data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    function isTargetDepexLocked(existingData) {
+      return existingData.isActive == true &&
+        'depexLocked' in existingData && existingData.depexLocked == true &&
+        'lockedUntilTs' in existingData && existingData.lockedUntilTs is timestamp &&
+        request.time < existingData.lockedUntilTs;
+    }
+
+    function canModifyTargetUnderDepex(existingData, incomingData) {
+      return !isTargetDepexLocked(existingData) || (
+        incomingData.isActive == true &&
+        'depexLocked' in incomingData && incomingData.depexLocked == true &&
+        'lockedUntilTs' in incomingData && incomingData.lockedUntilTs is timestamp &&
+        incomingData.lockedUntilTs >= existingData.lockedUntilTs
+      );
+    }
+
+    function isValidDepexState(data, expectedUserId) {
+      return data.keys().hasAll(['userId', 'isActive', 'isTimerLocked', 'lockedUntil', 'updatedAt']) &&
+        data.keys().hasOnly(['userId', 'isActive', 'isTimerLocked', 'lockedUntil', 'lockedUntilTs', 'updatedAt']) &&
+        data.userId is string && data.userId.size() <= 128 && data.userId == expectedUserId &&
+        data.isActive is bool &&
+        data.isTimerLocked is bool &&
+        data.lockedUntil is string && data.lockedUntil.size() <= 64 &&
+        (!('lockedUntilTs' in data) || data.lockedUntilTs == null || data.lockedUntilTs is timestamp) &&
+        data.updatedAt is string && data.updatedAt.size() <= 64;
+    }
+
+    function isDepexStateLocked(existingData) {
+      return existingData.isActive == true &&
+        existingData.isTimerLocked == true &&
+        'lockedUntilTs' in existingData && existingData.lockedUntilTs is timestamp &&
+        request.time < existingData.lockedUntilTs;
+    }
+
+    function isUserDepexLocked(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId)/depex_state/active) &&
+        isDepexStateLocked(get(/databases/$(database)/documents/users/$(userId)/depex_state/active).data);
     }
 
     // Connection verification endpoint
@@ -39,15 +80,17 @@ service cloud.firestore {
     }
 
     // Chrome Extension real-time sync bridge for active locked targets:
-    // Readable by the local Chrome Extension background worker; create/update/delete strictly restricted to the authenticated owner.
+    // Readable by the local Chrome Extension background worker; create/update/delete strictly restricted to the authenticated owner and locked while DEPEX timer is active.
     match /blocked_targets/{targetId} {
       allow get, list: if true;
       allow create: if isSignedIn() && isValidId(targetId) && isValidBlockedTarget(request.resource.data, request.auth.uid);
       allow update: if isSignedIn() && isValidId(targetId) &&
         (!('userId' in resource.data) || resource.data.userId == request.auth.uid) &&
-        isValidBlockedTarget(request.resource.data, request.auth.uid);
+        isValidBlockedTarget(request.resource.data, request.auth.uid) &&
+        canModifyTargetUnderDepex(resource.data, request.resource.data);
       allow delete: if isSignedIn() && isValidId(targetId) &&
-        (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid);
+        (resource == null || !('userId' in resource.data) || resource.data.userId == request.auth.uid) &&
+        (resource == null || !isTargetDepexLocked(resource.data));
     }
 
     // Guilds and study groups
@@ -89,8 +132,29 @@ service cloud.firestore {
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow list: if false;
-      allow create, update: if isOwner(userId) && isValidId(userId);
-      allow delete: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId);
+      allow update: if isOwner(userId) && isValidId(userId) &&
+        (!('depex_mode' in request.resource.data && request.resource.data.depex_mode == false) || !isUserDepexLocked(userId));
+      allow delete: if isOwner(userId) && !isUserDepexLocked(userId);
+
+      // Authoritative unbreakable DEPEX Mode state gated by Google server clock (request.time)
+      match /depex_state/{stateId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && stateId == 'active' && isValidDepexState(request.resource.data, userId);
+        allow update: if isOwner(userId) && stateId == 'active' &&
+          isValidDepexState(request.resource.data, userId) &&
+          (
+            !isDepexStateLocked(resource.data) ||
+            (
+              request.resource.data.isActive == true &&
+              request.resource.data.isTimerLocked == true &&
+              'lockedUntilTs' in request.resource.data &&
+              request.resource.data.lockedUntilTs is timestamp &&
+              request.resource.data.lockedUntilTs >= resource.data.lockedUntilTs
+            )
+          );
+        allow delete: if isOwner(userId) && stateId == 'active' && !isDepexStateLocked(resource.data);
+      }
 
       // Dedicated per-user Distraction Guard saved & locked targets
       match /blocked_targets/{targetId} {
@@ -98,17 +162,16 @@ service cloud.firestore {
         allow create: if isOwner(userId) && isValidId(targetId) && isValidBlockedTarget(request.resource.data, userId);
         allow update: if isOwner(userId) && isValidId(targetId) &&
           isValidBlockedTarget(request.resource.data, userId) &&
-          request.resource.data.userId == userId;
-        allow delete: if isOwner(userId) && isValidId(targetId);
+          request.resource.data.userId == userId &&
+          canModifyTargetUnderDepex(resource.data, request.resource.data);
+        allow delete: if isOwner(userId) && isValidId(targetId) && !isTargetDepexLocked(resource.data);
       }
 
-      // User subcollections (sessions, focus_logs, streaks, preferences, guarded_websites,
-      // planner_tasks, health_logs, academic_progress, academic_chapters, academic_settings,
-      // academic_routines, mood_entries, resources, macro_data, etc.)
+      // Other user subcollections (excluded from bypassing blocked_targets / depex_state)
       match /{subcollection}/{docId} {
-        allow get, list: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidId(docId);
-        allow delete: if isOwner(userId);
+        allow get, list: if isOwner(userId) && subcollection != 'blocked_targets' && subcollection != 'depex_state';
+        allow create, update: if isOwner(userId) && isValidId(docId) && subcollection != 'blocked_targets' && subcollection != 'depex_state';
+        allow delete: if isOwner(userId) && subcollection != 'blocked_targets' && subcollection != 'depex_state';
       }
     }
   }

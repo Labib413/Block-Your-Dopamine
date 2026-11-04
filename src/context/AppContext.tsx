@@ -11,6 +11,7 @@ import {
   BYD_PERSISTED_USER_KEY,
   BYD_PERSISTED_PROFILE_KEY,
   syncItemToFirestore, 
+  syncDepexStateInFirestore,
   subscribeToFirestoreUserData,
   signOutFirebase,
   fetchFirestoreCollection,
@@ -233,6 +234,7 @@ interface AppState {
   // Guarded Websites
   guardedWebsites: GuardedWebsite[];
   depexMode: boolean;
+  depexLockedUntil?: string | null;
 }
 
 interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 'lastSyncTime'> {
@@ -304,7 +306,8 @@ interface AppContextType extends Omit<AppState, 'currentTime' | 'currentDate' | 
   // Guarded Website Actions
   addGuardedWebsite: (site: Omit<GuardedWebsite, 'id' | 'start_time' | 'is_active'>) => Promise<void>;
   removeGuardedWebsite: (id: string) => Promise<void>;
-  toggleDepexMode: () => Promise<void>;
+  toggleDepexMode: () => Promise<boolean>;
+  lockDepexTimer: (lockedUntilIso: string) => Promise<void>;
   updateGuardedWebsite: (id: string, updates: Partial<GuardedWebsite>) => Promise<void>;
   
   isSupabaseConnected: boolean | null;
@@ -630,8 +633,19 @@ export function AppProvider({ children }: { children: ReactNode }) {
       academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
       academicRoutines: [],
       guardedWebsites: [],
+      depexLockedUntil: (() => {
+        try {
+          const raw = localStorage.getItem('byd_depex_locked_until');
+          if (raw && new Date(raw).getTime() > Date.now()) return raw;
+          return null;
+        } catch {
+          return null;
+        }
+      })(),
       depexMode: (() => {
         try {
+          const rawLock = localStorage.getItem('byd_depex_locked_until');
+          if (rawLock && new Date(rawLock).getTime() > Date.now()) return true;
           return localStorage.getItem('byd_depex_mode') === 'true';
         } catch {
           return false;
@@ -1393,18 +1407,41 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   }, [addToSyncQueue]);
 
-  const toggleDepexMode = useCallback(async () => {
+  const toggleDepexMode = useCallback(async (): Promise<boolean> => {
+    const current = stateRef.current;
+    const activeLockMs = current.depexLockedUntil ? new Date(current.depexLockedUntil).getTime() : 0;
+    if (current.depexMode && activeLockMs > Date.now()) {
+      // Unbreakable DEPEX Lock: cannot disable until active guard timer finishes
+      return false;
+    }
+
+    let resolvedNextDepex = !current.depexMode;
+    let activeUserId: string | null = current.user?.id || null;
+
     setState(prev => {
+      const prevLockMs = prev.depexLockedUntil ? new Date(prev.depexLockedUntil).getTime() : 0;
+      if (prev.depexMode && prevLockMs > Date.now()) {
+        resolvedNextDepex = true;
+        return prev;
+      }
+
       const nextDepex = !prev.depexMode;
+      resolvedNextDepex = nextDepex;
+      activeUserId = prev.user?.id || null;
+
       try {
         localStorage.setItem('byd_depex_mode', String(nextDepex));
+        if (!nextDepex) {
+          localStorage.removeItem('byd_depex_locked_until');
+        }
       } catch {
         // ignore localStorage errors
       }
 
       const next = {
         ...prev,
-        depexMode: nextDepex
+        depexMode: nextDepex,
+        depexLockedUntil: nextDepex ? prev.depexLockedUntil : null
       };
       
       if (prev.user) {
@@ -1414,12 +1451,65 @@ export function AppProvider({ children }: { children: ReactNode }) {
           id: prev.user.id,
           data: { depex_mode: nextDepex }
         });
-        // Direct eager Firestore sync for profile depex_mode
-        syncItemToFirestore(prev.user.id, 'profiles', { depex_mode: nextDepex }, 'upsert');
       }
       return next;
     });
+
+    if (activeUserId) {
+      try {
+        await syncDepexStateInFirestore(activeUserId, {
+          isActive: resolvedNextDepex,
+          isTimerLocked: false,
+          lockedUntil: '',
+          lockedUntilMs: null
+        });
+      } catch (err) {
+        console.warn('[AppContext] toggleDepexMode Firestore sync rejected or failed:', err);
+      }
+    }
+
+    return true;
   }, [addToSyncQueue]);
+
+  const lockDepexTimer = useCallback(async (lockedUntilIso: string): Promise<void> => {
+    const incomingMs = lockedUntilIso ? new Date(lockedUntilIso).getTime() : 0;
+    if (!incomingMs || incomingMs <= Date.now()) return;
+
+    let effectiveIso = lockedUntilIso;
+    let effectiveMs = incomingMs;
+    let activeUserId: string | null = stateRef.current.user?.id || null;
+
+    setState(prev => {
+      const existingMs = prev.depexLockedUntil ? new Date(prev.depexLockedUntil).getTime() : 0;
+      effectiveMs = Math.max(existingMs, incomingMs);
+      effectiveIso = new Date(effectiveMs).toISOString();
+      activeUserId = prev.user?.id || null;
+
+      try {
+        localStorage.setItem('byd_depex_mode', 'true');
+        localStorage.setItem('byd_depex_locked_until', effectiveIso);
+      } catch {}
+
+      return {
+        ...prev,
+        depexMode: true,
+        depexLockedUntil: effectiveIso
+      };
+    });
+
+    if (activeUserId) {
+      try {
+        await syncDepexStateInFirestore(activeUserId, {
+          isActive: true,
+          isTimerLocked: true,
+          lockedUntil: effectiveIso,
+          lockedUntilMs: effectiveMs
+        });
+      } catch (err) {
+        console.warn('[AppContext] lockDepexTimer Firestore sync error:', err);
+      }
+    }
+  }, []);
 
   const updateGuardedWebsite = useCallback(async (id: string, updates: Partial<GuardedWebsite>) => {
     setState(prev => {
@@ -1528,7 +1618,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
       academicSubjects: calculateAllSubjectsProgress(generateDefaultChapters(null), null),
       academicRoutines: [],
       guardedWebsites: [],
-      depexMode: false
+      depexMode: false,
+      depexLockedUntil: null
     });
   }, []);
 
@@ -1908,15 +1999,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }, 'upsert');
           }
 
-          if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
+          const cloudDepexLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now()
+            ? pd.depex_locked_until
+            : null;
+          const localDepexLock = prev.depexLockedUntil && new Date(prev.depexLockedUntil).getTime() > Date.now()
+            ? prev.depexLockedUntil
+            : null;
+          const resolvedDepexLock = cloudDepexLock && localDepexLock
+            ? (new Date(cloudDepexLock).getTime() >= new Date(localDepexLock).getTime() ? cloudDepexLock : localDepexLock)
+            : (cloudDepexLock || localDepexLock);
+
+          next.depexLockedUntil = resolvedDepexLock;
+
+          if (resolvedDepexLock) {
+            next.depexMode = true;
+            try {
+              localStorage.setItem('byd_depex_mode', 'true');
+              localStorage.setItem('byd_depex_locked_until', resolvedDepexLock);
+            } catch {}
+          } else if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
             next.depexMode = Boolean(pd.depex_mode);
             try {
               localStorage.setItem('byd_depex_mode', String(next.depexMode));
-            } catch {
-              // ignore
-            }
+            } catch {}
           } else {
-            // Keep existing state or localStorage
             try {
               const cached = localStorage.getItem('byd_depex_mode');
               next.depexMode = cached !== null ? cached === 'true' : prev.depexMode;
@@ -2383,7 +2489,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
             weeklyRank: (pd.level !== undefined ? Number(pd.level) : prev.level) > 1 ? `#${Math.max(1, 20 - (pd.level !== undefined ? Number(pd.level) : prev.level))}` : "Top 25%",
             globalRank: (pd.level !== undefined ? Number(pd.level) : prev.level) > 1 ? `#${Math.max(1, 200 - (pd.level !== undefined ? Number(pd.level) : prev.level) * 5)}` : "Top 30%",
             gender: pd.gender || prev.gender,
+            depexLockedUntil: (() => {
+              const cloudLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now() ? pd.depex_locked_until : null;
+              const prevLock = prev.depexLockedUntil && new Date(prev.depexLockedUntil).getTime() > Date.now() ? prev.depexLockedUntil : null;
+              const activeLock = cloudLock && prevLock
+                ? (new Date(cloudLock).getTime() >= new Date(prevLock).getTime() ? cloudLock : prevLock)
+                : (cloudLock || prevLock);
+              try {
+                if (activeLock) localStorage.setItem('byd_depex_locked_until', activeLock);
+              } catch {}
+              return activeLock;
+            })(),
             depexMode: (() => {
+              const cloudLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now() ? pd.depex_locked_until : null;
+              const prevLock = prev.depexLockedUntil && new Date(prev.depexLockedUntil).getTime() > Date.now() ? prev.depexLockedUntil : null;
+              if (cloudLock || prevLock) {
+                try { localStorage.setItem('byd_depex_mode', 'true'); } catch {}
+                return true;
+              }
               if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
                 try { localStorage.setItem('byd_depex_mode', String(pd.depex_mode)); } catch {}
                 return Boolean(pd.depex_mode);
@@ -2524,6 +2647,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
             map.set(key, { ...(map.get(key) || {}), ...mapped });
           });
           return { ...prev, focusHistory: Array.from(map.values()), hasFetchedFocusData: true };
+        });
+      },
+      onDepexState: (ds) => {
+        if (!ds) return;
+        setState(prev => {
+          let resolvedLockUntil: string | null = null;
+          if (ds.isActive && ds.isTimerLocked) {
+            if (ds.lockedUntilTs && typeof ds.lockedUntilTs.toDate === 'function') {
+              const tsDate = ds.lockedUntilTs.toDate();
+              if (tsDate.getTime() > Date.now()) {
+                resolvedLockUntil = tsDate.toISOString();
+              }
+            } else if (ds.lockedUntil && new Date(ds.lockedUntil).getTime() > Date.now()) {
+              resolvedLockUntil = ds.lockedUntil;
+            }
+          }
+
+          const nextDepexMode = resolvedLockUntil ? true : Boolean(ds.isActive);
+          try {
+            localStorage.setItem('byd_depex_mode', String(nextDepexMode));
+            if (resolvedLockUntil) {
+              localStorage.setItem('byd_depex_locked_until', resolvedLockUntil);
+            } else {
+              localStorage.removeItem('byd_depex_locked_until');
+            }
+          } catch {}
+
+          return {
+            ...prev,
+            depexMode: nextDepexMode,
+            depexLockedUntil: resolvedLockUntil
+          };
         });
       }
     });
@@ -3999,6 +4154,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     addGuardedWebsite,
     removeGuardedWebsite,
     toggleDepexMode,
+    lockDepexTimer,
     updateGuardedWebsite,
     modifyFocusTime,
     addNotification,
@@ -4010,7 +4166,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setIsAuthModalOpen,
     isLoggingOut,
     setIsLoggingOut
-  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, isDataLoading, isAuthModalOpen, isLoggingOut, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, updateGuardedWebsite, modifyFocusTime, addNotification]);
+  }), [state, clock, isSupabaseConnected, connectionError, isAuthReady, isDataLoading, isAuthModalOpen, isLoggingOut, addGuardedWebsite, removeGuardedWebsite, toggleDepexMode, lockDepexTimer, updateGuardedWebsite, modifyFocusTime, addNotification]);
 
   // 3. HARD RESET / RECALCULATION ON MOUNT
   // This ensures that any inconsistent state from hydration or legacy versions is immediately corrected

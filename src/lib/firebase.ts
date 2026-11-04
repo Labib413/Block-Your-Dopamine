@@ -26,6 +26,7 @@ import {
   query,
   where,
   serverTimestamp,
+  Timestamp,
   Unsubscribe
 } from 'firebase/firestore';
 import localFirebaseConfig from '../../firebase-applet-config.json';
@@ -242,7 +243,7 @@ export async function signOutFirebase(): Promise<void> {
   }
 }
 
-export { onAuthStateChanged, onIdTokenChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query, where };
+export { onAuthStateChanged, onIdTokenChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query, where, Timestamp };
 export type { FirebaseUser };
 
 // Mirror sync item to Firestore
@@ -377,6 +378,7 @@ export function subscribeToFirestoreUserData(
     onPreferences?: (pref: any) => void;
     onFocusLogs?: (logs: any[]) => void;
     onSessions?: (sessions: any[]) => void;
+    onDepexState?: (depexState: any) => void;
   }
 ): () => void {
   if (!userId) return () => {};
@@ -510,6 +512,16 @@ export function subscribeToFirestoreUserData(
           callbacks.onSessions(list);
         }
       }, (err) => console.warn('[Firestore] Realtime sessions listener error:', err))
+    );
+
+    // 13. Authoritative DEPEX Mode Lock State Listener
+    const depexStateRef = doc(db, 'users', userId, 'depex_state', 'active');
+    unsubs.push(
+      onSnapshot(depexStateRef, (snap) => {
+        if (snap.exists() && callbacks.onDepexState) {
+          callbacks.onDepexState(snap.data());
+        }
+      }, (err) => console.warn('[Firestore] Realtime depex_state listener error:', err))
     );
   } catch (e) {
     console.warn('[Firestore] Error attaching realtime listeners:', e);
@@ -780,6 +792,54 @@ export function subscribeToDistractionEvents(
   }
 }
 
+export interface FirestoreDepexState {
+  userId: string;
+  isActive: boolean;
+  isTimerLocked: boolean;
+  lockedUntil: string;
+  lockedUntilTs?: Timestamp | null;
+  updatedAt: string;
+}
 
+/**
+ * Sync authoritative DEPEX Mode state & server-enforced timer lock to Firestore
+ */
+export async function syncDepexStateInFirestore(
+  userId: string,
+  payload: {
+    isActive: boolean;
+    isTimerLocked: boolean;
+    lockedUntil: string;
+    lockedUntilMs?: number | null;
+  }
+): Promise<void> {
+  if (!userId) return;
+  const nowIso = new Date().toISOString();
+  const depexStateRef = doc(db, 'users', userId, 'depex_state', 'active');
+  const userRef = doc(db, 'users', userId);
 
+  const validExpiryMs =
+    payload.isTimerLocked && payload.lockedUntilMs && payload.lockedUntilMs > Date.now()
+      ? payload.lockedUntilMs
+      : null;
 
+  await setDoc(depexStateRef, {
+    userId,
+    isActive: payload.isActive,
+    isTimerLocked: Boolean(validExpiryMs),
+    lockedUntil: validExpiryMs ? payload.lockedUntil : '',
+    lockedUntilTs: validExpiryMs ? Timestamp.fromMillis(validExpiryMs) : null,
+    updatedAt: nowIso
+  });
+
+  await setDoc(
+    userRef,
+    {
+      userId,
+      depex_mode: payload.isActive,
+      depex_locked_until: validExpiryMs ? payload.lockedUntil : '',
+      updatedAt: nowIso
+    },
+    { merge: true }
+  );
+}

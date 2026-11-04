@@ -13,6 +13,7 @@ import {
   where, 
   orderBy, 
   serverTimestamp,
+  Timestamp,
   Unsubscribe 
 } from 'firebase/firestore';
 import {
@@ -108,6 +109,7 @@ export {
   where,
   orderBy,
   serverTimestamp,
+  Timestamp,
   onAuthStateChanged
 };
 export type { FirebaseUser, Unsubscribe };
