@@ -880,48 +880,61 @@ export function DistractionGuard() {
         </div>
       </div>
 
-      {/* Status Alerts Feedback */}
-      <AnimatePresence>
-        {successMessage && (
-          <motion.div 
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center justify-between gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
-          >
-            <div className="flex items-center gap-2 truncate">
-              <CheckCircle2 className="w-4 h-4 flex-shrink-0 text-emerald-400" />
-              <span className="font-medium truncate">{successMessage}</span>
-            </div>
-            <button 
-              onClick={() => setSuccessMessage(null)}
-              className="text-emerald-400/60 hover:text-emerald-400 p-0.5"
+      {/* Status Alerts Feedback - Bottom-Center Pop-Up Notification */}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {successMessage && (
+            <motion.div 
+              key="distraction-guard-success"
+              initial={{ opacity: 0, y: 32, x: "-50%", scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+              exit={{ opacity: 0, y: 24, x: "-50%", scale: 0.94 }}
+              transition={{ type: "spring", stiffness: 450, damping: 28 }}
+              className="fixed bottom-8 left-1/2 z-[99999] pointer-events-auto px-4 py-3 rounded-2xl bg-[#0c0e12]/95 backdrop-blur-2xl border border-emerald-500/35 text-white text-xs flex items-center justify-between gap-3 shadow-[0_12px_40px_rgba(0,0,0,0.85),0_0_25px_rgba(16,185,129,0.2)] max-w-md w-[calc(100%-2rem)] sm:w-auto"
             >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </motion.div>
-        )}
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="w-6 h-6 rounded-lg bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                </div>
+                <span className="font-semibold text-emerald-300 truncate tracking-wide">{successMessage}</span>
+              </div>
+              <button 
+                onClick={() => setSuccessMessage(null)}
+                className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0 cursor-pointer ml-1"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          )}
 
-        {errorMessage && (
-          <motion.div 
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
-            className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-center justify-between gap-2 shadow-[0_0_15px_rgba(239,68,68,0.15)]"
-          >
-            <div className="flex items-center gap-2 truncate">
-              <AlertTriangle className="w-4 h-4 flex-shrink-0 text-red-400" />
-              <span className="font-medium truncate">{errorMessage}</span>
-            </div>
-            <button 
-              onClick={() => setErrorMessage(null)}
-              className="text-red-400/60 hover:text-red-400 p-0.5"
+          {errorMessage && (
+            <motion.div 
+              key="distraction-guard-error"
+              initial={{ opacity: 0, y: 32, x: "-50%", scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+              exit={{ opacity: 0, y: 24, x: "-50%", scale: 0.94 }}
+              transition={{ type: "spring", stiffness: 450, damping: 28 }}
+              className="fixed bottom-8 left-1/2 z-[99999] pointer-events-auto px-4 py-3 rounded-2xl bg-[#0c0e12]/95 backdrop-blur-2xl border border-red-500/35 text-white text-xs flex items-center justify-between gap-3 shadow-[0_12px_40px_rgba(0,0,0,0.85),0_0_25px_rgba(239,68,68,0.2)] max-w-md w-[calc(100%-2rem)] sm:w-auto"
             >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="w-6 h-6 rounded-lg bg-red-500/15 border border-red-500/30 flex items-center justify-center flex-shrink-0">
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
+                </div>
+                <span className="font-semibold text-red-300 truncate tracking-wide">{errorMessage}</span>
+              </div>
+              <button 
+                onClick={() => setErrorMessage(null)}
+                className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0 cursor-pointer ml-1"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* Save Target Links + Global Timer Engage Guard Form */}
       <form onSubmit={handleEngageGuard} className="space-y-3 mb-5">
