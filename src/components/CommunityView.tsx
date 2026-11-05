@@ -2116,8 +2116,13 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
 
                             {/* Badge Icon Slot */}
                             <div 
-                              className="w-9 h-9 rounded-xl flex items-center justify-center border relative shrink-0 transition-transform group-hover:scale-105"
-                              style={{
+                              className={cn(
+                                "w-9 h-9 flex items-center justify-center relative shrink-0 transition-transform group-hover:scale-105",
+                                typeof BadgeIconComponent === 'string'
+                                  ? "border-none bg-transparent shadow-none"
+                                  : "rounded-xl border"
+                              )}
+                              style={typeof BadgeIconComponent === 'string' ? {} : {
                                 backgroundColor: `${badgeColor}18`,
                                 borderColor: `${badgeColor}45`,
                                 boxShadow: `0 0 14px ${badgeColor}35`
@@ -2129,7 +2134,7 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                                 <img 
                                   src={BadgeIconComponent} 
                                   alt={badge?.title || "Badge"}
-                                  className="w-5 h-5 relative z-10 object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" 
+                                  className="w-full h-full relative z-10 object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" 
                                   referrerPolicy="no-referrer"
                                 />
                               ) : BadgeIconComponent ? (

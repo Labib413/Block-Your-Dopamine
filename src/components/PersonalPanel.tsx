@@ -524,8 +524,8 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                       const badge = BADGES.find(b => b.id === badgeId);
                       return (
                         <div key={i} className={cn(
-                          "flex-1 h-10 rounded-lg border transition-all overflow-hidden relative flex items-center justify-center group/slot hover:border-[#00ff66]/30",
-                          badge && typeof badge.icon === 'string' ? "bg-transparent border-white/20" : "bg-white/5 border-white/10"
+                          "flex-1 h-10 transition-all overflow-hidden relative flex items-center justify-center group/slot",
+                          badge && typeof badge.icon === 'string' ? "bg-transparent border-none" : "rounded-lg border bg-white/5 border-white/10 hover:border-[#00ff66]/30"
                         )}>
                           {badge ? (
                             <>
@@ -538,7 +538,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                                 <img 
                                   src={badge.icon} 
                                   alt={badge.title}
-                                  className="w-5 h-5 relative z-10 object-contain drop-shadow-[0_0_8px_rgba(255,255,255,0.5)]" 
+                                  className="w-9 h-9 relative z-10 object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" 
                                   referrerPolicy="no-referrer"
                                 />
                               ) : (

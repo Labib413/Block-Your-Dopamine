@@ -266,16 +266,18 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                             {/* Mini Frame */}
                             <div 
                               className={cn(
-                                "w-10 h-10 rounded-xl flex items-center justify-center border relative flex-shrink-0",
-                                rarityStyle?.border || "border-white/20 bg-white/5"
+                                "w-10 h-10 flex items-center justify-center relative flex-shrink-0",
+                                typeof badge.icon === 'string'
+                                  ? "border-none bg-transparent"
+                                  : cn("rounded-xl border", rarityStyle?.border || "border-white/20 bg-white/5")
                               )}
-                              style={{ backgroundColor: `${badge.color}15` }}
+                              style={typeof badge.icon === 'string' ? {} : { backgroundColor: `${badge.color}15` }}
                             >
                               {typeof badge.icon === 'string' ? (
                                 <img 
                                   src={badge.icon} 
                                   alt={badge.title} 
-                                  className="w-6 h-6 object-contain drop-shadow-[0_0_6px_rgba(255,255,255,0.4)]" 
+                                  className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" 
                                   referrerPolicy="no-referrer"
                                 />
                               ) : (
@@ -495,14 +497,16 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                               {/* Holographic Frame */}
                               <div className="relative">
                                 <div className={cn(
-                                  "w-13 h-13 rounded-2xl flex items-center justify-center border transition-all duration-300 relative",
-                                  isUnlocked ? rarity.border : "border-white/5 bg-black/40",
+                                  "w-13 h-13 flex items-center justify-center transition-all duration-300 relative",
+                                  typeof badge.icon === 'string'
+                                    ? "border-none bg-transparent"
+                                    : cn("rounded-2xl border", isUnlocked ? rarity.border : "border-white/5 bg-black/40"),
                                   isUnlocked && "group-hover:scale-105"
                                 )}
-                                style={isUnlocked ? { backgroundColor: `${badge.color}15` } : {}}
+                                style={isUnlocked && typeof badge.icon !== 'string' ? { backgroundColor: `${badge.color}15` } : {}}
                                 >
                                   {/* Corner marks for game feel */}
-                                  {isUnlocked && (
+                                  {isUnlocked && typeof badge.icon !== 'string' && (
                                     <>
                                       <div className="absolute top-1 left-1 w-1 h-1 border-t border-l border-white/30" />
                                       <div className="absolute top-1 right-1 w-1 h-1 border-t border-r border-white/30" />
@@ -516,8 +520,8 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                                       src={badge.icon} 
                                       alt={badge.title}
                                       className={cn(
-                                        "w-8 h-8 object-contain transition-all duration-300",
-                                        isUnlocked ? "drop-shadow-[0_0_8px_rgba(255,255,255,0.4)]" : "grayscale opacity-40"
+                                        "w-full h-full object-contain transition-all duration-300",
+                                        isUnlocked ? "drop-shadow-[0_0_12px_rgba(255,215,0,0.5)]" : "grayscale opacity-40"
                                       )}
                                       referrerPolicy="no-referrer"
                                     />
@@ -679,11 +683,13 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                       >
                         <div className="flex items-center gap-3.5 min-w-0">
                           <div className={cn(
-                            "w-11 h-11 rounded-xl flex items-center justify-center border flex-shrink-0",
-                            isUnlocked ? rarity.border : "border-white/5 bg-black/40"
+                            "w-11 h-11 flex items-center justify-center flex-shrink-0",
+                            typeof badge.icon === 'string'
+                              ? "border-none bg-transparent"
+                              : cn("rounded-xl border", isUnlocked ? rarity.border : "border-white/5 bg-black/40")
                           )}>
                             {typeof badge.icon === 'string' ? (
-                              <img src={badge.icon} alt={badge.title} className="w-6 h-6 object-contain" referrerPolicy="no-referrer" />
+                              <img src={badge.icon} alt={badge.title} className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]" referrerPolicy="no-referrer" />
                             ) : (
                               <badge.icon className="w-5 h-5" style={{ color: isUnlocked ? badge.color : '#555' }} />
                             )}
@@ -799,18 +805,20 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                   <div className="flex flex-col items-center text-center mt-2 mb-5">
                     <div 
                       className={cn(
-                        "w-24 h-24 rounded-3xl flex items-center justify-center border-2 mb-4 relative shadow-2xl",
-                        unlockedBadgeIds.includes(inspectedBadge.id) 
-                          ? getRarityBadgeStyle(inspectedBadge.rarity).border 
-                          : "border-white/10 bg-black/60"
+                        "w-28 h-28 flex items-center justify-center mb-4 relative",
+                        typeof inspectedBadge.icon === 'string'
+                          ? "border-none bg-transparent shadow-none"
+                          : cn("rounded-3xl border-2 shadow-2xl", unlockedBadgeIds.includes(inspectedBadge.id) 
+                              ? getRarityBadgeStyle(inspectedBadge.rarity).border 
+                              : "border-white/10 bg-black/60")
                       )}
-                      style={{ backgroundColor: `${inspectedBadge.color}15` }}
+                      style={typeof inspectedBadge.icon === 'string' ? {} : { backgroundColor: `${inspectedBadge.color}15` }}
                     >
                       {typeof inspectedBadge.icon === 'string' ? (
                         <img 
                           src={inspectedBadge.icon} 
                           alt={inspectedBadge.title} 
-                          className="w-14 h-14 object-contain drop-shadow-[0_0_12px_rgba(255,255,255,0.5)]" 
+                          className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,215,0,0.6)]" 
                           referrerPolicy="no-referrer"
                         />
                       ) : (

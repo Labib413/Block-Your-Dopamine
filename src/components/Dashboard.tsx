@@ -760,7 +760,7 @@ export function Dashboard() {
 
       {/* Quick Access & Productivity Graph */}
       <div className="grid grid-cols-12 gap-8 overflow-visible p-4 -m-4">
-        <GlassCard className="col-span-8">
+        <GlassCard className="col-span-12 xl:col-span-8">
           <div className="flex flex-col gap-4 mb-8">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex flex-wrap items-center gap-3">

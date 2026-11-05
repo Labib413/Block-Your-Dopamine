@@ -804,27 +804,27 @@ export function DistractionGuard() {
       )}
 
       {/* Header Bar */}
-      <div className="relative z-10 flex items-start justify-between mb-5">
-        <div className="flex items-start gap-3.5">
+      <div className="relative z-10 flex items-start justify-between gap-3 flex-wrap sm:flex-nowrap mb-5">
+        <div className="flex items-start gap-3.5 min-w-0">
           <div className={cn(
-            "w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center relative overflow-visible shadow-[0_0_15px_rgba(239,68,68,0.15)] transition-all",
+            "w-11 h-11 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center relative overflow-visible shadow-[0_0_15px_rgba(239,68,68,0.15)] transition-all flex-shrink-0",
             depexMode && "bg-red-500/25 border-red-500/40 shadow-[0_0_20px_rgba(239,68,68,0.4)]"
           )}>
             <ShieldAlert className={cn("w-5 h-5 text-red-500", depexMode && "animate-pulse")} />
           </div>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2 mb-0.5">
-              <span className="text-[9px] font-mono font-bold text-red-500/80 uppercase tracking-[0.2em]">
+              <span className="text-[9px] font-mono font-bold text-red-500/80 uppercase tracking-[0.2em] truncate">
                 CHROME EXTENSION SYNC
               </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" title="Realtime Firestore Live" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse flex-shrink-0" title="Realtime Firestore Live" />
             </div>
-            <h3 className="text-lg font-sans font-bold text-white tracking-tight">Distraction Guard</h3>
+            <h3 className="text-lg font-sans font-bold text-white tracking-tight truncate">Distraction Guard</h3>
           </div>
         </div>
 
-        {/* Depex Mode Toggle */}
-        <div className="flex items-center gap-2">
+        {/* Depex Mode Toggle Box */}
+        <div className="flex items-center gap-2 flex-shrink-0 relative z-20">
           <div className="flex items-center gap-1">
             {isDepexTimerLocked && (
               <Lock className="w-2.5 h-2.5 text-red-500 animate-pulse" />

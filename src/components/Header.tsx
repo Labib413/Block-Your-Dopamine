@@ -112,10 +112,10 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
                     <div 
                       key={i} 
                       className={cn(
-                        "w-7 h-7 rounded-lg border transition-all relative overflow-hidden flex items-center justify-center",
-                        badge && typeof badge.icon === 'string' ? "bg-transparent border-white/20" : "bg-white/5 border-white/5"
+                        "w-7 h-7 transition-all relative overflow-visible flex items-center justify-center",
+                        badge && typeof badge.icon === 'string' ? "bg-transparent border-none" : "rounded-lg border bg-white/5 border-white/5"
                       )}
-                      style={badge ? { 
+                      style={badge && typeof badge.icon !== 'string' ? { 
                         boxShadow: `0 0 10px ${badge.color}22`,
                         borderColor: `${badge.color}44`
                       } : {}}
@@ -129,7 +129,7 @@ export function Header({ onNavigate, onShowBadges }: { onNavigate?: (view: strin
                             <img 
                               src={badge.icon} 
                               alt={badge.title}
-                              className="w-4 h-4 relative z-10 object-contain drop-shadow-[0_0_5px_rgba(255,255,255,0.3)]" 
+                              className="w-full h-full relative z-10 object-contain drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]" 
                               referrerPolicy="no-referrer"
                             />
                           ) : (

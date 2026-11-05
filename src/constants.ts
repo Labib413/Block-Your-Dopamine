@@ -140,10 +140,10 @@ export const BADGES: Badge[] = [
     id: 's1',
     title: 'BYD Pioneer',
     description: 'One of the first users of the BYD platform.',
-    icon: Rocket,
+    icon: '/assets/aistudio/UniversalUpscaler_Pro_Precise_2_1f1d8ffe-de71-6300-ac14-ad881934c8f1-removebg-preview__1___1__53d03ba5.svg',
     category: 'Special',
     isUnlocked: false,
-    color: '#FFFFFF',
+    color: '#FFD700',
     rarity: 'Legendary'
   },
   {

@@ -1389,11 +1389,15 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
               const isOfficer = memberRank === 'general' || memberRank === 'major' || memberRank === 'lieutenant';
               const isIdle = member.focusSecondsToday === 0 && !member.isFocusing;
 
+              const isMenuOpen = openRankMenuId === member.id;
+
               return (
                 <GlassCard
                   key={member?.id || member?.userId || `roster-${member?.username || ''}-${idx}`}
+                  hoverEffect={false}
                   className={cn(
-                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-200 relative",
+                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative",
+                    isMenuOpen ? "z-40" : "z-0",
                     member.isFocusing 
                       ? "border-[#FF7A00] bg-[#FF7A00]/[0.08] shadow-[0_0_20px_rgba(255,122,0,0.25)] ring-1 ring-[#FF7A00]/40" 
                       : isLeader ? "border-[#FFD700]/30 bg-[#FFD700]/[0.02]" 
@@ -1503,10 +1507,18 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
 
                           {/* Rank Selection Dropdown Popover */}
                           {openRankMenuId === member.id && (
-                            <div 
-                              className="absolute right-0 top-full mt-2 w-64 p-2 rounded-2xl bg-[#0d0d0d] border border-white/15 shadow-[0_12px_45px_rgba(0,0,0,0.95)] z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 space-y-1"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40 bg-transparent cursor-default" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenRankMenuId(null);
+                                }} 
+                              />
+                              <div 
+                                className="absolute right-0 top-full mt-2 w-64 p-2 rounded-2xl bg-[#0d0d0d] border border-white/15 shadow-[0_12px_45px_rgba(0,0,0,0.95)] z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 space-y-1"
+                                onClick={(e) => e.stopPropagation()}
+                              >
                               <div className="px-2.5 py-1.5 border-b border-white/5 mb-1">
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 block">Assign Military Rank</span>
                                 <span className="text-[9px] text-[#FFD700] font-mono block">General &gt; Major &gt; Lieutenant</span>
@@ -1543,7 +1555,8 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                                 );
                               })}
                             </div>
-                          )}
+                          </>
+                        )}
                         </div>
 
                         {/* Kick Member Button */}
