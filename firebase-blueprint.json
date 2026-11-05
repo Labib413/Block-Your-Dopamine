@@ -248,6 +248,29 @@
       },
       "required": ["id", "sender", "text"]
     },
+    "GuildMemberDesk": {
+      "title": "GuildMemberDesk",
+      "description": "Warrior desk in a guild study room with focus status and military rank",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128 },
+        "userId": { "type": "string", "maxLength": 128 },
+        "username": { "type": "string", "maxLength": 100 },
+        "fullName": { "type": "string", "maxLength": 100 },
+        "avatarUrl": { "type": "string", "maxLength": 500 },
+        "role": { "type": "string", "maxLength": 50 },
+        "isFocusing": { "type": "boolean" },
+        "focusSecondsToday": { "type": "number" },
+        "currentSessionSeconds": { "type": "number" },
+        "currentSubject": { "type": "string", "maxLength": 200 },
+        "streak": { "type": "number" },
+        "level": { "type": "number" },
+        "cheersCount": { "type": "number" },
+        "joinedAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "username", "fullName"]
+    },
     "TestConnection": {
       "title": "TestConnection",
       "description": "Ping document used to test Firestore connectivity",
@@ -371,6 +394,10 @@
     "/guilds/{guildId}/cheers/{cheerId}": {
       "schema": "GuildCheer",
       "description": "Motivational messages and cheers in the guild study room"
+    },
+    "/guilds/{guildId}/members/{memberId}": {
+      "schema": "GuildMemberDesk",
+      "description": "Live warrior desks, focus session stats, and military hierarchy ranks in the guild study room"
     },
     "/community_posts/{postId}": {
       "schema": "CommunityPost",

@@ -41,7 +41,7 @@ export interface GuildMember {
   username: string;
   fullName: string;
   avatarUrl?: string;
-  role: 'leader' | 'officer' | 'member';
+  role: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer';
   level: number;
   xp: number;
   streak: number;
@@ -821,9 +821,15 @@ export function Guilds({
                         <div>
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-bold text-white">{member.fullName}</span>
-                            {member.role === 'leader' && (
-                              <Crown className="w-3.5 h-3.5 text-[#FFD700]" title="Guild Leader" />
-                            )}
+                            {(member.role === 'leader' || member.role === 'commander') ? (
+                              <Crown className="w-3.5 h-3.5 text-[#FFD700]" title="Commander (Guild Leader)" />
+                            ) : member.role === 'general' ? (
+                              <span className="text-[11px]" title="General">🎖️</span>
+                            ) : member.role === 'major' || member.role === 'officer' ? (
+                              <span className="text-[11px]" title="Major">⚔️</span>
+                            ) : member.role === 'lieutenant' ? (
+                              <span className="text-[11px]" title="Lieutenant">🛡️</span>
+                            ) : null}
                           </div>
                           <p className="text-[10px] text-white/40 font-mono">
                             Level {member.level} • {member.streak}d Streak

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   ArrowLeft, 
@@ -63,6 +64,88 @@ import {
 import { GuildEmblemBadge } from "./GuildEmblemBadge";
 
 export type { GuildMemberDesk };
+
+export type GuildMilitaryRank = 'commander' | 'general' | 'major' | 'lieutenant' | 'member';
+
+export interface GuildRankConfig {
+  id: GuildMilitaryRank;
+  label: string;
+  hierarchy: number;
+  icon: string;
+  badgeClass: string;
+  borderClass: string;
+  textClass: string;
+  desc: string;
+}
+
+export const GUILD_RANKS: Record<GuildMilitaryRank, GuildRankConfig> = {
+  commander: {
+    id: 'commander',
+    label: 'Commander',
+    hierarchy: 1,
+    icon: '👑',
+    badgeClass: 'bg-[#FFD700]/20 text-[#FFD700] border-[#FFD700]/40 shadow-[0_0_12px_rgba(255,215,0,0.25)]',
+    borderClass: 'border-[#FFD700]/30',
+    textClass: 'text-[#FFD700]',
+    desc: 'Guild Supreme Leader',
+  },
+  general: {
+    id: 'general',
+    label: 'General',
+    hierarchy: 2,
+    icon: '🎖️',
+    badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40 shadow-[0_0_12px_rgba(245,158,11,0.2)]',
+    borderClass: 'border-amber-500/30',
+    textClass: 'text-amber-400',
+    desc: '1st in Command below Commander',
+  },
+  major: {
+    id: 'major',
+    label: 'Major',
+    hierarchy: 3,
+    icon: '⚔️',
+    badgeClass: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40 shadow-[0_0_12px_rgba(6,182,212,0.2)]',
+    borderClass: 'border-cyan-500/30',
+    textClass: 'text-cyan-400',
+    desc: '2nd in Command (Senior Field Officer)',
+  },
+  lieutenant: {
+    id: 'lieutenant',
+    label: 'Lieutenant',
+    hierarchy: 4,
+    icon: '🛡️',
+    badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40 shadow-[0_0_12px_rgba(16,185,129,0.2)]',
+    borderClass: 'border-emerald-500/30',
+    textClass: 'text-emerald-400',
+    desc: '3rd in Command (Junior Field Officer)',
+  },
+  member: {
+    id: 'member',
+    label: 'Member',
+    hierarchy: 5,
+    icon: '👤',
+    badgeClass: 'bg-white/5 text-white/50 border-white/10',
+    borderClass: 'border-white/10',
+    textClass: 'text-white/60',
+    desc: 'Standard Squad Warrior',
+  },
+};
+
+export const ASSIGNABLE_RANKS: { id: 'general' | 'major' | 'lieutenant' | 'member'; label: string; icon: string; desc: string; badgeClass: string }[] = [
+  { id: 'general', label: 'General', icon: '🎖️', desc: '1st in Command (General)', badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40' },
+  { id: 'major', label: 'Major', icon: '⚔️', desc: '2nd in Command (Senior Officer)', badgeClass: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/40' },
+  { id: 'lieutenant', label: 'Lieutenant', icon: '🛡️', desc: '3rd in Command (Field Officer)', badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40' },
+  { id: 'member', label: 'Member', icon: '👤', desc: 'Reset to regular squad warrior', badgeClass: 'bg-white/5 text-white/50 border-white/10' },
+];
+
+export function normalizeGuildRole(role?: string, isLeader = false): GuildMilitaryRank {
+  if (isLeader || role === 'commander' || role === 'leader') return 'commander';
+  if (role === 'general') return 'general';
+  if (role === 'major') return 'major';
+  if (role === 'lieutenant') return 'lieutenant';
+  if (role === 'officer') return 'major';
+  return 'member';
+}
 
 export interface GuildData {
   id: string;
@@ -177,6 +260,28 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
   const [memberToKick, setMemberToKick] = useState<GuildMemberDesk | null>(null);
   const [kickReason, setKickReason] = useState("Underperforming / Inactive");
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [openRankMenuId, setOpenRankMenuId] = useState<string | null>(null);
+
+  const isDeskLeader = (d: GuildMemberDesk) => {
+    const isNamedLeader = Boolean(
+      (leaderKey && d.username && d.username.toLowerCase() === leaderKey.toLowerCase()) ||
+      (leaderKey && d.fullName && d.fullName.toLowerCase() === leaderKey.toLowerCase()) ||
+      (leaderKey && d.userId && d.userId.toLowerCase() === leaderKey.toLowerCase())
+    );
+    return isNamedLeader || d.role === 'leader' || d.role === 'commander';
+  };
+
+  useEffect(() => {
+    if (!openRankMenuId) return;
+    const handleClose = () => setOpenRankMenuId(null);
+    const timer = setTimeout(() => {
+      window.addEventListener('click', handleClose);
+    }, 10);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('click', handleClose);
+    };
+  }, [openRankMenuId]);
 
   const handleDeleteGuild = async () => {
     setIsDeletingGuild(true);
@@ -321,8 +426,11 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
   }, [desks]);
 
   const officerMembersCount = useMemo(() => {
-    return desks.filter(d => d.role === 'leader' || d.role === 'officer').length;
-  }, [desks]);
+    return desks.filter(d => {
+      const rank = normalizeGuildRole(d.role, isDeskLeader(d));
+      return rank !== 'member';
+    }).length;
+  }, [desks, leaderKey]);
 
   const filteredManagementDesks = useMemo(() => {
     return desks.filter(d => {
@@ -346,11 +454,12 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
         return d.focusSecondsToday === 0 && !d.isFocusing;
       }
       if (managementFilter === "Officers") {
-        return d.role === 'leader' || d.role === 'officer';
+        const rank = normalizeGuildRole(d.role, isDeskLeader(d));
+        return rank !== 'member';
       }
       return true;
     });
-  }, [desks, managementSearch, managementFilter]);
+  }, [desks, managementSearch, managementFilter, leaderKey]);
 
   const totalGuildFocusTodayFormatted = useMemo(() => {
     const totalSec = desks.reduce((acc, d) => acc + d.focusSecondsToday, 0);
@@ -425,18 +534,26 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
     }
   };
 
-  const handleAssignRole = async (memberDeskId: string, targetRole: 'leader' | 'officer' | 'member') => {
+  const handleAssignRank = async (memberDeskId: string, targetRank: GuildMilitaryRank) => {
     if (!isMeLeader) return;
     try {
-      setDesks(prev => prev.map(d => d.id === memberDeskId ? { ...d, role: targetRole } : d));
-      await updateGuildMemberRoleInFirebase(guild.id, memberDeskId, targetRole);
+      setDesks(prev => prev.map(d => d.id === memberDeskId ? { ...d, role: targetRank } : d));
+      setOpenRankMenuId(null);
+      await updateGuildMemberRoleInFirebase(guild.id, memberDeskId, targetRank);
       
       const targetDesk = desks.find(d => d.id === memberDeskId);
-      const roleName = targetRole === 'officer' ? 'Officer / Co-Leader ⚔️' : 'Member 🛡️';
-      setActionNotice(`Rank updated: ${targetDesk?.username || 'Warrior'} is now ${roleName}`);
+      const targetName = targetDesk?.fullName || targetDesk?.username || 'Warrior';
+      const rankConfig = GUILD_RANKS[targetRank];
+      setActionNotice(
+        targetRank === 'member'
+          ? `${targetName} reset to Standard Member 👤`
+          : `🎖️ ${targetName} promoted to ${rankConfig.label} (${rankConfig.icon})`
+      );
       setTimeout(() => setActionNotice(null), 3500);
     } catch (err) {
-      console.error("[GuildStudyRoom] Failed to update member role:", err);
+      console.error("[GuildStudyRoom] Failed to update member rank:", err);
+      setActionNotice("Failed to update rank. Please try again.");
+      setTimeout(() => setActionNotice(null), 3500);
     }
   };
 
@@ -886,13 +1003,26 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   </div>
 
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={cn(
                         "text-sm font-bold transition-colors",
                         member.isFocusing ? "text-[#FF7A00] drop-shadow-[0_0_5px_rgba(255,122,0,0.5)]" : "text-white"
                       )}>
                         {member.fullName}
                       </span>
+                      {(() => {
+                        const rank = normalizeGuildRole(member.role, isDeskLeader(member));
+                        const rConfig = GUILD_RANKS[rank];
+                        return (
+                          <span className={cn(
+                            "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono flex items-center gap-1 border",
+                            rConfig.badgeClass
+                          )}>
+                            <span>{rConfig.icon}</span>
+                            <span>{rConfig.label}</span>
+                          </span>
+                        );
+                      })()}
                       {member.isFocusing && (
                         <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 animate-pulse font-mono shadow-[0_0_10px_rgba(255,122,0,0.3)]">
                           <Flame className="w-3 h-3 fill-current" />
@@ -925,14 +1055,14 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                       <span className="font-mono text-[11px]">{member.cheersCount}</span>
                     </button>
 
-                    {isMeLeader && !member.isCurrentUser && member.role !== 'leader' && (
+                    {isMeLeader && !member.isCurrentUser && !isDeskLeader(member) && (
                       <button
                         onClick={() => {
                           setSelectedDesk(member);
                           setIsConfirmingKick(true);
                         }}
-                        className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs transition-colors flex items-center gap-1"
-                        title="Guild Leader: Kick Member"
+                        className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Commander Authority: Kick Member"
                       >
                         <UserX className="w-3.5 h-3.5" />
                         <span className="text-[10px] uppercase font-bold">Kick</span>
@@ -1019,13 +1149,13 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-white tracking-tight">Guild Leader Command Center</h3>
+                    <h3 className="text-lg font-bold text-white tracking-tight">Commander Headquarters & Management</h3>
                     <span className="px-2 py-0.5 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700] text-[10px] font-bold font-mono">
                       HQ
                     </span>
                   </div>
                   <p className="text-xs text-white/50 mt-0.5 font-medium">
-                    Manage squad ranks, enforce minimum qualification requirements, and monitor warrior focus stats.
+                    Command squad military ranks (General &gt; Major &gt; Lieutenant), enforce qualification requirements, and monitor warrior focus stats.
                   </p>
                 </div>
               </div>
@@ -1182,6 +1312,40 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
             </div>
           )}
 
+          {/* Military Command Structure Hierarchy Bar */}
+          <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-mono uppercase font-bold tracking-wider text-white/40">Command Hierarchy:</span>
+              <div className="flex items-center gap-1.5 flex-wrap font-mono text-[11px] font-bold">
+                <span className="px-2 py-0.5 rounded-lg bg-[#FFD700]/15 text-[#FFD700] border border-[#FFD700]/30 flex items-center gap-1">
+                  <span>👑</span> Commander
+                </span>
+                <span className="text-white/30">&gt;</span>
+                <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                  <span>🎖️</span> General
+                </span>
+                <span className="text-white/30">&gt;</span>
+                <span className="px-2 py-0.5 rounded-lg bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
+                  <span>⚔️</span> Major
+                </span>
+                <span className="text-white/30">&gt;</span>
+                <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <span>🛡️</span> Lieutenant
+                </span>
+                <span className="text-white/30">&gt;</span>
+                <span className="px-2 py-0.5 rounded-lg bg-white/5 text-white/50 border border-white/5 flex items-center gap-1">
+                  <span>👤</span> Member
+                </span>
+              </div>
+            </div>
+            {isMeLeader && (
+              <span className="text-[10px] font-mono text-[#FFD700]/80 flex items-center gap-1.5">
+                <Crown className="w-3.5 h-3.5 text-[#FFD700]" />
+                Commander Authority: Click any warrior's rank to promote or reassign
+              </span>
+            )}
+          </div>
+
           {/* Member Roster Filters & Search */}
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
@@ -1190,7 +1354,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   key={filter}
                   onClick={() => setManagementFilter(filter)}
                   className={cn(
-                    "px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors",
+                    "px-3.5 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider whitespace-nowrap transition-colors cursor-pointer",
                     managementFilter === filter
                       ? "bg-[#FFD700] text-black shadow-[0_0_15px_rgba(255,215,0,0.25)]"
                       : "bg-white/5 border border-white/5 text-white/50 hover:text-white hover:bg-white/10"
@@ -1199,7 +1363,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   {filter === "All" && `All Warriors (${desks.length})`}
                   {filter === "Active" && `Active Today (${activeTodayMembersCount})`}
                   {filter === "Underperforming" && `Idle (0h) (${underperformingCount})`}
-                  {filter === "Officers" && `Leadership (${officerMembersCount})`}
+                  {filter === "Officers" && `Leadership / Ranks (${officerMembersCount})`}
                 </button>
               ))}
             </div>
@@ -1219,19 +1383,23 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           {/* Member Contribution Roster Cards */}
           <div className="space-y-3">
             {filteredManagementDesks.map((member, idx) => {
-              const isLeader = member.role === 'leader';
-              const isOfficer = member.role === 'officer';
+              const memberRank = normalizeGuildRole(member.role, isDeskLeader(member));
+              const rankConfig = GUILD_RANKS[memberRank];
+              const isLeader = memberRank === 'commander';
+              const isOfficer = memberRank === 'general' || memberRank === 'major' || memberRank === 'lieutenant';
               const isIdle = member.focusSecondsToday === 0 && !member.isFocusing;
 
               return (
                 <GlassCard
                   key={member?.id || member?.userId || `roster-${member?.username || ''}-${idx}`}
                   className={cn(
-                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-200",
+                    "p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all duration-200 relative",
                     member.isFocusing 
                       ? "border-[#FF7A00] bg-[#FF7A00]/[0.08] shadow-[0_0_20px_rgba(255,122,0,0.25)] ring-1 ring-[#FF7A00]/40" 
                       : isLeader ? "border-[#FFD700]/30 bg-[#FFD700]/[0.02]" 
-                      : isOfficer ? "border-cyan-500/30 bg-cyan-500/[0.02]" 
+                      : memberRank === 'general' ? "border-amber-500/30 bg-amber-500/[0.02]"
+                      : memberRank === 'major' ? "border-cyan-500/30 bg-cyan-500/[0.02]"
+                      : memberRank === 'lieutenant' ? "border-emerald-500/30 bg-emerald-500/[0.02]"
                       : isIdle ? "border-amber-500/10 hover:border-amber-500/30" 
                       : "hover:border-white/20"
                   )}
@@ -1241,18 +1409,16 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                     <div className={cn(
                       "w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border transition-all duration-200 relative",
                       member.isFocusing ? "bg-[#FF7A00]/20 border-[#FF7A00] text-[#FF7A00] shadow-[0_0_15px_rgba(255,122,0,0.5)] ring-1 ring-[#FF7A00]/50" :
-                      isLeader ? "bg-[#FFD700]/10 border-[#FFD700]/40 text-[#FFD700]" :
-                      isOfficer ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400" :
+                      isLeader ? "bg-[#FFD700]/10 border-[#FFD700]/40 text-[#FFD700] shadow-[0_0_15px_rgba(255,215,0,0.2)]" :
+                      memberRank === 'general' ? "bg-amber-500/10 border-amber-500/40 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]" :
+                      memberRank === 'major' ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]" :
+                      memberRank === 'lieutenant' ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]" :
                       "bg-white/5 border-white/10 text-white/70"
                     )}>
                       {member.isFocusing ? (
                         <Flame className="w-6 h-6 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_8px_rgba(255,122,0,0.8)]" />
-                      ) : isLeader ? (
-                        "👑"
-                      ) : isOfficer ? (
-                        "⚔️"
                       ) : (
-                        (member.username || "W").charAt(0).toUpperCase()
+                        rankConfig.icon
                       )}
                       {member.isFocusing && (
                         <span className="w-2.5 h-2.5 rounded-full bg-[#FF7A00] border border-black absolute -top-1 -right-1 animate-ping" />
@@ -1268,14 +1434,13 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                           {member.fullName}
                         </span>
                         
-                        {/* Role Badge */}
+                        {/* Military Rank Badge */}
                         <span className={cn(
-                          "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono",
-                          isLeader ? "bg-[#FFD700]/20 text-[#FFD700] border border-[#FFD700]/30" :
-                          isOfficer ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" :
-                          "bg-white/5 text-white/50 border border-white/5"
+                          "px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono flex items-center gap-1 border",
+                          rankConfig.badgeClass
                         )}>
-                          {isLeader ? "Leader" : isOfficer ? "Officer" : "Member"}
+                          <span>{rankConfig.icon}</span>
+                          <span>{rankConfig.label}</span>
                         </span>
 
                         {member.isFocusing && (
@@ -1286,18 +1451,20 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                         )}
                       </div>
 
-                      <p className="text-xs text-white/40 mt-1 flex items-center gap-2 font-mono">
+                      <p className="text-xs text-white/40 mt-1 flex items-center gap-2 font-mono flex-wrap">
                         <span className="text-white/70 font-sans">Task: {member.currentSubject}</span>
                         <span>•</span>
                         <span className="text-orange-400">{member.streak}d Streak</span>
                         <span>•</span>
                         <span className="text-[#39FF14]">Lv.{member.level}</span>
+                        <span>•</span>
+                        <span className="text-white/40 text-[10px]">{rankConfig.desc}</span>
                       </p>
                     </div>
                   </div>
 
                   {/* Contribution Stats & Management Power Tools */}
-                  <div className="flex items-center justify-between md:justify-end gap-5 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-white/5 flex-wrap">
+                  <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto border-t md:border-t-0 pt-3 md:pt-0 border-white/5 flex-wrap">
                     <div className="text-left md:text-right">
                       <span className="text-[10px] uppercase font-bold text-white/40 block">Today's Focus</span>
                       <span className={cn(
@@ -1309,37 +1476,80 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                       </span>
                     </div>
 
-                    {/* Leader Power Tools */}
-                    {isMeLeader && !member.isCurrentUser && (
-                      <div className="flex items-center gap-2">
-                        {/* Assign Rank Button */}
-                        <button
-                          onClick={() => handleAssignRole(member.id, isOfficer ? 'member' : 'officer')}
-                          className={cn(
-                            "px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors border",
-                            isOfficer 
-                              ? "bg-white/5 hover:bg-white/10 text-white/60 border-white/10" 
-                              : "bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border-cyan-500/30"
+                    {/* Commander Authority Power Tools */}
+                    {isMeLeader && !member.isCurrentUser && !isLeader && (
+                      <div className="flex items-center gap-2 relative">
+                        {/* Assign Military Rank Popover Menu */}
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenRankMenuId(openRankMenuId === member.id ? null : member.id);
+                            }}
+                            className={cn(
+                              "px-3 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all border cursor-pointer",
+                              memberRank === 'general' ? "bg-amber-500/15 hover:bg-amber-500/25 text-amber-400 border-amber-500/30 shadow-[0_0_12px_rgba(245,158,11,0.2)]" :
+                              memberRank === 'major' ? "bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-400 border-cyan-500/30 shadow-[0_0_12px_rgba(6,182,212,0.2)]" :
+                              memberRank === 'lieutenant' ? "bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 border-emerald-500/30 shadow-[0_0_12px_rgba(16,185,129,0.2)]" :
+                              "bg-white/5 hover:bg-white/10 text-white/70 border-white/10"
+                            )}
+                            title="Commander Authority: Assign Military Rank"
+                          >
+                            <span>{rankConfig.icon}</span>
+                            <span className="text-[10px]">Rank: {rankConfig.label}</span>
+                            <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", openRankMenuId === member.id && "rotate-180")} />
+                          </button>
+
+                          {/* Rank Selection Dropdown Popover */}
+                          {openRankMenuId === member.id && (
+                            <div 
+                              className="absolute right-0 top-full mt-2 w-64 p-2 rounded-2xl bg-[#0d0d0d] border border-white/15 shadow-[0_12px_45px_rgba(0,0,0,0.95)] z-50 backdrop-blur-xl animate-in fade-in zoom-in-95 space-y-1"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="px-2.5 py-1.5 border-b border-white/5 mb-1">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-white/40 block">Assign Military Rank</span>
+                                <span className="text-[9px] text-[#FFD700] font-mono block">General &gt; Major &gt; Lieutenant</span>
+                              </div>
+
+                              {ASSIGNABLE_RANKS.map((r) => {
+                                const isCurrentRank = memberRank === r.id;
+                                return (
+                                  <button
+                                    key={r.id}
+                                    type="button"
+                                    onClick={() => handleAssignRank(member.id, r.id)}
+                                    className={cn(
+                                      "w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between transition-all group cursor-pointer",
+                                      isCurrentRank 
+                                        ? "bg-white/10 border border-white/20 text-white" 
+                                        : "hover:bg-white/5 text-white/70 hover:text-white"
+                                    )}
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <span className="text-base shrink-0">{r.icon}</span>
+                                      <div>
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-xs font-bold">{r.label}</span>
+                                          {isCurrentRank && (
+                                            <span className="text-[9px] font-mono text-[#39FF14] bg-[#39FF14]/10 px-1 rounded border border-[#39FF14]/20">Active</span>
+                                          )}
+                                        </div>
+                                        <span className="text-[10px] text-white/40 block leading-tight">{r.desc}</span>
+                                      </div>
+                                    </div>
+                                    {isCurrentRank && <Check className="w-3.5 h-3.5 text-[#39FF14] shrink-0" />}
+                                  </button>
+                                );
+                              })}
+                            </div>
                           )}
-                          title={isOfficer ? "Demote to Member" : "Promote to Officer"}
-                        >
-                          {isOfficer ? (
-                            <>
-                              <UserCheck className="w-3.5 h-3.5" />
-                              <span className="text-[10px]">Demote</span>
-                            </>
-                          ) : (
-                            <>
-                              <Award className="w-3.5 h-3.5" />
-                              <span className="text-[10px]">Make Officer</span>
-                            </>
-                          )}
-                        </button>
+                        </div>
 
                         {/* Kick Member Button */}
                         <button
                           onClick={() => setMemberToKick(member)}
-                          className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"
+                          className="px-3 py-1.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs font-bold uppercase tracking-wider flex items-center gap-1 transition-colors cursor-pointer"
                           title="Kick from Guild"
                         >
                           <UserX className="w-3.5 h-3.5" />
@@ -1565,13 +1775,26 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   )}
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <h3 className={cn(
                       "text-lg font-bold transition-colors",
                       selectedDesk.isFocusing ? "text-[#FF7A00] drop-shadow-[0_0_6px_rgba(255,122,0,0.6)]" : "text-white"
                     )}>
                       {selectedDesk.fullName}
                     </h3>
+                    {(() => {
+                      const deskRank = normalizeGuildRole(selectedDesk.role, isDeskLeader(selectedDesk));
+                      const rConfig = GUILD_RANKS[deskRank];
+                      return (
+                        <span className={cn(
+                          "px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono flex items-center gap-1 border",
+                          rConfig.badgeClass
+                        )}>
+                          <span>{rConfig.icon}</span>
+                          <span>{rConfig.label}</span>
+                        </span>
+                      );
+                    })()}
                     {selectedDesk.isFocusing && (
                       <span className="px-2.5 py-0.5 rounded-full bg-[#FF7A00]/20 border border-[#FF7A00]/40 text-[#FF7A00] text-[9px] font-bold uppercase font-mono animate-pulse flex items-center gap-1 shadow-[0_0_12px_rgba(255,122,0,0.3)]">
                         <Flame className="w-3 h-3 fill-current" />
@@ -1623,19 +1846,61 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 </div>
               </div>
 
+              {/* Commander Rank Controls */}
+              {isMeLeader && !selectedDesk.isCurrentUser && !isDeskLeader(selectedDesk) && (
+                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-[#FFD700]">
+                      <Crown className="w-3.5 h-3.5" />
+                      <span className="text-[11px] font-bold uppercase tracking-wider font-mono">Commander Authority: Assign Rank</span>
+                    </div>
+                    <span className="text-[9px] text-[#FFD700] font-mono">General &gt; Major &gt; Lieutenant</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {ASSIGNABLE_RANKS.map((r) => {
+                      const currentRank = normalizeGuildRole(selectedDesk.role, isDeskLeader(selectedDesk));
+                      const isSelected = currentRank === r.id;
+                      return (
+                        <button
+                          key={r.id}
+                          type="button"
+                          onClick={() => {
+                            handleAssignRank(selectedDesk.id, r.id);
+                            setSelectedDesk(prev => prev ? { ...prev, role: r.id } : null);
+                          }}
+                          className={cn(
+                            "p-2 rounded-xl text-left border flex items-center justify-between transition-all cursor-pointer",
+                            isSelected 
+                              ? "bg-white/15 border-white/30 text-white font-bold shadow-[0_0_12px_rgba(255,255,255,0.1)]" 
+                              : "bg-white/5 border-white/5 text-white/60 hover:text-white hover:bg-white/10"
+                          )}
+                        >
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="text-sm shrink-0">{r.icon}</span>
+                            <span className="text-xs truncate">{r.label}</span>
+                          </div>
+                          {isSelected && <Check className="w-3.5 h-3.5 text-[#39FF14] shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* Guild Leader Kick Controls */}
-              {isMeLeader && !selectedDesk.isCurrentUser && selectedDesk.role !== 'leader' && (
+              {isMeLeader && !selectedDesk.isCurrentUser && !isDeskLeader(selectedDesk) && (
                 <div className="p-3.5 rounded-2xl bg-red-500/[0.06] border border-red-500/20 space-y-3">
                   <div className="flex items-center gap-2 text-red-400">
                     <ShieldAlert className="w-4 h-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Guild Leader Authority</span>
+                    <span className="text-[11px] font-bold uppercase tracking-wider">Commander Authority: Kick Member</span>
                   </div>
 
                   {!isConfirmingKick ? (
                     <button
                       type="button"
                       onClick={() => setIsConfirmingKick(true)}
-                      className="w-full py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+                      className="w-full py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer"
                     >
                       <UserX className="w-4 h-4" />
                       <span>Kick Warrior from Guild</span>
@@ -1656,7 +1921,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                         <button
                           type="button"
                           onClick={() => handleKickMember(selectedDesk)}
-                          className="flex-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-colors flex items-center justify-center gap-1"
+                          className="flex-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-colors flex items-center justify-center gap-1 cursor-pointer"
                         >
                           <UserX className="w-3.5 h-3.5" />
                           <span>Confirm Kick</span>
@@ -1673,7 +1938,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                     setSelectedDesk(null);
                     setIsConfirmingKick(false);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10"
+                  className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10 cursor-pointer"
                 >
                   Close Desk
                 </button>
@@ -1682,6 +1947,17 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           </div>
         )}
       </AnimatePresence>
+
+      {/* Floating Bottom-Center Notification Toast */}
+      {typeof document !== "undefined" && actionNotice && createPortal(
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[99999] pointer-events-none animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="p-3.5 px-5 rounded-2xl bg-[#0a0a0a]/95 border border-[#FFD700]/40 text-white text-xs font-semibold flex items-center gap-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.9)] backdrop-blur-xl">
+            <CheckCircle2 className="w-4 h-4 text-[#39FF14] shrink-0" />
+            <span>{actionNotice}</span>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useApp } from '../context/AppContext';
 import { BADGES } from '../constants';
@@ -12,6 +13,7 @@ import {
   Sparkles, 
   Copy, 
   Check,
+  X,
   ChevronDown,
   BookOpen,
   School,
@@ -222,7 +224,7 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
     const onCopied = () => {
       setCopiedId(true);
       addNotification?.("Copied!", `Unique ID ${idToCopy} copied to clipboard.`);
-      setTimeout(() => setCopiedId(false), 2000);
+      setTimeout(() => setCopiedId(false), 2500);
     };
 
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -478,11 +480,6 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                   <div className="flex flex-col">
                     <div className="flex items-center gap-2 mb-0.5">
                       <span className="text-[10px] font-black text-[#00ff66] tracking-[0.3em] uppercase drop-shadow-[0_0_5px_rgba(0,255,102,0.5)]">UNIQUE ID</span>
-                      {copiedId && (
-                        <span className="text-[9px] font-mono font-bold text-[#00ff66] bg-[#00ff66]/20 px-1.5 py-0.2 rounded border border-[#00ff66]/40 animate-pulse">
-                          COPIED!
-                        </span>
-                      )}
                     </div>
                     <span className="text-sm font-mono font-bold text-white/90 truncate max-w-[150px]">
                       {user?.uniqueId || user?.id || "BYD-00000"}
@@ -868,6 +865,43 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
           </div>
         </section>
       </div>
+
+      {/* Copied Unique ID Toast - Bottom-Center Pop-Up Notification */}
+      {typeof document !== "undefined" && createPortal(
+        <AnimatePresence>
+          {copiedId && (
+            <motion.div 
+              key="copied-unique-id-toast"
+              initial={{ opacity: 0, y: 32, x: "-50%", scale: 0.94 }}
+              animate={{ opacity: 1, y: 0, x: "-50%", scale: 1 }}
+              exit={{ opacity: 0, y: 24, x: "-50%", scale: 0.94 }}
+              transition={{ type: "spring", stiffness: 450, damping: 28 }}
+              className="fixed bottom-8 left-1/2 z-[99999] pointer-events-auto px-4 py-3 rounded-2xl bg-[#0c0e12]/95 backdrop-blur-2xl border border-[#00ff66]/40 text-white text-xs flex items-center justify-between gap-3 shadow-[0_12px_40px_rgba(0,0,0,0.85),0_0_25px_rgba(0,255,102,0.25)] max-w-md w-[calc(100%-2rem)] sm:w-auto"
+            >
+              <div className="flex items-center gap-2.5 truncate">
+                <div className="w-6 h-6 rounded-lg bg-[#00ff66]/15 border border-[#00ff66]/30 flex items-center justify-center flex-shrink-0">
+                  <Check className="w-3.5 h-3.5 text-[#00ff66]" />
+                </div>
+                <div className="flex items-center gap-1.5 truncate">
+                  <span className="font-semibold text-white/90">Unique ID Copied!</span>
+                  <span className="text-[#00ff66] font-mono font-bold text-[11px] truncate max-w-[140px]">
+                    {user?.uniqueId || user?.id || "BYD-00000"}
+                  </span>
+                </div>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setCopiedId(false)}
+                className="text-white/40 hover:text-white p-1 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0 cursor-pointer ml-1"
+                title="Dismiss"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   );
 }

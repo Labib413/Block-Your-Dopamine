@@ -175,9 +175,27 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export async function signInWithGoogle(): Promise<FirebaseUser> {
   try {
     try { localStorage.removeItem(BYD_EXPLICIT_LOGOUT_KEY); } catch {}
-    const result = await signInWithPopup(auth, googleProvider);
-    backupFirebaseAuthSession(result.user);
-    return result.user;
+    
+    // Race signInWithPopup with immediate onAuthStateChanged resolution
+    // to prevent hanging if the postMessage handshake from the popup is delayed
+    let unsubscribeAuthState: (() => void) | null = null;
+    const authStatePromise = new Promise<FirebaseUser>((resolve) => {
+      unsubscribeAuthState = onAuthStateChanged(auth, (user) => {
+        if (user) {
+          if (unsubscribeAuthState) unsubscribeAuthState();
+          resolve(user);
+        }
+      });
+    });
+
+    const popupPromise = signInWithPopup(auth, googleProvider).then((res) => {
+      if (unsubscribeAuthState) unsubscribeAuthState();
+      return res.user;
+    });
+
+    const user = await Promise.race([popupPromise, authStatePromise]);
+    backupFirebaseAuthSession(user);
+    return user;
   } catch (error) {
     if (auth.currentUser) {
       backupFirebaseAuthSession(auth.currentUser);
@@ -543,7 +561,7 @@ export interface FirestoreGuildMember {
   username: string;
   fullName: string;
   avatarUrl?: string;
-  role: 'leader' | 'officer' | 'member';
+  role: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer';
   level: number;
   xp: number;
   streak: number;

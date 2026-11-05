@@ -246,12 +246,6 @@ async function startServer() {
   // Support base64 meal images and multimodal payloads
   app.use(express.json({ limit: "25mb" }));
 
-  // Ensure OAuth popups (Google Sign-In) always retain window.opener in browsers and standalone PWAs
-  app.use((_req, res, next) => {
-    res.setHeader("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
-    next();
-  });
-
   // Health check endpoint for Cloud Run and uptime checks
   app.get("/api/health", (_req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

@@ -86,7 +86,7 @@ export interface GuildMemberDesk {
   username: string;
   fullName: string;
   avatarUrl?: string;
-  role?: 'leader' | 'officer' | 'member';
+  role?: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer';
   isFocusing: boolean;
   focusSecondsToday: number;
   currentSessionSeconds: number;
@@ -1100,7 +1100,7 @@ export async function kickGuildMemberInFirebase(
 export async function updateGuildMemberRoleInFirebase(
   guildId: string,
   memberDeskId: string,
-  role: 'leader' | 'officer' | 'member'
+  role: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer'
 ): Promise<void> {
   const firestore = getFirestoreInstance();
   try {
