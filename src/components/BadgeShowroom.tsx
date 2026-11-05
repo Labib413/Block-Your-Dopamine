@@ -266,18 +266,16 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                             {/* Mini Frame */}
                             <div 
                               className={cn(
-                                "w-10 h-10 flex items-center justify-center relative flex-shrink-0",
-                                typeof badge.icon === 'string'
-                                  ? "border-none bg-transparent"
-                                  : cn("rounded-xl border", rarityStyle?.border || "border-white/20 bg-white/5")
+                                "w-10 h-10 rounded-xl flex items-center justify-center border relative flex-shrink-0",
+                                rarityStyle?.border || "border-white/20 bg-white/5"
                               )}
-                              style={typeof badge.icon === 'string' ? {} : { backgroundColor: `${badge.color}15` }}
+                              style={{ backgroundColor: `${badge.color}15` }}
                             >
                               {typeof badge.icon === 'string' ? (
                                 <img 
                                   src={badge.icon} 
                                   alt={badge.title} 
-                                  className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.5)]" 
+                                  className="w-6 h-6 object-contain drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]" 
                                   referrerPolicy="no-referrer"
                                 />
                               ) : (
