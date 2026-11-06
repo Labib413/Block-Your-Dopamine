@@ -218,6 +218,10 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
   const [copiedId, setCopiedId] = useState(false);
 
+  // Harmonized palette based on equipped badge (defaults to gold / #FFD700)
+  const primaryBadge = equippedBadges.map(id => BADGES.find(b => b.id === id)).find(Boolean) || BADGES.find(b => b.id === 's1');
+  const badgeThemeColor = primaryBadge?.color || '#FFD700';
+
   const handleCopyUniqueId = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const idToCopy = user?.uniqueId || user?.id || "BYD-00000";
@@ -505,17 +509,42 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                 </button>
               </div>
 
-              {/* Badges Box */}
+              {/* Badges Box - Harmonized with badge color palette */}
               <div 
                 onClick={onShowBadges}
-                className="w-full sm:w-56 p-5 rounded-xl bg-white/5 backdrop-blur-md border border-[#00ff66]/20 flex items-center group hover:border-[#00ff66]/40 transition-all shadow-inner cursor-pointer hover:scale-[1.02] hover:brightness-110 active:scale-[0.98]"
+                className="w-full sm:w-56 p-5 rounded-xl bg-white/[0.03] backdrop-blur-md flex items-center group transition-all shadow-inner cursor-pointer hover:scale-[1.02] hover:brightness-110 active:scale-[0.98] border relative overflow-hidden"
+                style={{
+                  borderColor: `${badgeThemeColor}35`,
+                  boxShadow: `0 0 20px ${badgeThemeColor}0d, inset 0 0 15px ${badgeThemeColor}08`
+                }}
               >
-                <div className="flex flex-col w-full">
+                {/* Subtle corner badge color aura */}
+                <div 
+                  className="absolute -top-10 -right-10 w-24 h-24 blur-[30px] rounded-full pointer-events-none opacity-20 group-hover:opacity-40 transition-opacity" 
+                  style={{ backgroundColor: badgeThemeColor }} 
+                />
+
+                <div className="flex flex-col w-full relative z-10">
                   <div className="flex items-center gap-3 mb-3">
-                    <div className="w-[30px] h-[30px] rounded-lg bg-[#39FF14] flex items-center justify-center shadow-[0_0_15px_rgba(57,255,20,0.4)]">
-                      <Trophy className="w-4 h-4 text-black" />
+                    <div 
+                      className="w-[30px] h-[30px] rounded-lg flex items-center justify-center transition-all border shrink-0"
+                      style={{
+                        backgroundColor: `${badgeThemeColor}1a`,
+                        borderColor: `${badgeThemeColor}45`,
+                        boxShadow: `0 0 14px ${badgeThemeColor}30`
+                      }}
+                    >
+                      <Trophy className="w-4 h-4" style={{ color: badgeThemeColor }} />
                     </div>
-                    <span className="text-[10px] font-black text-[#00ff66] tracking-[0.3em] uppercase drop-shadow-[0_0_5px_rgba(0,255,102,0.5)]">BADGES</span>
+                    <span 
+                      className="text-[10px] font-black tracking-[0.3em] uppercase transition-colors"
+                      style={{
+                        color: badgeThemeColor,
+                        textShadow: `0 0 8px ${badgeThemeColor}66`
+                      }}
+                    >
+                      BADGES
+                    </span>
                   </div>
                   
                   {/* 3 Segments (Badge Slots) */}
@@ -525,8 +554,10 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                       return (
                         <div key={i} className={cn(
                           "flex-1 h-10 transition-all overflow-hidden relative flex items-center justify-center group/slot",
-                          badge && typeof badge.icon === 'string' ? "bg-transparent border-none" : "rounded-lg border bg-white/5 border-white/10 hover:border-[#00ff66]/30"
-                        )}>
+                          badge && typeof badge.icon === 'string' ? "bg-transparent border-none" : "rounded-lg border bg-white/5 border-white/10"
+                        )}
+                        style={!badge ? { borderColor: `${badgeThemeColor}20` } : undefined}
+                        >
                           {badge ? (
                             <>
                               {typeof badge.icon !== 'string' && (
@@ -559,7 +590,10 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                               <div className="absolute -bottom-1 -right-1 w-2 h-2 rounded-full blur-[4px]" style={{ backgroundColor: badge.color }} />
                             </>
                           ) : (
-                            <div className="w-1.5 h-1.5 rounded-full bg-[#00ff66]/10 group-hover/slot:bg-[#00ff66]/40 transition-colors" />
+                            <div 
+                              className="w-1.5 h-1.5 rounded-full transition-colors group-hover/slot:scale-125" 
+                              style={{ backgroundColor: `${badgeThemeColor}30` }}
+                            />
                           )}
                         </div>
                       );
