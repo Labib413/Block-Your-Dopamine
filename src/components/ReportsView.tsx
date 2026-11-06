@@ -635,11 +635,11 @@ export function ReportsView({ onBack }: { onBack: () => void }) {
           <div className="relative z-50">
             <button 
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="flex items-center gap-3 bg-[#121212] border border-white/[0.06] px-4 py-2.5 rounded-[14px] hover:border-white/20 hover:bg-white/[0.04] transition-all shadow-sm shadow-black/50 group"
+              className="flex items-center gap-2.5 bg-[#121212] border border-white/20 px-3.5 py-2 rounded-xl hover:border-[#39FF14]/50 hover:bg-white/[0.04] transition-all shadow-sm shadow-black/50 group cursor-pointer"
             >
-              <Calendar className="w-4 h-4 text-white/50 group-hover:text-white/80 transition-colors" />
-              <span className="text-sm font-medium text-white/90">{reportRange}</span>
-              <ChevronDown className={cn("w-4 h-4 text-white/40 transition-transform", isDropdownOpen && "rotate-180")} />
+              <Calendar className="w-3.5 h-3.5 text-white/50 group-hover:text-[#39FF14] transition-colors" />
+              <span className="text-xs font-semibold text-white">{reportRange}</span>
+              <ChevronDown className={cn("w-3.5 h-3.5 text-white/50 transition-transform", isDropdownOpen && "rotate-180 text-[#39FF14]")} />
             </button>
 
           <AnimatePresence>

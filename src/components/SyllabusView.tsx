@@ -232,42 +232,50 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                   initial={{ height: 0, opacity: 0 }}
                   animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
-                  transition={{ duration: 0.3 }}
-                  className="border-t border-white/5"
+                  transition={{ duration: 0.25 }}
+                  className="border-t border-white/10 bg-white/[0.04] backdrop-blur-2xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.05)]"
                 >
-                  <div className="p-8 bg-white/[0.02] space-y-8">
+                  <div className="p-4 sm:p-5 space-y-4 bg-gradient-to-b from-white/[0.02] to-transparent">
                     {/* Action Toggles */}
-                    <div className="flex flex-wrap gap-4">
+                    <div className="flex flex-wrap items-center gap-2">
                       <button 
                         onClick={() => handleToggle(chapter.id, 'is_weak')}
                         className={cn(
-                          "flex items-center gap-3 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all border",
+                          "flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all border cursor-pointer",
                           chapter.is_weak 
-                            ? "bg-red-400/10 border-red-400/50 text-red-400 shadow-[0_0_20px_rgba(248,113,113,0.1)]" 
-                            : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white"
+                            ? "bg-red-500/15 border-red-500/50 text-red-400 shadow-[0_0_15px_rgba(239,68,68,0.15)]" 
+                            : "bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white hover:border-white/20"
                         )}
                       >
-                        <AlertCircle className="w-4 h-4" />
-                        Mark Weak
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span>Mark Weak</span>
                       </button>
                       <button 
                         onClick={() => handleToggle(chapter.id, 'is_important')}
                         className={cn(
-                          "flex items-center gap-3 px-6 py-3 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all border",
+                          "flex items-center gap-2 px-3 py-1.5 rounded-xl font-bold text-[11px] uppercase tracking-wider transition-all border cursor-pointer",
                           chapter.is_important 
-                            ? "bg-yellow-400/10 border-yellow-400/50 text-yellow-400 shadow-[0_0_20px_rgba(250,204,21,0.1)]" 
-                            : "bg-white/5 border-white/10 text-white/40 hover:bg-white/10 hover:text-white"
+                            ? "bg-yellow-400/15 border-yellow-400/50 text-yellow-400 shadow-[0_0_15px_rgba(250,204,21,0.15)]" 
+                            : "bg-white/5 border-white/10 text-white/50 hover:bg-white/10 hover:text-white hover:border-white/20"
                         )}
                       >
-                        <Star className={cn("w-4 h-4", chapter.is_important && "fill-yellow-400")} />
-                        Mark Important
+                        <Star className={cn("w-3.5 h-3.5", chapter.is_important && "fill-yellow-400")} />
+                        <span>Mark Important</span>
                       </button>
                     </div>
 
                     {/* Checklist */}
-                    <div className="space-y-4">
-                      <h4 className="text-xs font-bold text-white/40 uppercase tracking-[0.2em]">Study Checklist</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-[10px] font-bold text-white/60 uppercase tracking-widest flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-neon-green" />
+                          Study Checklist
+                        </h4>
+                        <span className="text-[10px] font-mono text-white/40">
+                          {[chapter.read_textbook, chapter.watch_class, chapter.practice_problems, chapter.make_notes].filter(Boolean).length}/4 Done
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {[
                           { key: 'read_textbook' as const, label: 'Read Textbook' },
                           { key: 'watch_class' as const, label: 'Watch Class' },
@@ -278,19 +286,19 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                             key={key}
                             onClick={() => handleToggle(chapter.id, key)}
                             className={cn(
-                              "flex items-center justify-between p-4 rounded-2xl border transition-all group",
+                              "flex items-center justify-between p-2.5 sm:px-3 sm:py-2.5 rounded-xl border transition-all cursor-pointer group text-left",
                               chapter[key] 
-                                ? "bg-neon-green/10 border-neon-green/30 text-neon-green shadow-[0_8px_30px_rgba(57,255,20,0.05)]" 
-                                : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10"
+                                ? "bg-neon-green/15 border-neon-green/40 text-neon-green shadow-[0_0_12px_rgba(57,255,20,0.1)]" 
+                                : "bg-white/[0.04] border-white/10 text-white/70 hover:bg-white/[0.08] hover:border-white/25 hover:text-white"
                             )}
                           >
-                            <span className="font-bold text-sm tracking-tight">
+                            <span className="font-bold text-xs tracking-tight truncate mr-2">
                               {label}
                             </span>
                             {chapter[key] ? (
-                              <CheckCircle2 className="w-5 h-5 text-neon-green" />
+                              <CheckCircle2 className="w-4 h-4 text-neon-green shrink-0 drop-shadow-[0_0_6px_rgba(57,255,20,0.5)]" />
                             ) : (
-                              <Circle className="w-5 h-5 text-white/20 group-hover:text-white/40" />
+                              <Circle className="w-4 h-4 text-white/25 group-hover:text-white/50 shrink-0" />
                             )}
                           </button>
                         ))}
@@ -298,46 +306,50 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                     </div>
 
                     {/* Resources */}
-                    <div className="space-y-4">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-bold text-white/40 uppercase tracking-[0.2em]">Study Resources</h4>
+                        <h4 className="text-[10px] font-bold text-white/60 uppercase tracking-widest flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                          Study Resources ({chapter.resources?.length || 0})
+                        </h4>
                         <button 
                           onClick={() => handleAddResource(chapter.id)}
-                          className="flex items-center gap-2 text-neon-green hover:underline text-[10px] font-bold uppercase tracking-widest"
+                          className="flex items-center gap-1.5 text-neon-green hover:text-neon-green/80 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-neon-green/10 border border-neon-green/20 hover:border-neon-green/40 transition-all cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
                           Add Resource
                         </button>
                       </div>
                       
-                      <div className="space-y-3">
-                        {chapter.resources.length > 0 ? (
+                      <div className="space-y-1.5">
+                        {chapter.resources && chapter.resources.length > 0 ? (
                           chapter.resources.map((res) => (
-                            <div key={res.id} className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.03] border border-white/5 group hover:bg-white/5 transition-colors">
-                              <div className="flex items-center gap-4 overflow-hidden">
-                                <div className="p-2.5 rounded-xl bg-neon-green/10 border border-neon-green/20">
-                                  {res.url.includes('youtube') ? <Play className="w-4 h-4 text-neon-green" /> : <LinkIcon className="w-4 h-4 text-neon-green" />}
+                            <div key={res.id} className="flex items-center justify-between p-2.5 sm:px-3 sm:py-2 rounded-xl bg-white/[0.03] border border-white/10 group hover:border-white/20 hover:bg-white/[0.06] transition-all">
+                              <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
+                                <div className="p-1.5 rounded-lg bg-neon-green/10 border border-neon-green/20 shrink-0">
+                                  {res.url.includes('youtube') ? <Play className="w-3.5 h-3.5 text-neon-green" /> : <LinkIcon className="w-3.5 h-3.5 text-neon-green" />}
                                 </div>
-                                <div className="overflow-hidden">
-                                  <p className="text-sm font-bold text-white truncate">{res.title}</p>
-                                  <a href={res.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-white/30 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
+                                <div className="overflow-hidden min-w-0">
+                                  <p className="text-xs font-bold text-white truncate">{res.title}</p>
+                                  <a href={res.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-white/40 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
                                     {res.url}
-                                    <ExternalLink className="w-2.5 h-2.5" />
+                                    <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                                   </a>
                                 </div>
                               </div>
                               <button 
                                 onClick={() => deleteChapterResource(chapter.id, res.id)}
-                                className="p-2 text-white/20 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100"
+                                className="p-1.5 text-white/30 hover:text-red-400 transition-colors opacity-0 group-hover:opacity-100 shrink-0 cursor-pointer"
+                                title="Delete resource"
                               >
-                                <Trash2 className="w-4 h-4" />
+                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           ))
                         ) : (
-                          <div className="flex flex-col items-center justify-center p-8 rounded-2xl border border-dashed border-white/5 text-center">
-                            <FileText className="w-8 h-8 text-white/5 mb-2" />
-                            <p className="text-xs text-white/20">No resources added for this chapter.</p>
+                          <div className="flex items-center justify-center py-3 px-4 rounded-xl border border-dashed border-white/10 bg-white/[0.01] text-center gap-2">
+                            <FileText className="w-3.5 h-3.5 text-white/20 shrink-0" />
+                            <p className="text-[11px] text-white/30">No resources added. Click "Add Resource" to attach notes or videos.</p>
                           </div>
                         )}
                       </div>

@@ -1245,20 +1245,23 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
-                        <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">
+                        <label className="text-[10px] uppercase font-bold text-white/60 block mb-1.5 tracking-wider">
                           Minimum Required User Level to Join
                         </label>
-                        <select
-                          value={editMinLevel}
-                          onChange={(e) => setEditMinLevel(Number(e.target.value))}
-                          className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-[#FFD700]/50 transition-colors"
-                        >
-                          <option value={1}>Level 1+ (Open for All Warriors)</option>
-                          <option value={2}>Level 2+ (Apprentice Rank)</option>
-                          <option value={3}>Level 3+ (Disciplined Warriors)</option>
-                          <option value={5}>Level 5+ (Detox Elite Warriors)</option>
-                          <option value={10}>Level 10+ (Monk Grandmasters Only)</option>
-                        </select>
+                        <div className="relative group">
+                          <select
+                            value={editMinLevel}
+                            onChange={(e) => setEditMinLevel(Number(e.target.value))}
+                            className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-[#121212] border border-white/20 hover:border-[#FFD700]/50 focus:border-[#FFD700] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#FFD700]/30 transition-all appearance-none cursor-pointer shadow-sm shadow-black/50"
+                          >
+                            <option value={1} className="bg-[#141414] text-white py-1">Level 1+ (Open for All Warriors)</option>
+                            <option value={2} className="bg-[#141414] text-white py-1">Level 2+ (Apprentice Rank)</option>
+                            <option value={3} className="bg-[#141414] text-white py-1">Level 3+ (Disciplined Warriors)</option>
+                            <option value={5} className="bg-[#141414] text-white py-1">Level 5+ (Detox Elite Warriors)</option>
+                            <option value={10} className="bg-[#141414] text-white py-1">Level 10+ (Monk Grandmasters Only)</option>
+                          </select>
+                          <ChevronDown className="w-4 h-4 text-white/50 group-hover:text-[#FFD700] pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors" />
+                        </div>
                       </div>
 
                       <div>
@@ -1754,19 +1757,22 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
               </p>
 
               <div>
-                <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">
+                <label className="text-[10px] uppercase font-bold text-white/60 block mb-1.5 tracking-wider">
                   Reason for Removal
                 </label>
-                <select
-                  value={kickReason}
-                  onChange={(e) => setKickReason(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-red-500/50 transition-colors"
-                >
-                  <option value="Underperforming / 0 Focus Today">Underperforming / 0 Net Focus Logged</option>
-                  <option value="Inactive for Multiple Days">Inactive / Missing Focus Sprints</option>
-                  <option value="Squad Quota Rebalancing">Squad Capacity Rebalancing</option>
-                  <option value="Violated Study Room Code">Disruptive on Cheer Wall</option>
-                </select>
+                <div className="relative group">
+                  <select
+                    value={kickReason}
+                    onChange={(e) => setKickReason(e.target.value)}
+                    className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-[#121212] border border-white/20 hover:border-red-500/50 focus:border-red-500 text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-red-500/30 transition-all appearance-none cursor-pointer shadow-sm shadow-black/50"
+                  >
+                    <option value="Underperforming / 0 Focus Today" className="bg-[#141414] text-white py-1">Underperforming / 0 Net Focus Logged</option>
+                    <option value="Inactive for Multiple Days" className="bg-[#141414] text-white py-1">Inactive / Missing Focus Sprints</option>
+                    <option value="Squad Quota Rebalancing" className="bg-[#141414] text-white py-1">Squad Capacity Rebalancing</option>
+                    <option value="Violated Study Room Code" className="bg-[#141414] text-white py-1">Disruptive on Cheer Wall</option>
+                  </select>
+                  <ChevronDown className="w-4 h-4 text-white/50 group-hover:text-red-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors" />
+                </div>
               </div>
 
               <div className="flex items-center gap-3 pt-1">

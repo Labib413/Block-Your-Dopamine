@@ -192,22 +192,22 @@ export function Planner({ onBack }: PlannerProps) {
                       <div className="relative">
                         <button 
                           onClick={() => setIsCategoryOpen(!isCategoryOpen)}
-                          className="w-full bg-black border border-white/10 rounded-2xl px-4 py-3.5 flex items-center justify-between text-sm text-white/80 hover:bg-white/5 transition-all"
+                          className="w-full bg-[#121212] border border-white/20 hover:border-purple-500/50 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-white hover:bg-white/5 transition-all shadow-sm shadow-black/50"
                         >
                           <div className="flex items-center gap-2">
                             {category ? (
                               <>
-                                {React.createElement(getCategoryIcon(category), { className: "w-4 h-4 text-purple-400" })}
-                                <span>{category}</span>
+                                {React.createElement(getCategoryIcon(category), { className: "w-3.5 h-3.5 text-purple-400" })}
+                                <span className="text-white font-semibold">{category}</span>
                               </>
                             ) : (
                               <>
-                                <Tag className="w-4 h-4 text-white/40" />
-                                <span>Select Category</span>
+                                <Tag className="w-3.5 h-3.5 text-white/45" />
+                                <span className="text-white/45 font-normal">Select Category</span>
                               </>
                             )}
                           </div>
-                          <ChevronDown className={cn("w-4 h-4 text-white/40 transition-transform", isCategoryOpen && "rotate-180")} />
+                          <ChevronDown className={cn("w-3.5 h-3.5 text-white/50 transition-transform", isCategoryOpen && "rotate-180 text-purple-400")} />
                         </button>
                         
                         {isCategoryOpen && (
@@ -338,17 +338,17 @@ export function Planner({ onBack }: PlannerProps) {
                     <div className="relative">
                       <button 
                         onClick={() => setIsReminderOpen(!isReminderOpen)}
-                        className="w-full bg-black border border-white/10 rounded-2xl px-4 py-3.5 flex items-center justify-between text-sm text-white/80 hover:bg-white/5 transition-all"
+                        className="w-full bg-[#121212] border border-white/20 hover:border-purple-500/50 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-xs font-semibold text-white hover:bg-white/5 transition-all shadow-sm shadow-black/50"
                       >
                         <div className="flex items-center gap-2 overflow-hidden">
-                          <Bell className="w-4 h-4 text-white/40 shrink-0" />
-                          <span className="truncate">
+                          <Bell className="w-3.5 h-3.5 text-white/50 shrink-0" />
+                          <span className={cn("truncate", selectedReminders.length > 0 ? "text-white font-semibold" : "text-white/45 font-normal")}>
                             {selectedReminders.length > 0 
                               ? selectedReminders.join(", ") 
                               : "No reminders"}
                           </span>
                         </div>
-                        <ChevronDown className={cn("w-4 h-4 text-white/40 transition-transform shrink-0", isReminderOpen && "rotate-180")} />
+                        <ChevronDown className={cn("w-3.5 h-3.5 text-white/50 transition-transform shrink-0", isReminderOpen && "rotate-180 text-purple-400")} />
                       </button>
                       
                       {isReminderOpen && (

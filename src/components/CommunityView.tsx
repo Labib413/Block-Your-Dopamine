@@ -18,6 +18,7 @@ import {
   Filter, 
   ArrowLeft,
   ChevronRight, 
+  ChevronDown,
   Lock, 
   CheckCircle2, 
   Clock, 
@@ -1910,35 +1911,41 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                   />
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                   <div>
-                    <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Target Domain</label>
-                    <select
-                      value={newGuildCategory}
-                      onChange={(e) => setNewGuildCategory(e.target.value as Guild["category"])}
-                      className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-[#39FF14]/50 transition-colors"
-                    >
-                      <option value="Engineering">Engineering</option>
-                      <option value="Medical">Medical</option>
-                      <option value="Varsity">Varsity</option>
-                      <option value="HSC">HSC</option>
-                      <option value="General">General</option>
-                    </select>
+                    <label className="text-[10px] uppercase font-bold text-white/60 block mb-1.5 tracking-wider">Target Domain</label>
+                    <div className="relative group">
+                      <select
+                        value={newGuildCategory}
+                        onChange={(e) => setNewGuildCategory(e.target.value as Guild["category"])}
+                        className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-[#121212] border border-white/20 hover:border-[#39FF14]/50 focus:border-[#39FF14] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#39FF14]/30 transition-all appearance-none cursor-pointer shadow-sm shadow-black/50"
+                      >
+                        <option value="Engineering" className="bg-[#141414] text-white py-1">Engineering</option>
+                        <option value="Medical" className="bg-[#141414] text-white py-1">Medical</option>
+                        <option value="Varsity" className="bg-[#141414] text-white py-1">Varsity</option>
+                        <option value="HSC" className="bg-[#141414] text-white py-1">HSC</option>
+                        <option value="General" className="bg-[#141414] text-white py-1">General</option>
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-white/50 group-hover:text-[#39FF14] pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors" />
+                    </div>
                   </div>
 
                   <div>
-                    <label className="text-[10px] uppercase font-bold text-white/40 block mb-1 tracking-wider">Minimum Level Required</label>
-                    <select
-                      value={newGuildMinLevel}
-                      onChange={(e) => setNewGuildMinLevel(Number(e.target.value))}
-                      className="w-full px-4 py-2.5 rounded-xl bg-[#141414] border border-white/10 text-white text-xs focus:outline-none focus:border-[#39FF14]/50 transition-colors"
-                    >
-                      <option value={1}>Level 1+ (Open for All)</option>
-                      <option value={2}>Level 2+ (Apprentice Rank)</option>
-                      <option value={3}>Level 3+ (Disciplined)</option>
-                      <option value={5}>Level 5+ (Detox Elite)</option>
-                      <option value={10}>Level 10+ (Monk Grandmaster)</option>
-                    </select>
+                    <label className="text-[10px] uppercase font-bold text-white/60 block mb-1.5 tracking-wider">Minimum Level Required</label>
+                    <div className="relative group">
+                      <select
+                        value={newGuildMinLevel}
+                        onChange={(e) => setNewGuildMinLevel(Number(e.target.value))}
+                        className="w-full pl-3.5 pr-9 py-2 rounded-xl bg-[#121212] border border-white/20 hover:border-[#39FF14]/50 focus:border-[#39FF14] text-white text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-[#39FF14]/30 transition-all appearance-none cursor-pointer shadow-sm shadow-black/50"
+                      >
+                        <option value={1} className="bg-[#141414] text-white py-1">Level 1+ (Open for All)</option>
+                        <option value={2} className="bg-[#141414] text-white py-1">Level 2+ (Apprentice Rank)</option>
+                        <option value={3} className="bg-[#141414] text-white py-1">Level 3+ (Disciplined)</option>
+                        <option value={5} className="bg-[#141414] text-white py-1">Level 5+ (Detox Elite)</option>
+                        <option value={10} className="bg-[#141414] text-white py-1">Level 10+ (Monk Grandmaster)</option>
+                      </select>
+                      <ChevronDown className="w-4 h-4 text-white/50 group-hover:text-[#39FF14] pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 transition-colors" />
+                    </div>
                   </div>
                 </div>
 
