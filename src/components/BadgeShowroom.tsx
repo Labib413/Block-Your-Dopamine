@@ -266,16 +266,18 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                             {/* Mini Frame */}
                             <div 
                               className={cn(
-                                "w-10 h-10 rounded-xl flex items-center justify-center border relative flex-shrink-0",
-                                rarityStyle?.border || "border-white/20 bg-white/5"
+                                "w-10 h-10 flex items-center justify-center relative flex-shrink-0",
+                                typeof badge.icon === 'string'
+                                  ? "border-none bg-transparent rounded-none p-0 shadow-none"
+                                  : cn("rounded-xl border", rarityStyle?.border || "border-white/20 bg-white/5")
                               )}
-                              style={{ backgroundColor: `${badge.color}15` }}
+                              style={typeof badge.icon === 'string' ? {} : { backgroundColor: `${badge.color}15` }}
                             >
                               {typeof badge.icon === 'string' ? (
                                 <img 
                                   src={badge.icon} 
                                   alt={badge.title} 
-                                  className="w-6 h-6 object-contain drop-shadow-[0_0_8px_rgba(255,215,0,0.5)]" 
+                                  className="w-full h-full object-contain drop-shadow-[0_0_10px_rgba(255,215,0,0.6)]" 
                                   referrerPolicy="no-referrer"
                                 />
                               ) : (
@@ -497,7 +499,7 @@ export const BadgeShowroom: React.FC<BadgeShowroomProps> = ({ isOpen, onClose })
                                 <div className={cn(
                                   "w-13 h-13 flex items-center justify-center transition-all duration-300 relative",
                                   typeof badge.icon === 'string'
-                                    ? "border-none bg-transparent"
+                                    ? "border-none bg-transparent rounded-none p-0 shadow-none"
                                     : cn("rounded-2xl border", isUnlocked ? rarity.border : "border-white/5 bg-black/40"),
                                   isUnlocked && "group-hover:scale-105"
                                 )}

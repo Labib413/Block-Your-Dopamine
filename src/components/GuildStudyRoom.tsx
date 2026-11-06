@@ -78,12 +78,26 @@ export interface GuildRankConfig {
   desc: string;
 }
 
+export const renderRankIcon = (icon: string, className = "w-3.5 h-3.5 object-contain inline-block") => {
+  if (typeof icon === 'string' && (icon.startsWith('/') || icon.endsWith('.svg') || icon.endsWith('.png'))) {
+    return (
+      <img 
+        src={icon} 
+        alt="Rank Icon" 
+        className={className} 
+        referrerPolicy="no-referrer"
+      />
+    );
+  }
+  return <span>{icon}</span>;
+};
+
 export const GUILD_RANKS: Record<GuildMilitaryRank, GuildRankConfig> = {
   commander: {
     id: 'commander',
     label: 'Commander',
     hierarchy: 1,
-    icon: '👑',
+    icon: '/assets/aistudio/01-Horned_Skull_Hexagon_Emblem__1_-removebg-preview_2a7a81c1.svg',
     badgeClass: 'bg-[#FFD700]/20 text-[#FFD700] border-[#FFD700]/40 shadow-[0_0_12px_rgba(255,215,0,0.25)]',
     borderClass: 'border-[#FFD700]/30',
     textClass: 'text-[#FFD700]',
@@ -238,7 +252,6 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
   }, [isMeLeader, activeTab]);
 
   const [selectedDesk, setSelectedDesk] = useState<GuildMemberDesk | null>(null);
-  const [isConfirmingKick, setIsConfirmingKick] = useState(false);
   const [isConfirmingDeleteGuild, setIsConfirmingDeleteGuild] = useState(false);
   const [isDeletingGuild, setIsDeletingGuild] = useState(false);
   const [floatingCheers, setFloatingCheers] = useState<{ id: number; deskId: string; emoji: string }[]>([]);
@@ -517,7 +530,6 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
       // Optimistically remove desk locally
       setDesks(prev => prev.filter(d => d.id !== targetDesk.id));
       setSelectedDesk(null);
-      setIsConfirmingKick(false);
       setMemberToKick(null);
 
       await kickGuildMemberInFirebase(
@@ -1018,7 +1030,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                             "px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono flex items-center gap-1 border",
                             rConfig.badgeClass
                           )}>
-                            <span>{rConfig.icon}</span>
+                            <span>{renderRankIcon(rConfig.icon, "w-3.5 h-3.5 object-contain inline-block")}</span>
                             <span>{rConfig.label}</span>
                           </span>
                         );
@@ -1058,8 +1070,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                     {isMeLeader && !member.isCurrentUser && !isDeskLeader(member) && (
                       <button
                         onClick={() => {
-                          setSelectedDesk(member);
-                          setIsConfirmingKick(true);
+                          setMemberToKick(member);
                         }}
                         className="p-2 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 text-xs transition-colors flex items-center gap-1 cursor-pointer"
                         title="Commander Authority: Kick Member"
@@ -1144,8 +1155,13 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           <GlassCard className="p-6 space-y-6 border-[#FFD700]/20 bg-[#FFD700]/[0.02]">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-[#FFD700]/10 border border-[#FFD700]/30 flex items-center justify-center shadow-[0_0_20px_rgba(255,215,0,0.2)]">
-                  <Crown className="w-6 h-6 text-[#FFD700]" />
+                <div className="w-12 h-12 flex items-center justify-center p-0 bg-transparent border-none shadow-none">
+                  <img 
+                    src="/assets/aistudio/01-Horned_Skull_Hexagon_Emblem__1_-removebg-preview_2a7a81c1.svg" 
+                    alt="Commander HQ" 
+                    className="w-full h-full object-contain drop-shadow-[0_0_12px_rgba(255,215,0,0.6)] scale-110" 
+                    referrerPolicy="no-referrer"
+                  />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -1317,8 +1333,14 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono uppercase font-bold tracking-wider text-white/40">Command Hierarchy:</span>
               <div className="flex items-center gap-1.5 flex-wrap font-mono text-[11px] font-bold">
-                <span className="px-2 py-0.5 rounded-lg bg-[#FFD700]/15 text-[#FFD700] border border-[#FFD700]/30 flex items-center gap-1">
-                  <span>👑</span> Commander
+                <span className="px-2 py-0.5 rounded-lg bg-[#FFD700]/15 text-[#FFD700] border border-[#FFD700]/30 flex items-center gap-1.5">
+                  <img 
+                    src="/assets/aistudio/01-Horned_Skull_Hexagon_Emblem__1_-removebg-preview_2a7a81c1.svg" 
+                    alt="Commander" 
+                    className="w-4 h-4 object-contain inline-block drop-shadow-[0_0_4px_rgba(255,215,0,0.4)]" 
+                    referrerPolicy="no-referrer"
+                  />
+                  <span>Commander</span>
                 </span>
                 <span className="text-white/30">&gt;</span>
                 <span className="px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-400 border border-amber-500/30 flex items-center gap-1">
@@ -1340,7 +1362,12 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
             </div>
             {isMeLeader && (
               <span className="text-[10px] font-mono text-[#FFD700]/80 flex items-center gap-1.5">
-                <Crown className="w-3.5 h-3.5 text-[#FFD700]" />
+                <img 
+                  src="/assets/aistudio/01-Horned_Skull_Hexagon_Emblem__1_-removebg-preview_2a7a81c1.svg" 
+                  alt="Commander Authority" 
+                  className="w-3.5 h-3.5 object-contain inline-block drop-shadow-[0_0_4px_rgba(255,215,0,0.4)]" 
+                  referrerPolicy="no-referrer"
+                />
                 Commander Authority: Click any warrior's rank to promote or reassign
               </span>
             )}
@@ -1411,18 +1438,28 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   {/* Member Identity & Status */}
                   <div className="flex items-center gap-3.5">
                     <div className={cn(
-                      "w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-sm shrink-0 border transition-all duration-200 relative",
-                      member.isFocusing ? "bg-[#FF7A00]/20 border-[#FF7A00] text-[#FF7A00] shadow-[0_0_15px_rgba(255,122,0,0.5)] ring-1 ring-[#FF7A00]/50" :
-                      isLeader ? "bg-[#FFD700]/10 border-[#FFD700]/40 text-[#FFD700] shadow-[0_0_15px_rgba(255,215,0,0.2)]" :
-                      memberRank === 'general' ? "bg-amber-500/10 border-amber-500/40 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]" :
-                      memberRank === 'major' ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]" :
-                      memberRank === 'lieutenant' ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]" :
-                      "bg-white/5 border-white/10 text-white/70"
+                      "w-11 h-11 flex items-center justify-center font-bold text-sm shrink-0 transition-all duration-200 relative",
+                      member.isFocusing 
+                        ? "rounded-2xl border bg-[#FF7A00]/20 border-[#FF7A00] text-[#FF7A00] shadow-[0_0_15px_rgba(255,122,0,0.5)] ring-1 ring-[#FF7A00]/50" 
+                        : (isLeader || (typeof rankConfig.icon === 'string' && rankConfig.icon.startsWith('/')))
+                          ? "border-none bg-transparent shadow-none" 
+                          : cn(
+                              "rounded-2xl border",
+                              memberRank === 'general' ? "bg-amber-500/10 border-amber-500/40 text-amber-400 shadow-[0_0_15px_rgba(245,158,11,0.2)]" :
+                              memberRank === 'major' ? "bg-cyan-500/10 border-cyan-500/40 text-cyan-400 shadow-[0_0_15px_rgba(6,182,212,0.2)]" :
+                              memberRank === 'lieutenant' ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.2)]" :
+                              "bg-white/5 border-white/10 text-white/70"
+                            )
                     )}>
                       {member.isFocusing ? (
                         <Flame className="w-6 h-6 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_8px_rgba(255,122,0,0.8)]" />
                       ) : (
-                        rankConfig.icon
+                        renderRankIcon(
+                          rankConfig.icon, 
+                          (isLeader || (typeof rankConfig.icon === 'string' && rankConfig.icon.startsWith('/')))
+                            ? "w-full h-full object-contain drop-shadow-[0_0_12px_rgba(255,215,0,0.5)] scale-110" 
+                            : "text-base"
+                        )
                       )}
                       {member.isFocusing && (
                         <span className="w-2.5 h-2.5 rounded-full bg-[#FF7A00] border border-black absolute -top-1 -right-1 animate-ping" />
@@ -1443,7 +1480,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                           "px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono flex items-center gap-1 border",
                           rankConfig.badgeClass
                         )}>
-                          <span>{rankConfig.icon}</span>
+                          <span>{renderRankIcon(rankConfig.icon, "w-3.5 h-3.5 object-contain inline-block")}</span>
                           <span>{rankConfig.label}</span>
                         </span>
 
@@ -1500,7 +1537,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                             )}
                             title="Commander Authority: Assign Military Rank"
                           >
-                            <span>{rankConfig.icon}</span>
+                            <span>{renderRankIcon(rankConfig.icon, "w-3.5 h-3.5 object-contain inline-block")}</span>
                             <span className="text-[10px]">Rank: {rankConfig.label}</span>
                             <ChevronDown className={cn("w-3 h-3 transition-transform duration-200", openRankMenuId === member.id && "rotate-180")} />
                           </button>
@@ -1803,7 +1840,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                           "px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wider font-mono flex items-center gap-1 border",
                           rConfig.badgeClass
                         )}>
-                          <span>{rConfig.icon}</span>
+                          <span>{renderRankIcon(rConfig.icon, "w-3.5 h-3.5 object-contain inline-block")}</span>
                           <span>{rConfig.label}</span>
                         </span>
                       );
@@ -1859,98 +1896,9 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 </div>
               </div>
 
-              {/* Commander Rank Controls */}
-              {isMeLeader && !selectedDesk.isCurrentUser && !isDeskLeader(selectedDesk) && (
-                <div className="p-3.5 rounded-2xl bg-white/[0.03] border border-white/10 space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-[#FFD700]">
-                      <Crown className="w-3.5 h-3.5" />
-                      <span className="text-[11px] font-bold uppercase tracking-wider font-mono">Commander Authority: Assign Rank</span>
-                    </div>
-                    <span className="text-[9px] text-[#FFD700] font-mono">General &gt; Major &gt; Lieutenant</span>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2">
-                    {ASSIGNABLE_RANKS.map((r) => {
-                      const currentRank = normalizeGuildRole(selectedDesk.role, isDeskLeader(selectedDesk));
-                      const isSelected = currentRank === r.id;
-                      return (
-                        <button
-                          key={r.id}
-                          type="button"
-                          onClick={() => {
-                            handleAssignRank(selectedDesk.id, r.id);
-                            setSelectedDesk(prev => prev ? { ...prev, role: r.id } : null);
-                          }}
-                          className={cn(
-                            "p-2 rounded-xl text-left border flex items-center justify-between transition-all cursor-pointer",
-                            isSelected 
-                              ? "bg-white/15 border-white/30 text-white font-bold shadow-[0_0_12px_rgba(255,255,255,0.1)]" 
-                              : "bg-white/5 border-white/5 text-white/60 hover:text-white hover:bg-white/10"
-                          )}
-                        >
-                          <div className="flex items-center gap-1.5 truncate">
-                            <span className="text-sm shrink-0">{r.icon}</span>
-                            <span className="text-xs truncate">{r.label}</span>
-                          </div>
-                          {isSelected && <Check className="w-3.5 h-3.5 text-[#39FF14] shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Guild Leader Kick Controls */}
-              {isMeLeader && !selectedDesk.isCurrentUser && !isDeskLeader(selectedDesk) && (
-                <div className="p-3.5 rounded-2xl bg-red-500/[0.06] border border-red-500/20 space-y-3">
-                  <div className="flex items-center gap-2 text-red-400">
-                    <ShieldAlert className="w-4 h-4" />
-                    <span className="text-[11px] font-bold uppercase tracking-wider">Commander Authority: Kick Member</span>
-                  </div>
-
-                  {!isConfirmingKick ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsConfirmingKick(true)}
-                      className="w-full py-2 px-3 rounded-xl bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 text-red-400 text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                    >
-                      <UserX className="w-4 h-4" />
-                      <span>Kick Warrior from Guild</span>
-                    </button>
-                  ) : (
-                    <div className="space-y-2">
-                      <p className="text-[11px] text-white/70">
-                        Are you sure you want to kick <span className="text-white font-bold">{selectedDesk.fullName || selectedDesk.username}</span>? Their desk will be immediately removed from the study room.
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setIsConfirmingKick(false)}
-                          className="flex-1 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-xs font-bold uppercase transition-colors"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleKickMember(selectedDesk)}
-                          className="flex-1 py-1.5 rounded-lg bg-red-500 hover:bg-red-600 text-white text-xs font-bold uppercase tracking-wider shadow-[0_0_15px_rgba(239,68,68,0.3)] transition-colors flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <UserX className="w-3.5 h-3.5" />
-                          <span>Confirm Kick</span>
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
               <div className="pt-2">
                 <button
-                  onClick={() => {
-                    setSelectedDesk(null);
-                    setIsConfirmingKick(false);
-                  }}
+                  onClick={() => setSelectedDesk(null)}
                   className="w-full py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-bold uppercase tracking-wider transition-colors border border-white/10 cursor-pointer"
                 >
                   Close Desk

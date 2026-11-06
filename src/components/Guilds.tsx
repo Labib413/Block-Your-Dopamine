@@ -822,7 +822,13 @@ export function Guilds({
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-bold text-white">{member.fullName}</span>
                             {(member.role === 'leader' || member.role === 'commander') ? (
-                              <Crown className="w-3.5 h-3.5 text-[#FFD700]" title="Commander (Guild Leader)" />
+                              <img 
+                                src="/assets/aistudio/01-Horned_Skull_Hexagon_Emblem__1_-removebg-preview_2a7a81c1.svg" 
+                                alt="Commander" 
+                                className="w-4 h-4 object-contain inline-block drop-shadow-[0_0_4px_rgba(255,215,0,0.4)]" 
+                                title="Commander (Guild Leader)" 
+                                referrerPolicy="no-referrer"
+                              />
                             ) : member.role === 'general' ? (
                               <span className="text-[11px]" title="General">🎖️</span>
                             ) : member.role === 'major' || member.role === 'officer' ? (
