@@ -117,19 +117,41 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
     }
   };
 
-  const handleAddResource = (chapterId: string) => {
-    const url = prompt("Enter resource URL (e.g., YouTube link or Google Drive file):");
-    if (!url) return;
-    
-    const title = prompt("Enter resource title (e.g., 'Physics Lecture' or 'Note PDF'):") || 'Untitled Resource';
-    
+  const [activeResourceChapterId, setActiveResourceChapterId] = useState<string | null>(null);
+  const [resourceType, setResourceType] = useState<'link' | 'file'>('link');
+  const [resourceTitle, setResourceTitle] = useState('');
+  const [resourceUrl, setResourceUrl] = useState('');
+  const [resourceFile, setResourceFile] = useState<File | null>(null);
+
+  const handleOpenAddResource = (chapterId: string) => {
+    setActiveResourceChapterId(chapterId);
+    setResourceType('link');
+    setResourceTitle('');
+    setResourceUrl('');
+    setResourceFile(null);
+  };
+
+  const handleSaveResource = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeResourceChapterId) return;
+    if (!resourceTitle.trim()) return;
+
+    let finalUrl = resourceUrl;
+    if (resourceType === 'file' && resourceFile) {
+      // Create a local object URL for the uploaded PDF or image
+      finalUrl = URL.createObjectURL(resourceFile);
+    }
+
+    if (!finalUrl) return;
+
     const resource: ChapterResource = {
       id: generateId(),
-      title,
-      url
+      title: resourceTitle.trim(),
+      url: finalUrl
     };
-    
-    addChapterResource(chapterId, resource);
+
+    addChapterResource(activeResourceChapterId, resource);
+    setActiveResourceChapterId(null);
   };
 
   return (
@@ -313,7 +335,7 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                           Study Resources ({chapter.resources?.length || 0})
                         </h4>
                         <button 
-                          onClick={() => handleAddResource(chapter.id)}
+                          onClick={() => handleOpenAddResource(chapter.id)}
                           className="flex items-center gap-1.5 text-neon-green hover:text-neon-green/80 text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-lg bg-neon-green/10 border border-neon-green/20 hover:border-neon-green/40 transition-all cursor-pointer"
                         >
                           <Plus className="w-3 h-3" />
@@ -327,12 +349,12 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
                             <div key={res.id} className="flex items-center justify-between p-2.5 sm:px-3 sm:py-2 rounded-xl bg-white/[0.03] border border-white/10 group hover:border-white/20 hover:bg-white/[0.06] transition-all">
                               <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
                                 <div className="p-1.5 rounded-lg bg-neon-green/10 border border-neon-green/20 shrink-0">
-                                  {res.url.includes('youtube') ? <Play className="w-3.5 h-3.5 text-neon-green" /> : <LinkIcon className="w-3.5 h-3.5 text-neon-green" />}
+                                  {res.url.includes('youtube') || res.url.includes('http') && (res.url.includes('watch') || res.url.includes('youtu.be')) ? <Play className="w-3.5 h-3.5 text-neon-green" /> : <LinkIcon className="w-3.5 h-3.5 text-neon-green" />}
                                 </div>
                                 <div className="overflow-hidden min-w-0">
                                   <p className="text-xs font-bold text-white truncate">{res.title}</p>
                                   <a href={res.url} target="_blank" rel="noopener noreferrer" className="text-[9px] text-white/40 truncate flex items-center gap-1 hover:text-neon-green transition-colors">
-                                    {res.url}
+                                    {res.url.startsWith('blob:') ? 'Uploaded Document / File' : res.url}
                                     <ExternalLink className="w-2.5 h-2.5 shrink-0" />
                                   </a>
                                 </div>
@@ -374,6 +396,117 @@ export function SyllabusView({ subjectId, onBack }: SyllabusViewProps) {
         </div>
       )}
     </div>
+
+      {/* Add Resource Modal */}
+      <AnimatePresence>
+        {activeResourceChapterId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#0c0c12] border border-white/15 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl relative"
+            >
+              <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-neon-green" />
+                  Add Study Resource
+                </h3>
+                <button 
+                  onClick={() => setActiveResourceChapterId(null)}
+                  className="w-7 h-7 rounded-lg bg-white/5 text-white/50 hover:text-white hover:bg-white/10 flex items-center justify-center text-xs transition-colors cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveResource} className="space-y-4">
+                {/* Type Switcher */}
+                <div className="grid grid-cols-2 gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setResourceType('link')}
+                    className={cn(
+                      "py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                      resourceType === 'link' ? "bg-neon-green text-black shadow-[0_0_15px_rgba(57,255,20,0.3)]" : "text-white/50 hover:text-white"
+                    )}
+                  >
+                    <LinkIcon className="w-3.5 h-3.5" />
+                    YouTube / Video Link
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setResourceType('file')}
+                    className={cn(
+                      "py-2 rounded-lg text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5",
+                      resourceType === 'file' ? "bg-neon-green text-black shadow-[0_0_15px_rgba(57,255,20,0.3)]" : "text-white/50 hover:text-white"
+                    )}
+                  >
+                    <FileText className="w-3.5 h-3.5" />
+                    PDF / Photo Upload
+                  </button>
+                </div>
+
+                {/* Title Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Resource Title</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Organic Chemistry Lecture 1 or Handwritten Notes PDF"
+                    value={resourceTitle}
+                    onChange={(e) => setResourceTitle(e.target.value)}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-neon-green/50 transition-colors"
+                  />
+                </div>
+
+                {/* URL or File Input */}
+                {resourceType === 'link' ? (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Video or Link URL</label>
+                    <input
+                      type="url"
+                      required
+                      placeholder="https://youtube.com/watch?v=... or Drive link"
+                      value={resourceUrl}
+                      onChange={(e) => setResourceUrl(e.target.value)}
+                      className="w-full px-3.5 py-2.5 rounded-xl bg-white/5 border border-white/10 text-white text-xs placeholder:text-white/30 focus:outline-none focus:border-neon-green/50 transition-colors"
+                    />
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-white/50 uppercase tracking-widest">Select PDF or Image File</label>
+                    <input
+                      type="file"
+                      required
+                      accept=".pdf,image/*"
+                      onChange={(e) => setResourceFile(e.target.files?.[0] || null)}
+                      className="w-full file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-xs file:font-bold file:bg-neon-green/10 file:text-neon-green hover:file:bg-neon-green/20 text-xs text-white/60 bg-white/5 border border-white/10 rounded-xl cursor-pointer"
+                    />
+                    <p className="text-[10px] text-white/30">Upload PDF documents or study notes photos directly from your device.</p>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-end gap-2.5 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActiveResourceChapterId(null)}
+                    className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white text-xs font-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl bg-neon-green hover:bg-[#32e012] text-black text-xs font-bold uppercase tracking-wider transition-all shadow-[0_0_15px_rgba(57,255,20,0.3)] cursor-pointer"
+                  >
+                    Attach Resource
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
