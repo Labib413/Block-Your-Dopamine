@@ -829,6 +829,12 @@ export function DistractionGuard() {
           <button 
             type="button"
             onClick={async () => {
+              if (depexMode && isDepexTimerLocked) {
+                setErrorMessage(
+                  `DEPEX Mode is locked! Cannot turn off until Engage Guard timer finishes (${depexRemainingMinutes}m left).`
+                );
+                return;
+              }
               const prevMode = depexMode;
               const allowed = await toggleDepexMode();
               if (allowed) {
@@ -837,13 +843,24 @@ export function DistractionGuard() {
                 } else {
                   setSuccessMessage("DEPEX Mode deactivated.");
                 }
+              } else {
+                setErrorMessage(
+                  `DEPEX Mode is locked! Cannot turn off until Engage Guard timer finishes (${depexRemainingMinutes}m left).`
+                );
               }
             }}
             className={cn(
-              "w-9 h-5 rounded-full relative transition-all duration-300 border cursor-pointer",
-              depexMode ? "bg-red-500 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)]" : "bg-white/5 border-white/10"
+              "w-9 h-5 rounded-full relative transition-all duration-300 border",
+              depexMode ? "bg-red-500 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)]" : "bg-white/5 border-white/10",
+              isDepexTimerLocked ? "cursor-not-allowed opacity-90 ring-1 ring-red-500/50" : "cursor-pointer"
             )}
-            title={depexMode ? "Deactivate Depex Mode" : "Activate Depex Mode"}
+            title={
+              isDepexTimerLocked
+                ? `DEPEX Locked for ${depexRemainingMinutes}m (Engage Guard active)`
+                : depexMode
+                  ? "Deactivate Depex Mode"
+                  : "Activate Depex Mode"
+            }
           >
             <motion.div 
               className={cn(

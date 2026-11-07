@@ -1409,6 +1409,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleDepexMode = useCallback(async (): Promise<boolean> => {
     const current = stateRef.current;
+    const activeLockMs = current.depexLockedUntil ? new Date(current.depexLockedUntil).getTime() : 0;
+
+    // Unbreakable DEPEX Lock: cannot disable while active Engage Guard timer is running
+    if (current.depexMode && activeLockMs > Date.now()) {
+      return false;
+    }
+
     const nextDepex = !current.depexMode;
     const activeUserId: string | null = current.user?.id || null;
 

@@ -138,14 +138,27 @@ service cloud.firestore {
       allow get: if isOwner(userId);
       allow list: if false;
       allow create: if isOwner(userId) && isValidId(userId);
-      allow update: if isOwner(userId) && isValidId(userId);
-      allow delete: if isOwner(userId);
+      allow update: if isOwner(userId) && isValidId(userId) &&
+        (!('depex_mode' in request.resource.data && request.resource.data.depex_mode == false) || !isUserDepexLocked(userId));
+      allow delete: if isOwner(userId) && !isUserDepexLocked(userId);
 
-      // DEPEX Mode state: user can directly toggle on and off
+      // DEPEX Mode state: locked until Engage Guard server clock finishes
       match /depex_state/{stateId} {
         allow get, list: if isOwner(userId);
-        allow create, update: if isOwner(userId) && stateId == 'active' && isValidDepexState(request.resource.data, userId);
-        allow delete: if isOwner(userId) && stateId == 'active';
+        allow create: if isOwner(userId) && stateId == 'active' && isValidDepexState(request.resource.data, userId);
+        allow update: if isOwner(userId) && stateId == 'active' &&
+          isValidDepexState(request.resource.data, userId) &&
+          (
+            !isDepexStateLocked(resource.data) ||
+            (
+              request.resource.data.isActive == true &&
+              request.resource.data.isTimerLocked == true &&
+              'lockedUntilTs' in request.resource.data &&
+              request.resource.data.lockedUntilTs is timestamp &&
+              request.resource.data.lockedUntilTs >= resource.data.lockedUntilTs
+            )
+          );
+        allow delete: if isOwner(userId) && stateId == 'active' && !isDepexStateLocked(resource.data);
       }
 
       // Dedicated per-user Distraction Guard saved & locked targets
