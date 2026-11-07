@@ -372,6 +372,7 @@ export function DistractionGuard() {
 
   // Compute authoritative DEPEX timer lock expiry (max of Firebase depex_state and DEPEX-locked targets)
   const effectiveDepexLockMs = useMemo(() => {
+    if (!depexMode) return 0;
     const contextMs = depexLockedUntil ? new Date(depexLockedUntil).getTime() : 0;
     const targetsMs = blockedTargets.reduce((maxMs, t) => {
       if (!t.isActive || !t.depexLocked || !t.lockedUntil) return maxMs;
@@ -379,14 +380,14 @@ export function DistractionGuard() {
       return !isNaN(exp) ? Math.max(maxMs, exp) : maxMs;
     }, 0);
     return Math.max(contextMs, targetsMs);
-  }, [depexLockedUntil, blockedTargets]);
+  }, [depexMode, depexLockedUntil, blockedTargets]);
 
-  // Self-heal DEPEX Mode if Firebase targets carry an active DEPEX lock (e.g., after storage clear or new device login)
+  // Self-heal DEPEX Mode lock timer only if DEPEX is already active and targets carry an unexpired lock
   useEffect(() => {
-    if (!depexMode && effectiveDepexLockMs > currentTime) {
+    if (depexMode && effectiveDepexLockMs > currentTime && !depexLockedUntil) {
       lockDepexTimer(new Date(effectiveDepexLockMs).toISOString()).catch(() => {});
     }
-  }, [depexMode, effectiveDepexLockMs, currentTime, lockDepexTimer]);
+  }, [depexMode, effectiveDepexLockMs, currentTime, depexLockedUntil, lockDepexTimer]);
 
   const depexRemainingMinutes = useMemo(() => {
     if (!effectiveDepexLockMs || effectiveDepexLockMs <= currentTime) return 0;
