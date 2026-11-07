@@ -9,6 +9,7 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc,
+  deleteField,
   query, 
   orderBy, 
   onSnapshot,
@@ -229,6 +230,12 @@ export interface GuildCheer {
  */
 export function cleanFirestoreData<T>(obj: T): T {
   if (obj === null || obj === undefined) return obj;
+  if (
+    obj instanceof Date ||
+    (typeof obj === 'object' && ('_methodName' in (obj as any) || typeof (obj as any).toMillis === 'function'))
+  ) {
+    return obj;
+  }
   if (Array.isArray(obj)) {
     return obj
       .filter((item) => item !== undefined)
@@ -1506,7 +1513,8 @@ export async function syncUserFocusToAllGuildsAndCommunityInFirebase(
       await setDoc(doc(firestore, "users", userId), cleanFirestoreData({
         isFocusing,
         totalNetFocusTime,
-        updatedAt
+        updatedAt,
+        updated_at: deleteField()
       }), { merge: true });
     }
 

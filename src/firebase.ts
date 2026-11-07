@@ -12,6 +12,7 @@ import {
   query, 
   where, 
   orderBy, 
+  deleteField,
   serverTimestamp,
   Timestamp,
   Unsubscribe 
@@ -108,6 +109,7 @@ export {
   query,
   where,
   orderBy,
+  deleteField,
   serverTimestamp,
   Timestamp,
   onAuthStateChanged

@@ -1409,67 +1409,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const toggleDepexMode = useCallback(async (): Promise<boolean> => {
     const current = stateRef.current;
-    const activeLockMs = current.depexLockedUntil ? new Date(current.depexLockedUntil).getTime() : 0;
-    if (current.depexMode && activeLockMs > Date.now()) {
-      // Unbreakable DEPEX Lock: cannot disable until active guard timer finishes
-      return false;
-    }
+    const nextDepex = !current.depexMode;
+    const activeUserId: string | null = current.user?.id || null;
 
-    let resolvedNextDepex = !current.depexMode;
-    let activeUserId: string | null = current.user?.id || null;
-
-    setState(prev => {
-      const prevLockMs = prev.depexLockedUntil ? new Date(prev.depexLockedUntil).getTime() : 0;
-      if (prev.depexMode && prevLockMs > Date.now()) {
-        resolvedNextDepex = true;
-        return prev;
+    try {
+      localStorage.setItem('byd_depex_mode', String(nextDepex));
+      if (!nextDepex) {
+        localStorage.removeItem('byd_depex_locked_until');
       }
+    } catch {}
 
-      const nextDepex = !prev.depexMode;
-      resolvedNextDepex = nextDepex;
-      activeUserId = prev.user?.id || null;
-
-      try {
-        localStorage.setItem('byd_depex_mode', String(nextDepex));
-        if (!nextDepex) {
-          localStorage.removeItem('byd_depex_locked_until');
-        }
-      } catch {
-        // ignore localStorage errors
-      }
-
-      const next = {
-        ...prev,
-        depexMode: nextDepex,
-        depexLockedUntil: nextDepex ? prev.depexLockedUntil : null
-      };
-      
-      if (prev.user) {
-        addToSyncQueue({
-          table: 'profiles',
-          type: 'update',
-          id: prev.user.id,
-          data: { depex_mode: nextDepex }
-        });
-      }
-      return next;
-    });
+    setState(prev => ({
+      ...prev,
+      depexMode: nextDepex,
+      depexLockedUntil: nextDepex ? prev.depexLockedUntil : null
+    }));
 
     if (activeUserId) {
       try {
         await syncDepexStateInFirestore(activeUserId, {
-          isActive: resolvedNextDepex,
+          isActive: nextDepex,
           isTimerLocked: false,
           lockedUntil: '',
           lockedUntilMs: null
         });
       } catch (err) {
-        console.warn('[AppContext] toggleDepexMode Firestore sync rejected or failed:', err);
+        console.warn('[AppContext] toggleDepexMode Firestore sync error:', err);
       }
     }
 
     return true;
-  }, [addToSyncQueue]);
+  }, []);
 
   const lockDepexTimer = useCallback(async (lockedUntilIso: string): Promise<void> => {
     const incomingMs = lockedUntilIso ? new Date(lockedUntilIso).getTime() : 0;
@@ -2532,15 +2502,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             })()
           };
         });
-
-        if (pd.depex_mode === false && uId) {
-          syncDepexStateInFirestore(uId, {
-            isActive: false,
-            isTimerLocked: false,
-            lockedUntil: '',
-            lockedUntilMs: null
-          }).catch(() => {});
-        }
       },
       onAcademicChapters: (cloudChapters) => {
         if (!cloudChapters || cloudChapters.length === 0) return;

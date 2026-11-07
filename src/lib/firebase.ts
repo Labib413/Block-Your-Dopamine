@@ -25,6 +25,7 @@ import {
   onSnapshot,
   query,
   where,
+  deleteField,
   serverTimestamp,
   Timestamp,
   Unsubscribe
@@ -261,7 +262,7 @@ export async function signOutFirebase(): Promise<void> {
   }
 }
 
-export { onAuthStateChanged, onIdTokenChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, query, where, Timestamp };
+export { onAuthStateChanged, onIdTokenChanged, onSnapshot, doc, collection, getDoc, getDocs, setDoc, deleteDoc, deleteField, query, where, Timestamp };
 export type { FirebaseUser };
 
 // Mirror sync item to Firestore
@@ -290,7 +291,13 @@ export async function syncItemToFirestore(userId: string, table: string, data: a
     else if (table === 'macro_data') subcollection = 'macro_data';
     else if (table === 'profiles') {
       const userRef = doc(db, 'users', userId);
-      const cleanPayload = { ...data, userId, updatedAt: new Date().toISOString() };
+      const { updated_at, ...restData } = data;
+      const cleanPayload: Record<string, any> = { 
+        ...restData, 
+        userId, 
+        updatedAt: new Date().toISOString(),
+        updated_at: deleteField() // Permanently delete duplicate snake_case timestamp from Firestore
+      };
       const rawEquipped = cleanPayload.equipped_badges || cleanPayload.equippedBadges;
       if (rawEquipped && Array.isArray(rawEquipped)) {
         const sanitized = [
@@ -856,7 +863,8 @@ export async function syncDepexStateInFirestore(
       userId,
       depex_mode: payload.isActive,
       depex_locked_until: validExpiryMs ? payload.lockedUntil : '',
-      updatedAt: nowIso
+      updatedAt: nowIso,
+      updated_at: deleteField()
     },
     { merge: true }
   );

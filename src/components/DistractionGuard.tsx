@@ -26,6 +26,7 @@ import {
   db, 
   collection, 
   deleteDoc, 
+  deleteField,
   doc, 
   onSnapshot,
   onAuthStateChanged,
@@ -396,19 +397,6 @@ export function DistractionGuard() {
 
   const isDepexTimerLocked = (depexMode || effectiveDepexLockMs > currentTime) && depexRemainingMinutes > 0;
 
-  // Release expired DEPEX timer lock in Firestore once countdown finishes (with 8s server clock grace)
-  useEffect(() => {
-    if (!ownerUid || !depexMode || !depexLockedUntil) return;
-    const lockMs = new Date(depexLockedUntil).getTime();
-    if (!isNaN(lockMs) && lockMs + 8000 <= currentTime && depexRemainingMinutes === 0) {
-      syncDepexStateInFirestore(ownerUid, {
-        isActive: true,
-        isTimerLocked: false,
-        lockedUntil: "",
-        lockedUntilMs: null
-      }).catch(() => {});
-    }
-  }, [ownerUid, depexMode, depexLockedUntil, currentTime, depexRemainingMinutes]);
 
   // Broadcast live lock state to any installed BYD Chrome Extension content script
   useEffect(() => {
@@ -639,7 +627,8 @@ export function DistractionGuard() {
             userId: activeOwnerUid,
             depex_mode: true,
             depex_locked_until: effectiveGlobalIso,
-            updatedAt: nowIso
+            updatedAt: nowIso,
+            updated_at: deleteField()
           },
           { merge: true }
         );
@@ -840,35 +829,21 @@ export function DistractionGuard() {
           <button 
             type="button"
             onClick={async () => {
-              if (depexMode) {
-                if (isDepexTimerLocked) {
-                  setErrorMessage(
-                    `DEPEX Mode is locked! Cannot turn off until timer ends (${depexRemainingMinutes}m left).`
-                  );
-                  return;
-                }
-                const allowed = await toggleDepexMode();
-                if (!allowed) {
-                  setErrorMessage("DEPEX Mode is still locked by an active guard timer.");
+              const prevMode = depexMode;
+              const allowed = await toggleDepexMode();
+              if (allowed) {
+                if (!prevMode) {
+                  setSuccessMessage("DEPEX Mode activated.");
                 } else {
                   setSuccessMessage("DEPEX Mode deactivated.");
                 }
-              } else {
-                setShowConfirmDepex(true);
               }
             }}
             className={cn(
-              "w-9 h-5 rounded-full relative transition-all duration-300 border",
-              depexMode ? "bg-red-500 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)]" : "bg-white/5 border-white/10",
-              isDepexTimerLocked ? "cursor-not-allowed opacity-90" : "cursor-pointer"
+              "w-9 h-5 rounded-full relative transition-all duration-300 border cursor-pointer",
+              depexMode ? "bg-red-500 border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.4)]" : "bg-white/5 border-white/10"
             )}
-            title={
-              isDepexTimerLocked
-                ? `Locked for ${depexRemainingMinutes}m until guard timer finishes`
-                : depexMode
-                  ? "Deactivate Depex Mode"
-                  : "Activate Depex Mode"
-            }
+            title={depexMode ? "Deactivate Depex Mode" : "Activate Depex Mode"}
           >
             <motion.div 
               className={cn(
