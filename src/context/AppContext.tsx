@@ -1773,8 +1773,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
           xp: Math.max(Number(local.xp || 0), Number(fs.xp || 0)),
           level: Math.max(Number(local.level || 1), Number(fs.level || 1)),
           total_xp: Math.max(Number(local.total_xp || 0), Number(fs.total_xp || 0)),
-          depex_mode: fs.depex_mode !== undefined ? Boolean(fs.depex_mode) : (local.depex_mode !== undefined ? Boolean(local.depex_mode) : false),
-          depex_locked_until: fs.depex_mode === false ? '' : (fs.depex_locked_until !== undefined ? fs.depex_locked_until : (local.depex_locked_until || ''))
         };
         
         return { data: (Object.keys(local).length > 0 || Object.keys(fs).length > 0) ? merged : null, error: null };
@@ -2001,40 +1999,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
             }, 'upsert');
           }
 
-          const isDepexCloudDeclared = pd.depex_mode !== undefined && pd.depex_mode !== null;
-          if (isDepexCloudDeclared && !pd.depex_mode) {
-            next.depexMode = false;
-            next.depexLockedUntil = null;
+          const cloudDepexLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now()
+            ? pd.depex_locked_until
+            : null;
+          const localDepexLock = prev.depexLockedUntil && new Date(prev.depexLockedUntil).getTime() > Date.now()
+            ? prev.depexLockedUntil
+            : null;
+          const resolvedDepexLock = cloudDepexLock && localDepexLock
+            ? (new Date(cloudDepexLock).getTime() >= new Date(localDepexLock).getTime() ? cloudDepexLock : localDepexLock)
+            : (cloudDepexLock || localDepexLock);
+
+          next.depexLockedUntil = resolvedDepexLock;
+
+          if (resolvedDepexLock) {
+            next.depexMode = true;
             try {
-              localStorage.setItem('byd_depex_mode', 'false');
-              localStorage.removeItem('byd_depex_locked_until');
+              localStorage.setItem('byd_depex_mode', 'true');
+              localStorage.setItem('byd_depex_locked_until', resolvedDepexLock);
+            } catch {}
+          } else if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
+            next.depexMode = Boolean(pd.depex_mode);
+            try {
+              localStorage.setItem('byd_depex_mode', String(next.depexMode));
             } catch {}
           } else {
-            const cloudDepexLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now()
-              ? pd.depex_locked_until
-              : null;
-
-            if (cloudDepexLock) {
-              next.depexLockedUntil = cloudDepexLock;
-              next.depexMode = true;
-              try {
-                localStorage.setItem('byd_depex_mode', 'true');
-                localStorage.setItem('byd_depex_locked_until', cloudDepexLock);
-              } catch {}
-            } else if (isDepexCloudDeclared) {
-              next.depexMode = Boolean(pd.depex_mode);
-              next.depexLockedUntil = null;
-              try {
-                localStorage.setItem('byd_depex_mode', String(next.depexMode));
-                if (!next.depexMode) localStorage.removeItem('byd_depex_locked_until');
-              } catch {}
-            } else {
-              try {
-                const cached = localStorage.getItem('byd_depex_mode');
-                next.depexMode = cached !== null ? cached === 'true' : prev.depexMode;
-              } catch {
-                next.depexMode = prev.depexMode;
-              }
+            try {
+              const cached = localStorage.getItem('byd_depex_mode');
+              next.depexMode = cached !== null ? cached === 'true' : prev.depexMode;
+            } catch {
+              next.depexMode = prev.depexMode;
             }
           }
         }
@@ -2497,31 +2490,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
             globalRank: (pd.level !== undefined ? Number(pd.level) : prev.level) > 1 ? `#${Math.max(1, 200 - (pd.level !== undefined ? Number(pd.level) : prev.level) * 5)}` : "Top 30%",
             gender: pd.gender || prev.gender,
             depexLockedUntil: (() => {
-              if (pd.depex_mode === false || !pd.depex_locked_until) {
-                try { localStorage.removeItem('byd_depex_locked_until'); } catch {}
-                return null;
-              }
-              const cloudLock = new Date(pd.depex_locked_until).getTime() > Date.now() ? pd.depex_locked_until : null;
-              if (cloudLock) {
-                try { localStorage.setItem('byd_depex_locked_until', cloudLock); } catch {}
-                return cloudLock;
-              }
-              try { localStorage.removeItem('byd_depex_locked_until'); } catch {}
-              return null;
+              const cloudLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now() ? pd.depex_locked_until : null;
+              const prevLock = prev.depexLockedUntil && new Date(prev.depexLockedUntil).getTime() > Date.now() ? prev.depexLockedUntil : null;
+              const activeLock = cloudLock && prevLock
+                ? (new Date(cloudLock).getTime() >= new Date(prevLock).getTime() ? cloudLock : prevLock)
+                : (cloudLock || prevLock);
+              try {
+                if (activeLock) localStorage.setItem('byd_depex_locked_until', activeLock);
+              } catch {}
+              return activeLock;
             })(),
             depexMode: (() => {
-              if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
-                const isDepexOn = Boolean(pd.depex_mode);
-                try {
-                  localStorage.setItem('byd_depex_mode', String(isDepexOn));
-                  if (!isDepexOn) localStorage.removeItem('byd_depex_locked_until');
-                } catch {}
-                return isDepexOn;
-              }
               const cloudLock = pd.depex_locked_until && new Date(pd.depex_locked_until).getTime() > Date.now() ? pd.depex_locked_until : null;
-              if (cloudLock) {
+              const prevLock = prev.depexLockedUntil && new Date(prev.depexLockedUntil).getTime() > Date.now() ? prev.depexLockedUntil : null;
+              if (cloudLock || prevLock) {
                 try { localStorage.setItem('byd_depex_mode', 'true'); } catch {}
                 return true;
+              }
+              if (pd.depex_mode !== undefined && pd.depex_mode !== null) {
+                try { localStorage.setItem('byd_depex_mode', String(pd.depex_mode)); } catch {}
+                return Boolean(pd.depex_mode);
               }
               try {
                 const cached = localStorage.getItem('byd_depex_mode');
@@ -2532,15 +2520,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
             })()
           };
         });
-
-        if (pd.depex_mode === false && uId) {
-          syncDepexStateInFirestore(uId, {
-            isActive: false,
-            isTimerLocked: false,
-            lockedUntil: '',
-            lockedUntilMs: null
-          }).catch(() => {});
-        }
       },
       onAcademicChapters: (cloudChapters) => {
         if (!cloudChapters || cloudChapters.length === 0) return;
