@@ -1078,6 +1078,67 @@ export const FullscreenDetox = React.memo(() => {
   useEffect(() => { activeTabIdRef.current = activeTabId; }, [activeTabId]);
   useEffect(() => { externalWindowsRef.current = externalWindows; }, [externalWindows]);
   useEffect(() => { resourceStatesRef.current = resourceStates; }, [resourceStates]);
+
+  // Screen Wake Lock API to prevent screen timeout while actively focusing
+  useEffect(() => {
+    let wakeLockSentinel: any = null;
+    let isMounted = true;
+
+    const requestWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator && document.visibilityState === 'visible' && isMounted) {
+          wakeLockSentinel = await (navigator as any).wakeLock.request('screen');
+        }
+      } catch (err) {
+        // Silently ignore if wake lock not permitted
+      }
+    };
+
+    requestWakeLock();
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        requestWakeLock();
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      isMounted = false;
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (wakeLockSentinel && typeof wakeLockSentinel.release === 'function') {
+        wakeLockSentinel.release().catch(() => {});
+      }
+    };
+  }, []);
+
+  // Sleep / Screen Timeout Gap compensation on main thread
+  useEffect(() => {
+    let lastHeartbeat = Date.now();
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const delta = now - lastHeartbeat;
+      if (delta > 2500) {
+        const sleepMs = delta - 1000;
+        // Compensate distractionStartTimeRef so sleep time is never counted as distraction
+        if (distractionStartTimeRef.current !== null) {
+          distractionStartTimeRef.current += sleepMs;
+          localStorage.setItem('distraction_start_time', distractionStartTimeRef.current.toString());
+        }
+        // Notify worker about resume from sleep
+        if (workerRef.current) {
+          workerRef.current.postMessage({
+            type: 'RESUME_FROM_SLEEP',
+            payload: { isDistracted: isDistractedRef.current }
+          });
+        }
+      }
+      lastHeartbeat = now;
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
   
   // Persist tabs and active tab state
   useEffect(() => {

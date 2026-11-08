@@ -2732,14 +2732,45 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const isManualExitRef = useRef(false);
   const isSessionDistractedRef = useRef(false);
+  const lastUserActivityTimeRef = useRef<number>(Date.now());
+  const isScreenTimeoutOrSleepRef = useRef<boolean>(false);
 
   // Sync ref with state
   useEffect(() => {
     isSessionDistractedRef.current = state.isSessionDistracted;
   }, [state.isSessionDistracted]);
 
-  // Distraction Logic
+  // Track user activity to differentiate intentional app-switching from idle screen timeout / sleep
   useEffect(() => {
+    const handleUserActivity = () => {
+      lastUserActivityTimeRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', handleUserActivity, { passive: true });
+    window.addEventListener('mousedown', handleUserActivity, { passive: true });
+    window.addEventListener('keydown', handleUserActivity, { passive: true });
+    window.addEventListener('touchstart', handleUserActivity, { passive: true });
+    window.addEventListener('wheel', handleUserActivity, { passive: true });
+
+    return () => {
+      window.removeEventListener('mousemove', handleUserActivity);
+      window.removeEventListener('mousedown', handleUserActivity);
+      window.removeEventListener('keydown', handleUserActivity);
+      window.removeEventListener('touchstart', handleUserActivity);
+      window.removeEventListener('wheel', handleUserActivity);
+    };
+  }, []);
+
+  // Distraction Logic - Only trigger on deliberate app switches, NOT on screen timeout or system sleep
+  useEffect(() => {
+    if (!state.isFocusing) {
+      if (isSessionDistractedRef.current) {
+        setIsSessionDistracted(false);
+      }
+      isScreenTimeoutOrSleepRef.current = false;
+      return;
+    }
+
     const isUrlSafe = (url: string) => {
       if (!url || typeof url !== 'string') return false;
       const safeDomains = ['notebooklm.google.com', 'youtube.com', 'youtu.be'];
@@ -2770,11 +2801,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
 
     const handleDistractionStart = (e?: Event) => {
-      if (!state.isFocusing || state.sessionTimeLeft <= 0) return;
+      if (!state.isFocusing) return;
       
+      const now = Date.now();
+      const timeSinceLastActivity = now - lastUserActivityTimeRef.current;
       const isWindowBlur = e?.type === 'blur';
+
+      // Screen timeout & Sleep detection:
+      // If user was idle for > 15 seconds, this blur/visibility loss is an idle screen timeout
+      // or laptop going into sleep mode, NOT the user switching to another app.
+      if (timeSinceLastActivity > 15000) {
+        isScreenTimeoutOrSleepRef.current = true;
+        return;
+      }
       
       const checkAndTrigger = () => {
+        // If window has regained focus and is visible, do not trigger
+        if (document.hasFocus() && document.visibilityState === 'visible') {
+          return;
+        }
+
         // If it's a window blur, check if we're focused on an iframe (like YouTube)
         if (isWindowBlur && document.activeElement?.tagName === 'IFRAME') {
           const iframe = document.activeElement as HTMLIFrameElement;
@@ -2783,12 +2829,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Check if we just opened a safe window (we can't easily check focus of other windows, 
-        // but we can assume if the user just clicked a safe resource link, it's fine)
+        // Check if we just opened a safe window
         if (localStorage.getItem('isInteractingWithSafeResource') === 'true') {
           return;
         }
 
+        isScreenTimeoutOrSleepRef.current = false;
         if (!isSessionDistractedRef.current) {
           setIsSessionDistracted(true);
         }
@@ -2796,7 +2842,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (isWindowBlur) {
         // Small delay needed for activeElement to update when clicking an iframe
-        setTimeout(checkAndTrigger, 100);
+        setTimeout(checkAndTrigger, 120);
       } else {
         checkAndTrigger();
       }
@@ -2804,6 +2850,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const handleDistractionEnd = () => {
       localStorage.removeItem('isInteractingWithSafeResource');
+      isScreenTimeoutOrSleepRef.current = false;
       if (isSessionDistractedRef.current) {
         setIsSessionDistracted(false);
       }
@@ -2811,30 +2858,48 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
+        const timeSinceLastActivity = Date.now() - lastUserActivityTimeRef.current;
+        if (timeSinceLastActivity > 15000) {
+          // Screen turned off due to timeout or laptop closed/sleeping
+          isScreenTimeoutOrSleepRef.current = true;
+          return;
+        }
         handleDistractionStart();
       } else {
-        // Only stop distraction if the window is also focused
-        if (document.hasFocus()) {
+        // Returned to app: if we were paused for screen timeout/sleep or window has focus, end distraction
+        if (isScreenTimeoutOrSleepRef.current || document.hasFocus()) {
           handleDistractionEnd();
         }
       }
     };
 
+    // Sleep detection heartbeat (gap of > 2.5s means system suspended/slept)
+    let lastHeartbeat = Date.now();
+    const sleepDetectorInterval = setInterval(() => {
+      const now = Date.now();
+      const delta = now - lastHeartbeat;
+      if (delta > 2500) {
+        // System woke from sleep mode: ensure distraction timer didn't wrongfully trigger
+        if (isScreenTimeoutOrSleepRef.current || isSessionDistractedRef.current) {
+          if (document.visibilityState === 'visible' || document.hasFocus()) {
+            handleDistractionEnd();
+          }
+        }
+      }
+      lastHeartbeat = now;
+    }, 1000);
+
     window.addEventListener("blur", handleDistractionStart, { passive: true });
     window.addEventListener("focus", handleDistractionEnd, { passive: true });
     document.addEventListener("visibilitychange", onVisibilityChange, { passive: true });
 
-    // Initial check: if the app starts in the background or blurred
-    if (document.visibilityState === 'hidden' || !document.hasFocus()) {
-      handleDistractionStart();
-    }
-
     return () => {
+      clearInterval(sleepDetectorInterval);
       window.removeEventListener("blur", handleDistractionStart);
       window.removeEventListener("focus", handleDistractionEnd);
       document.removeEventListener("visibilitychange", onVisibilityChange);
     };
-  }, [state.isFocusing, state.sessionTimeLeft]);
+  }, [state.isFocusing]);
 
   // Central Time Engine: Background Monitoring
   const checkResetRef = useRef<() => void>();
@@ -2931,21 +2996,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
            xp: state.xp,
            level: state.level,
            equipped_badges: state.equippedBadges,
-           updated_at: new Date().toISOString()
+           updatedAt: new Date().toISOString()
         });
 
         // 2. Sync Streaks
         await supabase.from('user_streaks').upsert({
            user_id: uid,
            current_streak: state.streak,
-           updated_at: new Date().toISOString()
+           updatedAt: new Date().toISOString()
         });
         
         // 3. User Preferences (Focus Time Goals)
         await supabase.from('user_preferences').upsert({
            user_id: uid,
            daily_focus_goal_minutes: Math.round(state.dailyGoalHours * 60),
-           updated_at: new Date().toISOString()
+           updatedAt: new Date().toISOString()
         });
         
       } catch (e) {
@@ -3855,7 +3920,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         subject_group: profileData.subjectGroup,
         year: profileData.year,
         gender: profileData.gender,
-        updated_at: new Date().toISOString()
+        updatedAt: new Date().toISOString()
       }
     });
   };

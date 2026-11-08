@@ -8,6 +8,7 @@ let startTime = null;
 let totalDuration = 0;
 let distractionStartTime = null;
 let totalDistractionTime = 0;
+let lastTickTime = null;
 
 self.onmessage = (e) => {
   const { type, payload } = e.data;
@@ -18,11 +19,26 @@ self.onmessage = (e) => {
       totalDuration = payload.totalDuration;
       totalDistractionTime = payload.distractionTime || 0;
       distractionStartTime = payload.isDistracted ? Date.now() : null;
+      lastTickTime = Date.now();
       
       if (timerId) clearInterval(timerId);
       
       const tick = () => {
         const now = Date.now();
+
+        // Sleep / Screen Timeout Gap Compensation:
+        // If worker was suspended due to laptop sleep or screen lock, do NOT count sleep as distraction
+        if (lastTickTime !== null) {
+          const delta = now - lastTickTime;
+          if (delta > 2500) {
+            const sleepMs = delta - 1000;
+            if (distractionStartTime !== null) {
+              distractionStartTime += sleepMs;
+            }
+          }
+        }
+        lastTickTime = now;
+
         const totalElapsed = Math.floor((now - startTime) / 1000);
         let timeLeft = Math.max(0, totalDuration - totalElapsed);
         
@@ -67,19 +83,30 @@ self.onmessage = (e) => {
       break;
 
     case 'UPDATE_DISTRACTION':
-      const { isDistracted } = payload;
-      const now = Date.now();
+      const { isDistracted, overrideDistractionTime } = payload;
+      const updateNow = Date.now();
       
+      if (typeof overrideDistractionTime === 'number') {
+        totalDistractionTime = overrideDistractionTime;
+      }
+
       if (isDistracted) {
         if (!distractionStartTime) {
-          distractionStartTime = now;
+          distractionStartTime = updateNow;
         }
       } else {
         if (distractionStartTime) {
-          const elapsed = Math.floor((now - distractionStartTime) / 1000);
+          const elapsed = Math.floor((updateNow - distractionStartTime) / 1000);
           totalDistractionTime += Math.max(0, elapsed);
           distractionStartTime = null;
         }
+      }
+      break;
+
+    case 'RESUME_FROM_SLEEP':
+      lastTickTime = Date.now();
+      if (payload?.isDistracted === false) {
+        distractionStartTime = null;
       }
       break;
 
