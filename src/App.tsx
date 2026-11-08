@@ -8,6 +8,7 @@ import { Header } from "./components/Header";
 import { Dashboard } from "./components/Dashboard";
 import { DetoxView } from "./components/DetoxView";
 import { AppProvider, useApp } from "./context/AppContext";
+import { useUIStore } from "./store/uiStore";
 import { GlassCard } from "./components/GlassCard";
 import { FullscreenDetox } from "./components/FullscreenDetox";
 import { PersonalPanel } from "./components/PersonalPanel";
@@ -95,6 +96,8 @@ function AppWorkspace() {
     }
     if (targetView !== "Detox") {
       setDetoxInitialTab("Overview");
+    } else if (isFocusing) {
+      useUIStore.getState().setIsMiniPlayer(false);
     }
     
     if (currentUsername) {
@@ -110,14 +113,6 @@ function AppWorkspace() {
     if (currentUsername) navigate(`/${currentUsername}/detox`);
     else navigate(`/public/detox`);
   };
-
-  if (isFocusing) {
-    return (
-      <ErrorBoundary>
-        <FullscreenDetox key={currentSessionId || 'detox'} />
-      </ErrorBoundary>
-    );
-  }
 
   return (
     <div className="flex min-h-screen bg-[#050505] selection:bg-neon-green/30" spellCheck="false" data-gramm="false">
@@ -228,6 +223,13 @@ function AppWorkspace() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Focus Session - Fullscreen Detox or Floating Miniplayer */}
+      {isFocusing && (
+        <ErrorBoundary>
+          <FullscreenDetox key={currentSessionId || 'detox'} />
+        </ErrorBoundary>
+      )}
     </div>
   );
 }

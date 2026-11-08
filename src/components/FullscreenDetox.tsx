@@ -9,6 +9,7 @@ import { HSC_SUBJECT_NAMES } from "../constants";
 import { logger } from "../lib/logger";
 import { AmbientSoundPanel } from "./AmbientSoundPanel";
 import { ambientSound, AmbientSoundType } from "../lib/ambientSound";
+import { useUIStore } from "../store/uiStore";
 
 // Native Browser PDF Viewer with scrolling and toolbar support
 const PDFViewer = React.memo(({ url, title, onReupload }: { url: string; title: string; onReupload?: (file: File) => void }) => {
@@ -623,6 +624,7 @@ export const FullscreenDetox = React.memo(() => {
     saveSessionFragment
   } = useApp();
   
+  const { isMiniPlayer, setIsMiniPlayer } = useUIStore();
   const activeSubjectName = currentSubjectId ? HSC_SUBJECT_NAMES[currentSubjectId] : null;
 
   // Use local state for UI updates to avoid context lag
@@ -906,6 +908,7 @@ export const FullscreenDetox = React.memo(() => {
       setTimeout(async () => {
         // 3. Save the session and exit (this instantly unmounts the component)
         setIsManualExit(true);
+        setIsMiniPlayer(false);
         await endFocusSession(netFocus, totalAttempted, activeResource);
         cancelFocusSession();
       }, 1500);
@@ -1265,6 +1268,7 @@ export const FullscreenDetox = React.memo(() => {
 
   const confirmCancel = () => {
     setIsManualExit(true);
+    setIsMiniPlayer(false);
     cancelFocusSession();
     setShowExitConfirm(false);
   };
@@ -1287,6 +1291,7 @@ export const FullscreenDetox = React.memo(() => {
 
       // 2. Immediate Save Execution: Trigger context save
       setIsManualExit(true);
+      setIsMiniPlayer(false);
       await endFocusSession(netFocus, totalAttempted, activeResource);
       
       // 3. Confirmation UI: Show 'Session Secured' message
@@ -1540,6 +1545,231 @@ export const FullscreenDetox = React.memo(() => {
     }
   };
 
+  if (isMiniPlayer) {
+    const activeTab = openTabs.find(t => t.id === activeTabId);
+    const currentRemaining = timeLeftRef.current || 0;
+    const totalSecs = currentSessionDuration * 60;
+    const progressPercent = totalSecs > 0 ? Math.min(100, Math.max(0, 100 - (currentRemaining / totalSecs) * 100)) : 0;
+
+    return (
+      <>
+        <motion.div
+          layout
+          initial={{ opacity: 0, scale: 0.85, y: 30 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.85, y: 30 }}
+          transition={{ type: "spring", stiffness: 350, damping: 28 }}
+          className="fixed bottom-6 right-6 z-[100] w-[370px] max-w-[calc(100vw-2.5rem)] rounded-2xl bg-[#090909]/95 border border-[#39FF14]/30 backdrop-blur-2xl shadow-[0_20px_60px_rgba(0,0,0,0.9),0_0_30px_rgba(57,255,20,0.18)] flex flex-col overflow-hidden select-none"
+        >
+          {/* Top Bar: Title & Controls */}
+          <div className="h-10 px-3.5 bg-white/[0.04] border-b border-white/[0.08] flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-neon-green animate-pulse shadow-[0_0_8px_#39ff14] shrink-0" />
+              <span className="text-[10px] font-modern font-bold tracking-wider text-neon-green uppercase italic shrink-0">
+                Detox Mini
+              </span>
+              <span className="text-white/20 text-xs">|</span>
+              <span className="text-xs text-white/80 font-medium truncate">
+                {activeSubjectName ? `Focus: ${activeSubjectName}` : activeTab?.title || "Concentration Mode"}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-1 shrink-0">
+              {/* Ambient Sound Trigger */}
+              <button
+                onClick={() => setIsAmbientSoundOpen(prev => !prev)}
+                className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                  isAmbientPlaying 
+                    ? 'text-neon-green bg-neon-green/10 shadow-[0_0_8px_rgba(57,255,20,0.3)]' 
+                    : 'text-white/40 hover:text-white/80 hover:bg-white/5'
+                }`}
+                title="Ambient Sound Controls"
+              >
+                <Headphones className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Expand to Fullscreen */}
+              <button
+                onClick={() => setIsMiniPlayer(false)}
+                className="p-1.5 rounded-lg text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                title="Expand Fullscreen"
+              >
+                <Maximize className="w-3.5 h-3.5" />
+              </button>
+
+              {/* End / Cancel Session */}
+              <button
+                onClick={isSessionCompleted ? handleSaveAndExit : handleCancelSession}
+                className="p-1.5 rounded-lg text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-all cursor-pointer"
+                title={isSessionCompleted ? "Claim Session" : "End Session"}
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Main Info Row */}
+          <div className="p-3.5 flex items-center justify-between gap-3">
+            {/* Countdown Timer */}
+            <div className="flex flex-col">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-mono font-bold tracking-wider text-neon-green drop-shadow-[0_0_10px_rgba(57,255,20,0.3)]">
+                  <TimerText initialTime={timeLeftRef.current} isCompleted={isCompleted} />
+                </span>
+                {isCompleted && (
+                  <span className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-neon-green/20 text-neon-green border border-neon-green/30 uppercase">
+                    Done
+                  </span>
+                )}
+              </div>
+              <span className="text-[9px] font-bold uppercase tracking-widest text-white/40">
+                {isCompleted ? "Session Completed" : "Focus Time Remaining"}
+              </span>
+            </div>
+
+            {/* Distraction or Claim Button */}
+            <div className="flex items-center gap-2">
+              {isSessionCompleted ? (
+                <button
+                  onClick={handleSaveAndExit}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 rounded-xl bg-neon-green text-black font-bold text-xs flex items-center gap-1.5 shadow-[0_0_15px_rgba(57,255,20,0.4)] hover:bg-[#2eff0a] transition-all cursor-pointer"
+                >
+                  {isSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                  <span>CLAIM</span>
+                </button>
+              ) : (
+                <div className={`flex flex-col items-end px-2.5 py-1 rounded-xl border transition-colors ${
+                  isDistracted 
+                    ? 'bg-red-500/10 border-red-500/30' 
+                    : (distractionTimeRef.current > 0 ? 'bg-red-500/5 border-red-500/20' : 'bg-white/[0.02] border-white/5')
+                }`}>
+                  <div className="flex items-center gap-1.5">
+                    <Timer className={`w-3.5 h-3.5 ${isDistracted ? 'text-red-500 animate-pulse' : 'text-white/30'}`} />
+                    <span className="text-xs font-mono font-bold text-red-400">
+                      <DistractionTimerText initialTime={distractionTimeRef.current} isDistracted={isDistracted} />
+                    </span>
+                  </div>
+                  <span className="text-[7.5px] font-bold uppercase tracking-widest text-white/30">Distraction</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Active Tab Preview (if active) */}
+          {activeTab && (
+            <div className="px-3.5 pb-2.5 pt-0 flex items-center gap-2 text-xs text-white/60">
+              {activeTab.type === 'YOUTUBE' && <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+              {activeTab.type === 'PDF' && <FileText className="w-3.5 h-3.5 text-blue-500 shrink-0" />}
+              {activeTab.type === 'IMAGE' && <ImageIcon className="w-3.5 h-3.5 text-purple-500 shrink-0" />}
+              {activeTab.type === 'OTHERS' && <Globe className="w-3.5 h-3.5 text-emerald-500 shrink-0" />}
+              <span className="truncate flex-1 text-[11px] font-medium">{activeTab.title}</span>
+              <button
+                onClick={() => setIsMiniPlayer(false)}
+                className="text-[9px] uppercase tracking-wider text-neon-green hover:underline font-bold shrink-0 cursor-pointer"
+              >
+                Expand
+              </button>
+            </div>
+          )}
+
+          {/* Bottom Progress Bar */}
+          <div className="h-[2.5px] w-full bg-white/10 relative overflow-hidden">
+            <div 
+              className="h-full bg-neon-green shadow-[0_0_8px_#39ff14] transition-all duration-300"
+              style={{ width: `${progressPercent}%` }}
+            />
+          </div>
+        </motion.div>
+
+        {/* Ambient Sound Popover if open in miniplayer */}
+        {isAmbientSoundOpen && (
+          <div className="fixed bottom-36 right-6 z-[110]">
+            <AmbientSoundPanel 
+              isOpen={isAmbientSoundOpen} 
+              onClose={() => setIsAmbientSoundOpen(false)} 
+              align="right"
+            />
+          </div>
+        )}
+
+        {/* Save Success Alert */}
+        <AnimatePresence>
+          {saveSuccess && (
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="fixed bottom-10 left-1/2 -translate-x-1/2 z-[300] bg-neon-green text-black px-8 py-4 rounded-full font-bold shadow-[0_0_50px_#39ff14] flex items-center gap-3"
+            >
+              <ShieldCheck className="w-6 h-6" />
+              <span className="uppercase tracking-widest text-sm">Session Secured</span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Save Error Alert */}
+        <AnimatePresence>
+          {showSaveError && (
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[300] flex items-center justify-center bg-black/90 backdrop-blur-xl p-6"
+            >
+              <motion.div
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                className="max-w-md w-full bg-[#0A0A0A] border border-red-500/30 rounded-3xl p-8 text-center shadow-[0_0_50px_rgba(239,68,68,0.2)]"
+              >
+                <div className="w-16 h-16 bg-red-500/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                  <AlertCircle className="w-8 h-8 text-red-500" />
+                </div>
+                <h3 className="text-2xl font-sans font-bold mb-2 text-white">Save Failed</h3>
+                <p className="text-white/40 mb-8 text-sm leading-relaxed">
+                  We couldn't sync your session to the cloud. Don't worry, your data is backed up locally and we'll try again when you return to the dashboard.
+                </p>
+                <button
+                  onClick={() => setShowSaveError(false)}
+                  className="px-6 py-2.5 rounded-xl bg-white/10 text-white hover:bg-white/20 text-sm font-bold transition-colors cursor-pointer"
+                >
+                  Dismiss
+                </button>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Exit Confirmation Dialog */}
+        {showExitConfirm && (
+          <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 shadow-2xl relative">
+              <h2 className="text-xl font-bold text-white mb-2">Abandon Focus Session?</h2>
+              <p className="text-sm text-white/60 mb-6">
+                Your session is not complete yet. Exiting now will discard your current progress and this session will not be saved.
+              </p>
+              <div className="flex items-center justify-end gap-3">
+                <button 
+                  onClick={() => setShowExitConfirm(false)}
+                  className="px-4 py-2 rounded-xl bg-white/5 text-white/80 hover:bg-white/10 font-medium text-sm transition-colors cursor-pointer"
+                >
+                  Keep Focusing
+                </button>
+                <button 
+                  onClick={confirmCancel}
+                  className="px-4 py-2 rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500 hover:text-white font-medium text-sm transition-colors border border-red-500/30 cursor-pointer"
+                >
+                  Exit Anyway
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </>
+    );
+  }
+
   return (
     <div 
       className="fixed inset-0 z-[100] bg-[#050505] flex flex-col overflow-hidden"
@@ -1637,11 +1867,16 @@ export const FullscreenDetox = React.memo(() => {
           </div>
 
           <button 
-            onClick={toggleFullscreen}
-            className="w-10 h-10 rounded-xl bg-white/5 text-white/60 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all border border-white/10"
-            title={isFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+            onClick={() => {
+              if (document.fullscreenElement && document.exitFullscreen) {
+                document.exitFullscreen().catch(() => {});
+              }
+              setIsMiniPlayer(true);
+            }}
+            className="w-10 h-10 rounded-xl bg-white/5 text-white/60 flex items-center justify-center hover:bg-white/10 hover:text-white transition-all border border-white/10 group cursor-pointer"
+            title="Exit Fullscreen (Miniplayer)"
           >
-            {isFullscreen ? <Minimize className="w-5 h-5" /> : <Maximize className="w-5 h-5" />}
+            <Minimize className="w-5 h-5 group-hover:scale-110 transition-transform" />
           </button>
 
           <button 

@@ -7,6 +7,8 @@ interface UIState {
   setIsAuthModalOpen: (open: boolean) => void;
   showBadges: boolean;
   setShowBadges: (show: boolean) => void;
+  isMiniPlayer: boolean;
+  setIsMiniPlayer: (mini: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -16,4 +18,6 @@ export const useUIStore = create<UIState>((set) => ({
   setIsAuthModalOpen: (isAuthModalOpen) => set({ isAuthModalOpen }),
   showBadges: false,
   setShowBadges: (showBadges) => set({ showBadges }),
+  isMiniPlayer: false,
+  setIsMiniPlayer: (isMiniPlayer) => set({ isMiniPlayer }),
 }));
