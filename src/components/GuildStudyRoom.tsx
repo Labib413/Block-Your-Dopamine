@@ -853,7 +853,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   whileTap={{ scale: 0.98 }}
                   onClick={() => setSelectedDesk(desk)}
                   className={cn(
-                    "p-2.5 sm:p-3 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 relative group border min-h-[110px]",
+                    "p-2.5 sm:p-3 rounded-xl flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 relative group border min-h-[124px] sm:min-h-[134px]",
                     isDeskActive 
                       ? "bg-[#FF7A00]/[0.15] border-[#FF7A00] shadow-[0_0_25px_rgba(255,122,0,0.35)] ring-2 ring-[#FF7A00]/50" 
                       : "bg-white/[0.02] border-white/[0.04] hover:bg-white/[0.05] hover:border-white/10"
@@ -884,11 +884,11 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   )}
 
                   {/* Desk Visual Icon - Changes to Glowing Orange Fire Study Station when focusing */}
-                  <div className="relative mb-1">
+                  <div className="relative mb-2 flex items-center justify-center w-full min-h-[52px] sm:min-h-[60px]">
                     {isDeskActive ? (
                       /* Active: Glowing Orange stickman studying with fire energy at desk */
                       <div className="relative">
-                        <svg viewBox="0 0 100 80" className="w-12 h-10 sm:w-14 sm:h-12 text-[#FF7A00] drop-shadow-[0_0_8px_rgba(255,122,0,0.9)]">
+                        <svg viewBox="0 0 100 80" className="w-16 h-12 sm:w-20 sm:h-15 text-[#FF7A00] drop-shadow-[0_0_10px_rgba(255,122,0,0.95)]">
                           {/* Desk surface */}
                           <rect x="15" y="46" width="70" height="3.5" rx="1.5" fill="currentColor" />
                           {/* Legs */}
@@ -909,11 +909,11 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                         </svg>
                       </div>
                     ) : (
-                      /* Inactive: Sleeping student at unlit desk (user's uploaded SVG) */
+                      /* Inactive: Sleeping student at unlit desk (user's uploaded SVG - enlarged for clarity) */
                       <img 
                         src="/assets/aistudio/01-01-Sleeping_Student_at_Unlit_Desk-removebg-preview_95b34a17.svg" 
                         alt="Resting Desk" 
-                        className="w-14 h-10 sm:w-16 sm:h-12 object-contain opacity-40 group-hover:opacity-75 transition-opacity select-none pointer-events-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" 
+                        className="w-20 h-13 sm:w-24 sm:h-16 object-contain opacity-55 group-hover:opacity-85 transition-all select-none pointer-events-none drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] scale-110" 
                       />
                     )}
                   </div>
@@ -1820,7 +1820,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                     <img 
                       src="/assets/aistudio/01-01-Sleeping_Student_at_Unlit_Desk-removebg-preview_95b34a17.svg" 
                       alt="Resting Desk"
-                      className="w-11 h-11 object-contain opacity-75 select-none pointer-events-none"
+                      className="w-14 h-14 object-contain opacity-85 select-none pointer-events-none drop-shadow-[0_2px_8px_rgba(0,0,0,0.6)]"
                     />
                   )}
                   {selectedDesk.isFocusing && (
