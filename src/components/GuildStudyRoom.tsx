@@ -909,19 +909,12 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                         </svg>
                       </div>
                     ) : (
-                      /* Inactive: Clean monochrome empty desk with lamp and clock */
-                      <svg viewBox="0 0 100 80" className="w-12 h-10 sm:w-14 sm:h-12 text-white/35 group-hover:text-white/60 transition-colors">
-                        {/* Desk surface */}
-                        <rect x="15" y="46" width="70" height="3.5" rx="1.5" fill="currentColor" />
-                        {/* Desk Legs */}
-                        <line x1="22" y1="49.5" x2="20" y2="76" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                        <line x1="78" y1="49.5" x2="80" y2="76" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                        {/* Lamp on desk */}
-                        <path d="M26 46 L26 30 M20 30 L32 30 L28 22 L24 22 Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        {/* Clock on desk */}
-                        <circle cx="50" cy="34" r="9" stroke="currentColor" strokeWidth="2" fill="none" />
-                        <polyline points="50,30 50,34 54,34" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                      </svg>
+                      /* Inactive: Sleeping student at unlit desk (user's uploaded SVG) */
+                      <img 
+                        src="/assets/aistudio/01-01-Sleeping_Student_at_Unlit_Desk-removebg-preview_95b34a17.svg" 
+                        alt="Resting Desk" 
+                        className="w-14 h-10 sm:w-16 sm:h-12 object-contain opacity-40 group-hover:opacity-75 transition-opacity select-none pointer-events-none drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]" 
+                      />
                     )}
                   </div>
 
@@ -1824,7 +1817,11 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   {selectedDesk.isFocusing ? (
                     <Flame className="w-9 h-9 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_10px_rgba(255,122,0,0.9)]" />
                   ) : (
-                    <BookOpen className="w-8 h-8" />
+                    <img 
+                      src="/assets/aistudio/01-01-Sleeping_Student_at_Unlit_Desk-removebg-preview_95b34a17.svg" 
+                      alt="Resting Desk"
+                      className="w-11 h-11 object-contain opacity-75 select-none pointer-events-none"
+                    />
                   )}
                   {selectedDesk.isFocusing && (
                     <span className="w-3 h-3 rounded-full bg-[#FF7A00] border border-black absolute -top-1 -right-1 animate-ping" />
