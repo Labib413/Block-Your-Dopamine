@@ -115,11 +115,25 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
   const [newResourceTitle, setNewResourceTitle] = useState("");
   const [newResourceUrl, setNewResourceUrl] = useState("");
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [goalInput, setGoalInput] = useState((dailyGoalHours || 2).toString());
+  const [goalInput, setGoalInput] = useState(() => {
+    try {
+      const saved = localStorage.getItem('byd_daily_goal_hours');
+      if (saved) {
+        const parsed = parseFloat(saved);
+        if (!isNaN(parsed) && parsed > 0) return parsed.toString();
+      }
+    } catch {}
+    return (dailyGoalHours || 2).toString();
+  });
   const [isUploading, setIsUploading] = useState(false);
 
   useEffect(() => {
-    setGoalInput((dailyGoalHours || 2).toString());
+    if (dailyGoalHours && dailyGoalHours > 0) {
+      setGoalInput(dailyGoalHours.toString());
+      try {
+        localStorage.setItem('byd_daily_goal_hours', dailyGoalHours.toString());
+      } catch {}
+    }
   }, [dailyGoalHours]);
 
   const handleUpdateGoal = () => {
@@ -150,6 +164,9 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
     if (totalHours > 0) {
       const rounded = Math.round(totalHours * 10) / 10;
       setGoalInput(rounded.toString());
+      try {
+        localStorage.setItem('byd_daily_goal_hours', rounded.toString());
+      } catch {}
       setDailyGoalHours(rounded);
     }
   };
@@ -392,7 +409,16 @@ export function DetoxView({ onBack, initialTab = "Overview" }: { onBack: () => v
                           <input 
                             type="text" 
                             value={goalInput}
-                            onChange={(e) => setGoalInput(e.target.value)}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setGoalInput(val);
+                              const num = parseFloat(val.trim());
+                              if (!isNaN(num) && num > 0 && !val.includes(':') && !val.match(/[hm]/i)) {
+                                try {
+                                  localStorage.setItem('byd_daily_goal_hours', num.toString());
+                                } catch {}
+                              }
+                            }}
                             onBlur={handleUpdateGoal}
                             onKeyDown={(e) => { if (e.key === 'Enter') handleUpdateGoal(); }}
                             className="w-full bg-black/40 border border-white/10 rounded-xl px-4 py-3 text-white text-2xl font-sans font-bold text-center outline-none focus:border-neon-green/50 transition-colors" 

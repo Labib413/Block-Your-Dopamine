@@ -564,6 +564,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
     } catch {}
 
+    let initialDailyGoalHours = 2.0;
+    try {
+      const savedGoal = localStorage.getItem('byd_daily_goal_hours');
+      if (savedGoal) {
+        const parsed = parseFloat(savedGoal);
+        if (!isNaN(parsed) && parsed > 0) {
+          initialDailyGoalHours = parsed;
+        }
+      } else {
+        const rawTable = localStorage.getItem('byd_table_user_preferences');
+        if (rawTable) {
+          const list = JSON.parse(rawTable);
+          if (Array.isArray(list) && list[0]?.daily_focus_goal_minutes) {
+            const h = list[0].daily_focus_goal_minutes / 60;
+            if (h > 0) initialDailyGoalHours = h;
+          }
+        }
+      }
+    } catch {}
+
     return {
       xp: initialXP,
       level: initialLevel,
@@ -583,7 +603,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       resources: [],
       totalNetFocusTime: 0,
       dailyTotalFocusTime: 0,
-      dailyGoalHours: 2.0,
+      dailyGoalHours: initialDailyGoalHours,
       dailySessions: 0,
       lastResetDate: today,
       currentSessionDuration: 0,
@@ -2061,7 +2081,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
         const dsSetting = results.prefs?.data;
         if (dsSetting) {
-          next.dailyGoalHours = (dsSetting.daily_focus_goal_minutes || 120) / 60;
+          const mins = dsSetting.daily_focus_goal_minutes;
+          if (typeof mins === 'number' && mins > 0) {
+            const h = mins / 60;
+            next.dailyGoalHours = h;
+            try {
+              localStorage.setItem('byd_daily_goal_hours', String(h));
+            } catch {}
+          }
           next.healthTargets = {
             calories: String(dsSetting.daily_calorie_goal || 2000),
             footsteps: String(dsSetting.daily_step_goal || 10000),
@@ -2602,10 +2629,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
       },
       onPreferences: (prefs) => {
         if (!prefs) return;
-        setState(prev => ({
-          ...prev,
-          dailyGoalHours: (prefs.daily_focus_goal_minutes || 120) / 60
-        }));
+        const mins = prefs.daily_focus_goal_minutes;
+        if (typeof mins === 'number' && mins > 0) {
+          const h = mins / 60;
+          try {
+            localStorage.setItem('byd_daily_goal_hours', String(h));
+          } catch {}
+          setState(prev => ({
+            ...prev,
+            dailyGoalHours: h
+          }));
+        }
       },
       onFocusLogs: (logs) => {
         if (!logs || logs.length === 0) return;
@@ -3681,8 +3715,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   };
 
   const setDailyGoalHours = (hours: number) => {
+    try {
+      localStorage.setItem('byd_daily_goal_hours', String(hours));
+    } catch {}
+
     setState(prev => ({ ...prev, dailyGoalHours: hours }));
     
+    try {
+      supabase.from('user_preferences').upsert({
+        user_id: state.user?.id || 'local-user-001',
+        daily_focus_goal_minutes: Math.round(hours * 60),
+        updatedAt: new Date().toISOString()
+      });
+    } catch {}
+
     if (state.user) {
       addToSyncQueue({
         table: 'user_preferences',
@@ -3691,7 +3737,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         key: `goal_${state.user.id}`,
         data: {
           user_id: state.user.id,
-          daily_focus_goal_minutes: Math.round(hours * 60)
+          daily_focus_goal_minutes: Math.round(hours * 60),
+          updatedAt: new Date().toISOString()
         }
       });
     }
