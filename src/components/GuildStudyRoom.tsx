@@ -886,27 +886,13 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   {/* Desk Visual Icon - Changes to Glowing Orange Fire Study Station when focusing */}
                   <div className="relative mb-2 flex items-center justify-center w-full min-h-[52px] sm:min-h-[60px]">
                     {isDeskActive ? (
-                      /* Active: Glowing Orange stickman studying with fire energy at desk */
+                      /* Active: Student actively studying at desk (user's uploaded SVG) */
                       <div className="relative">
-                        <svg viewBox="0 0 100 80" className="w-16 h-12 sm:w-20 sm:h-15 text-[#FF7A00] drop-shadow-[0_0_10px_rgba(255,122,0,0.95)]">
-                          {/* Desk surface */}
-                          <rect x="15" y="46" width="70" height="3.5" rx="1.5" fill="currentColor" />
-                          {/* Legs */}
-                          <line x1="22" y1="49.5" x2="20" y2="76" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                          <line x1="78" y1="49.5" x2="80" y2="76" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                          {/* Sitting Stickman Head */}
-                          <circle cx="58" cy="18" r="8" stroke="currentColor" strokeWidth="3" fill="none" />
-                          {/* Torso leaning forward */}
-                          <path d="M54 26 L42 45" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
-                          {/* Arms writing/studying */}
-                          <path d="M48 34 L32 46 L50 46" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                          {/* Legs in chair */}
-                          <path d="M42 46 L35 58 L46 74" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                          {/* Open Study Book */}
-                          <path d="M28 46 L36 42 L44 46" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                          {/* Desk glowing lamp */}
-                          <path d="M74 46 L74 34 M68 34 L80 34 L76 26 L72 26 Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-                        </svg>
+                        <img 
+                          src="/assets/aistudio/Monochrome_Study_Desk_Icon__1_-removebg-preview__1__e785f805.svg" 
+                          alt="Active Study Desk" 
+                          className="w-20 h-13 sm:w-24 sm:h-16 object-contain filter drop-shadow-[0_0_12px_rgba(255,122,0,0.95)] select-none pointer-events-none scale-110" 
+                        />
                       </div>
                     ) : (
                       /* Inactive: Sleeping student at unlit desk (user's uploaded SVG - enlarged for clarity) */
@@ -1815,7 +1801,11 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                     : "bg-white/5 border-white/10 text-white/60"
                 )}>
                   {selectedDesk.isFocusing ? (
-                    <Flame className="w-9 h-9 text-[#FF7A00] fill-current animate-pulse drop-shadow-[0_0_10px_rgba(255,122,0,0.9)]" />
+                    <img 
+                      src="/assets/aistudio/Monochrome_Study_Desk_Icon__1_-removebg-preview__1__e785f805.svg" 
+                      alt="Active Study Desk" 
+                      className="w-14 h-14 object-contain filter drop-shadow-[0_0_12px_rgba(255,122,0,0.95)] select-none pointer-events-none" 
+                    />
                   ) : (
                     <img 
                       src="/assets/aistudio/01-01-Sleeping_Student_at_Unlit_Desk-removebg-preview_95b34a17.svg" 
