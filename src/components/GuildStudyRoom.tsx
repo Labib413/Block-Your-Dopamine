@@ -62,6 +62,7 @@ import {
   generateGuildEmblem
 } from "../services/communityService";
 import { GuildEmblemBadge } from "./GuildEmblemBadge";
+import { updateUserGuildAssociation } from "../lib/firebase";
 
 export type { GuildMemberDesk };
 
@@ -210,7 +211,8 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
     stopFocusSession,
     totalNetFocusTime,
     level,
-    streak
+    streak,
+    updateProfile
   } = useApp();
 
   const currentUsername = profile?.username || user?.user_metadata?.username || user?.email?.split("@")[0] || "you";
@@ -241,15 +243,30 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
     }
   ]);
 
+  // Current user's desk & military rank in this guild
+  const myDesk = desks.find(d => d.isCurrentUser);
+  const myMemberRole = (profile as any)?.guildRole || myDesk?.role || (guild.joined && !isMeLeader ? 'member' : undefined);
+  const myRank = normalizeGuildRole(myMemberRole, isMeLeader);
+
+  // Commander, General, Major, and Lieutenant all have automatic Guild Management access
+  const canAccessManagement = Boolean(
+    isMeLeader || 
+    myRank === 'commander' || 
+    myRank === 'general' || 
+    myRank === 'major' || 
+    myRank === 'lieutenant'
+  );
+
   const [activeTab, setActiveTab] = useState<"Room" | "Leaderboard" | "CheerWall" | "Management">(
-    (initialTab === "Management" && isMeLeader) ? "Management" : (initialTab && initialTab !== "Management") ? initialTab : "Room"
+    initialTab || "Room"
   );
 
   useEffect(() => {
-    if (!isMeLeader && activeTab === "Management") {
+    // Only redirect away from Management if the user lacks management authority
+    if (!canAccessManagement && activeTab === "Management") {
       setActiveTab("Room");
     }
-  }, [isMeLeader, activeTab]);
+  }, [canAccessManagement, activeTab]);
 
   const [selectedDesk, setSelectedDesk] = useState<GuildMemberDesk | null>(null);
   const [isConfirmingDeleteGuild, setIsConfirmingDeleteGuild] = useState(false);
@@ -554,12 +571,19 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
       await updateGuildMemberRoleInFirebase(guild.id, memberDeskId, targetRank);
       
       const targetDesk = desks.find(d => d.id === memberDeskId);
+      if (targetDesk?.userId && !targetDesk.userId.startsWith('user_')) {
+        updateUserGuildAssociation(targetDesk.userId, guild.id, guild.name, guild.tag, targetRank).catch(() => {});
+      }
+      if (targetDesk?.isCurrentUser) {
+        updateProfile({ guildRole: targetRank } as any).catch(() => {});
+      }
+
       const targetName = targetDesk?.fullName || targetDesk?.username || 'Warrior';
       const rankConfig = GUILD_RANKS[targetRank];
       setActionNotice(
         targetRank === 'member'
           ? `${targetName} reset to Standard Member 👤`
-          : `🎖️ ${targetName} promoted to ${rankConfig.label} (${rankConfig.icon})`
+          : `🎖️ ${targetName} promoted to ${rankConfig.label} (${rankConfig.icon}) — Guild Management Unlocked!`
       );
       setTimeout(() => setActionNotice(null), 3500);
     } catch (err) {
@@ -778,8 +802,8 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
             <span>Cheer Wall</span>
           </button>
 
-          {/* Guild Management Tab (Strictly restricted to Guild Leader ONLY) */}
-          {isMeLeader && (
+          {/* Guild Management Tab (Accessible to Commander, General, Major, and Lieutenant) */}
+          {canAccessManagement && (
             <button
               onClick={() => setActiveTab("Management")}
               className={cn(
@@ -795,7 +819,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 "px-1.5 py-0.5 rounded-full text-[9px] font-mono font-bold",
                 activeTab === "Management" ? "bg-black/20 text-black" : "bg-[#FFD700]/20 text-[#FFD700]"
               )}>
-                Leader HQ
+                {isMeLeader ? "Leader HQ" : `${GUILD_RANKS[myRank]?.label || 'Officer'} HQ`}
               </span>
             </button>
           )}
@@ -1144,13 +1168,17 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-white tracking-tight">Commander Headquarters & Management</h3>
+                    <h3 className="text-lg font-bold text-white tracking-tight">
+                      {isMeLeader ? "Commander Headquarters & Management" : `${GUILD_RANKS[myRank]?.label || 'Officer'} Headquarters & Management`}
+                    </h3>
                     <span className="px-2 py-0.5 rounded-full bg-[#FFD700]/10 border border-[#FFD700]/30 text-[#FFD700] text-[10px] font-bold font-mono">
-                      HQ
+                      {isMeLeader ? "Supreme HQ" : `${GUILD_RANKS[myRank]?.label || 'Officer'} HQ`}
                     </span>
                   </div>
                   <p className="text-xs text-white/50 mt-0.5 font-medium">
-                    Command squad military ranks (General &gt; Major &gt; Lieutenant), enforce qualification requirements, and monitor warrior focus stats.
+                    {isMeLeader 
+                      ? "Command squad military ranks (General > Major > Lieutenant), enforce qualification requirements, and monitor warrior focus stats."
+                      : `Appointed by Commander as ${GUILD_RANKS[myRank]?.label}. Oversee squad operations, monitor warrior focus metrics, and enforce focus discipline.`}
                   </p>
                 </div>
               </div>
@@ -1286,7 +1314,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           </GlassCard>
 
           {/* Underperforming Alert Banner */}
-          {underperformingCount > 0 && isMeLeader && (
+          {underperformingCount > 0 && canAccessManagement && (
             <div className="p-4 rounded-2xl bg-amber-500/[0.05] border border-amber-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 animate-pulse" />
@@ -1342,7 +1370,7 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                 </span>
               </div>
             </div>
-            {isMeLeader && (
+            {isMeLeader ? (
               <span className="text-[10px] font-mono text-[#FFD700]/80 flex items-center gap-1.5">
                 <img 
                   src="/assets/aistudio/01-Horned_Skull_Hexagon_Emblem__1_-removebg-preview_2a7a81c1.svg" 
@@ -1351,6 +1379,11 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   referrerPolicy="no-referrer"
                 />
                 Commander Authority: Click any warrior's rank to promote or reassign
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono text-amber-400/90 flex items-center gap-1.5">
+                <span>{GUILD_RANKS[myRank]?.icon}</span>
+                {GUILD_RANKS[myRank]?.label} Authority: Active Squad Officer
               </span>
             )}
           </div>
@@ -1863,6 +1896,45 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
                   </span>
                 </div>
               </div>
+
+              {/* Guild Management Authority Segment */}
+              {(() => {
+                const deskRank = normalizeGuildRole(selectedDesk.role, isDeskLeader(selectedDesk));
+                const hasManagement = deskRank === 'commander' || deskRank === 'general' || deskRank === 'major' || deskRank === 'lieutenant';
+                if (!hasManagement) return null;
+                const rConfig = GUILD_RANKS[deskRank];
+
+                return (
+                  <div className="p-3.5 rounded-2xl bg-[#FFD700]/[0.03] border border-[#FFD700]/25 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-4 h-4 text-[#FFD700]" />
+                        <span className="text-[11px] font-bold text-[#FFD700] uppercase tracking-wider">Guild Management</span>
+                      </div>
+                      <span className={cn("px-2 py-0.5 rounded-full text-[9px] font-bold uppercase font-mono border flex items-center gap-1", rConfig.badgeClass)}>
+                        <span>{renderRankIcon(rConfig.icon, "w-3 h-3 object-contain inline-block")}</span>
+                        <span>{rConfig.label}</span>
+                      </span>
+                    </div>
+                    <div className="text-xs text-white/70 flex items-center justify-between">
+                      <span className="text-[11px] text-white/50">{rConfig.desc}</span>
+                      <span className="text-[10px] text-[#39FF14] font-mono font-bold">Active Authority</span>
+                    </div>
+                    {(selectedDesk.isCurrentUser || isMeLeader || canAccessManagement) && (
+                      <button
+                        onClick={() => {
+                          setSelectedDesk(null);
+                          setActiveTab("Management");
+                        }}
+                        className="w-full mt-1 py-2 rounded-xl bg-[#FFD700] hover:bg-[#ffe033] text-black text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-[0_0_15px_rgba(255,215,0,0.25)] cursor-pointer"
+                      >
+                        <Crown className="w-3.5 h-3.5 fill-black" />
+                        <span>Go to Guild Management HQ</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Cheering Actions */}
               <div className="space-y-2">

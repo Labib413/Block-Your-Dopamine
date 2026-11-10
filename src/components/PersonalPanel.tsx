@@ -37,10 +37,13 @@ import {
   Download,
   Upload,
   Database,
-  FileCheck
+  FileCheck,
+  Crown,
+  Shield
 } from "lucide-react";
 import { cn } from "@/src/lib/utils";
 import { logger } from "@/src/lib/logger";
+import { GUILD_RANKS, normalizeGuildRole, renderRankIcon } from "./GuildStudyRoom";
 
 const GlassSelect = ({ 
   value, 
@@ -602,6 +605,45 @@ export function PersonalPanel({ onShowBadges }: { onShowBadges?: () => void }) {
                 </div>
               </div>
             </div>
+
+            {/* Guild Management Authority Segment */}
+            {(() => {
+              const role = (profile as any)?.guildRole;
+              if (!role) return null;
+              const normalized = normalizeGuildRole(role);
+              if (normalized !== 'commander' && normalized !== 'general' && normalized !== 'major' && normalized !== 'lieutenant') {
+                return null;
+              }
+              const rankConfig = GUILD_RANKS[normalized];
+              const gName = (profile as any)?.guildName || "Study Syndicate";
+              const gTag = (profile as any)?.guildTag || "BYD";
+
+              return (
+                <div className="mb-6 p-4 rounded-2xl bg-[#FFD700]/[0.04] border border-[#FFD700]/30 shadow-[0_0_25px_rgba(255,215,0,0.1)] relative overflow-hidden space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Crown className="w-4 h-4 text-[#FFD700]" />
+                      <span className="text-xs font-bold text-[#FFD700] uppercase tracking-wider">Guild Management Segment</span>
+                    </div>
+                    <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase font-mono border flex items-center gap-1", rankConfig.badgeClass)}>
+                      <span>{renderRankIcon(rankConfig.icon, "w-3 h-3 object-contain inline-block")}</span>
+                      <span>{rankConfig.label}</span>
+                    </span>
+                  </div>
+
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <div>
+                      <span className="text-[10px] text-white/40 block font-mono">Guild</span>
+                      <span className="text-white font-bold tracking-tight">[{gTag}] {gName}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-[10px] text-white/40 block font-mono">Authority</span>
+                      <span className="text-[#FFD700] font-bold font-mono text-[11px]">{rankConfig.desc}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
 
             {/* Information Grid - 2 Columns per row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6 relative z-10">

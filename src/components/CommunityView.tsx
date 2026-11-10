@@ -48,7 +48,7 @@ import { cn } from "@/src/lib/utils";
 import { BADGES } from "../constants";
 import { db, doc, onSnapshot } from "../firebase";
 import { TheSparkIcon } from "./icons/TheSparkIcon";
-import { GuildStudyRoom } from "./GuildStudyRoom";
+import { GuildStudyRoom, GUILD_RANKS, normalizeGuildRole, renderRankIcon } from "./GuildStudyRoom";
 import { GuildEmblemBadge } from "./GuildEmblemBadge";
 import {
   CommunityMember,
@@ -2057,6 +2057,67 @@ export function CommunityView({ onBack, onNavigate }: { onBack?: () => void; onN
                         {subjectVal}
                       </div>
                     </div>
+                  </div>
+                );
+              })()}
+
+              {/* Guild Management Authority Segment */}
+              {(() => {
+                const memberGuildId = activeMember?.guildId || (isMe ? (profile as any)?.guildId : undefined);
+                const assignedGuild = guilds.find(g => g.id === memberGuildId || (userJoinedGuild && userJoinedGuild.id === memberGuildId)) || userJoinedGuild;
+                const isLeaderOfGuild = Boolean(assignedGuild && (
+                  (activeMember?.username && assignedGuild.leader?.toLowerCase() === activeMember.username.toLowerCase()) ||
+                  (isMe && assignedGuild.leader?.toLowerCase() === currentUsername?.toLowerCase())
+                ));
+
+                const rawRole = activeMember?.guildRole || activeMember?.role || (isMe ? (profile as any)?.guildRole : undefined);
+                const memberRank = normalizeGuildRole(rawRole, isLeaderOfGuild);
+                const hasManagementRole = memberRank === 'commander' || memberRank === 'general' || memberRank === 'major' || memberRank === 'lieutenant';
+
+                if (!hasManagementRole) return null;
+
+                const rankCfg = GUILD_RANKS[memberRank];
+                const gName = activeMember?.guildName || assignedGuild?.name || "Study Syndicate";
+                const gTag = activeMember?.guildTag || assignedGuild?.tag || "BYD";
+
+                return (
+                  <div className="p-4 rounded-2xl bg-[#FFD700]/[0.03] border border-[#FFD700]/25 relative overflow-hidden space-y-3 shadow-lg">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Crown className="w-4 h-4 text-[#FFD700]" />
+                        <span className="text-[11px] uppercase font-bold tracking-wider text-[#FFD700]">Guild Management</span>
+                      </div>
+                      <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-bold uppercase font-mono border flex items-center gap-1", rankCfg.badgeClass)}>
+                        <span>{renderRankIcon(rankCfg.icon, "w-3 h-3 object-contain inline-block")}</span>
+                        <span>{rankCfg.label}</span>
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-0.5">
+                      <div>
+                        <span className="text-[10px] text-white/40 block font-mono">Guild</span>
+                        <span className="text-white font-bold tracking-tight">[{gTag}] {gName}</span>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] text-white/40 block font-mono">Command Status</span>
+                        <span className="text-[#FFD700] font-bold font-mono text-[11px]">{rankCfg.desc}</span>
+                      </div>
+                    </div>
+
+                    {isMe && assignedGuild && (
+                      <button
+                        onClick={() => {
+                          setSelectedMember(null);
+                          setSelectedGuildRoomId(assignedGuild.id);
+                          setSelectedGuildRoomTab("Management");
+                          setActiveTab("Guild");
+                        }}
+                        className="w-full py-2 rounded-xl bg-[#FFD700] hover:bg-[#ffe033] text-black text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(255,215,0,0.25)]"
+                      >
+                        <Shield className="w-3.5 h-3.5 fill-black" />
+                        <span>Enter Guild Management HQ</span>
+                      </button>
+                    )}
                   </div>
                 );
               })()}
