@@ -741,13 +741,15 @@ export async function updateUserGuildAssociation(
   if (!userId) return;
   try {
     const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, {
-      guildId: guildId || null,
-      guildName: guildName || null,
-      guildTag: guildTag || null,
-      guildRole: guildRole || null,
+    const payload: Record<string, any> = {
       updatedAt: new Date().toISOString()
-    }, { merge: true });
+    };
+    if (guildId !== undefined) payload.guildId = guildId;
+    if (guildName !== undefined) payload.guildName = guildName;
+    if (guildTag !== undefined) payload.guildTag = guildTag;
+    if (guildRole !== undefined) payload.guildRole = guildRole;
+
+    await setDoc(userRef, payload, { merge: true });
   } catch (err) {
     console.warn('[Firestore] updateUserGuildAssociation error:', err);
   }

@@ -360,13 +360,14 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
       const hasMyDesk = mapped.some(d => d.isCurrentUser);
       if (guild.joined && !hasMyDesk && currentUsername && currentUsername !== "you") {
         const isThisUserLeader = (guild.leader && (guild.leader.toLowerCase() === currentUsername.toLowerCase() || guild.leader.toLowerCase() === currentFullName.toLowerCase()));
+        const mySavedRole = (profile as any)?.guildRole || (isThisUserLeader ? 'leader' : 'member');
         const myDesk: GuildMemberDesk = {
           id: `desk_${currentUsername.replace(/\s+/g, '_').toLowerCase()}`,
           userId: user?.id,
           username: currentUsername,
           fullName: currentFullName,
           avatarUrl: profile?.avatarUrl || "",
-          role: isThisUserLeader ? 'leader' : 'member',
+          role: mySavedRole,
           isFocusing,
           focusSecondsToday: totalNetFocusTime || 0,
           currentSessionSeconds: 0,
@@ -385,7 +386,8 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
           level: level || 1,
           streak: streak || 3,
           totalNetFocusTime,
-          isFocusing
+          isFocusing,
+          role: mySavedRole
         }).catch(() => {});
       }
 
@@ -568,10 +570,17 @@ export function GuildStudyRoom({ guild, initialTab, onBack, onToggleJoin, onDele
     try {
       setDesks(prev => prev.map(d => d.id === memberDeskId ? { ...d, role: targetRank } : d));
       setOpenRankMenuId(null);
-      await updateGuildMemberRoleInFirebase(guild.id, memberDeskId, targetRank);
-      
+
       const targetDesk = desks.find(d => d.id === memberDeskId);
-      if (targetDesk?.userId && !targetDesk.userId.startsWith('user_')) {
+      await updateGuildMemberRoleInFirebase(
+        guild.id, 
+        memberDeskId, 
+        targetRank,
+        targetDesk?.username,
+        targetDesk?.userId
+      );
+      
+      if (targetDesk?.userId) {
         updateUserGuildAssociation(targetDesk.userId, guild.id, guild.name, guild.tag, targetRank).catch(() => {});
       }
       if (targetDesk?.isCurrentUser) {

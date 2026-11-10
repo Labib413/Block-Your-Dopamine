@@ -871,6 +871,15 @@ export function subscribeToGuildMembers(
       const cleanLeader = (guildLeaderName || "").trim();
       const leaderDeskId = cleanLeader ? `desk_leader_${cleanLeader.replace(/\s+/g, '_').toLowerCase()}` : "desk_leader";
 
+      // Read parent guild document to access memberRoles mapping as resilient backup
+      let memberRolesMap: Record<string, string> = {};
+      try {
+        const guildSnap = await getDoc(doc(firestore, "guilds", guildId));
+        if (guildSnap.exists()) {
+          memberRolesMap = (guildSnap.data()?.memberRoles as Record<string, string>) || {};
+        }
+      } catch {}
+
       if (snapshot.empty) {
         if (cleanLeader) {
           // Automatically seed leader desk to Firestore
@@ -926,10 +935,25 @@ export function subscribeToGuildMembers(
           foundLeader = true;
         }
 
+        // Recover assigned military rank from desk data, parent guild doc, or local cache
+        const localRank = 
+          localStorage.getItem(`byd_guild_role_${guildId}_${docSnap.id}`) ||
+          (data.username ? localStorage.getItem(`byd_guild_role_${guildId}_${data.username.toLowerCase()}`) : null) ||
+          (data.userId ? localStorage.getItem(`byd_guild_role_${guildId}_${data.userId}`) : null);
+
+        const parentGuildRank = 
+          memberRolesMap[docSnap.id] ||
+          (data.username ? memberRolesMap[data.username.toLowerCase()] : null) ||
+          (data.userId ? memberRolesMap[data.userId] : null);
+
+        const resolvedRole = isThisLeader 
+          ? 'leader' 
+          : (data.role && data.role !== 'member' ? data.role : (parentGuildRank || localRank || data.role || 'member'));
+
         desks.push({ 
           ...data, 
           id: docSnap.id,
-          role: isThisLeader ? 'leader' : (data.role || 'member')
+          role: resolvedRole as any
         });
       });
 
@@ -987,18 +1011,52 @@ export async function joinGuildInFirebase(
     streak?: number;
     totalNetFocusTime?: number;
     isFocusing?: boolean;
+    role?: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer';
   }
 ): Promise<void> {
   const firestore = getFirestoreInstance();
   const cleanUsername = (user.username || user.fullName || "Warrior").trim();
   const deskId = `desk_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`;
+
+  // Resilient role preservation: Check Firestore desk & parent guild doc before defaulting to member
+  let preservedRole: GuildMemberDesk['role'] = user.role || 'member';
+  try {
+    const existingDeskSnap = await getDoc(doc(firestore, "guilds", guildId, "members", deskId));
+    if (existingDeskSnap.exists()) {
+      const existingData = existingDeskSnap.data() as GuildMemberDesk;
+      if (existingData?.role && existingData.role !== 'member') {
+        preservedRole = existingData.role;
+      }
+    } else {
+      const guildSnap = await getDoc(doc(firestore, "guilds", guildId));
+      if (guildSnap.exists()) {
+        const roles = (guildSnap.data()?.memberRoles as Record<string, string>) || {};
+        const savedRole = roles[deskId] || roles[cleanUsername.toLowerCase()] || roles[user.id];
+        if (savedRole && savedRole !== 'member') {
+          preservedRole = savedRole as any;
+        }
+      }
+    }
+  } catch {}
+
+  // Check local cache if still 'member'
+  if (preservedRole === 'member') {
+    const localRole = 
+      localStorage.getItem(`byd_guild_role_${guildId}_${deskId}`) ||
+      localStorage.getItem(`byd_guild_role_${guildId}_${cleanUsername.toLowerCase()}`) ||
+      (user.id ? localStorage.getItem(`byd_guild_role_${guildId}_${user.id}`) : null);
+    if (localRole && localRole !== 'member') {
+      preservedRole = localRole as any;
+    }
+  }
+
   const memberDesk: GuildMemberDesk = {
     id: deskId,
     userId: user.id || deskId,
     username: cleanUsername,
     fullName: user.fullName || cleanUsername,
     avatarUrl: user.avatarUrl || "",
-    role: 'member',
+    role: preservedRole,
     isFocusing: Boolean(user.isFocusing),
     focusSecondsToday: user.totalNetFocusTime || 0,
     currentSessionSeconds: 0,
@@ -1107,14 +1165,65 @@ export async function kickGuildMemberInFirebase(
 export async function updateGuildMemberRoleInFirebase(
   guildId: string,
   memberDeskId: string,
-  role: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer'
+  role: 'commander' | 'general' | 'major' | 'lieutenant' | 'member' | 'leader' | 'officer',
+  memberUsername?: string,
+  memberUserId?: string
 ): Promise<void> {
   const firestore = getFirestoreInstance();
+  const cleanUsername = (memberUsername || "").trim();
+  const deskIdsToUpdate = new Set<string>();
+  if (memberDeskId) deskIdsToUpdate.add(memberDeskId);
+  if (cleanUsername) {
+    deskIdsToUpdate.add(`desk_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`);
+  }
+
   try {
-    await setDoc(doc(firestore, "guilds", guildId, "members", memberDeskId), cleanFirestoreData({
-      role,
-      updatedAt: new Date().toISOString()
-    }), { merge: true });
+    // 1. Update desk in guilds/${guildId}/members
+    for (const dId of deskIdsToUpdate) {
+      await setDoc(doc(firestore, "guilds", guildId, "members", dId), cleanFirestoreData({
+        role,
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+    }
+
+    // 2. Persist in parent guild doc's memberRoles mapping for global multi-client lookup
+    const guildRef = doc(firestore, "guilds", guildId);
+    const guildSnap = await getDoc(guildRef).catch(() => null);
+    if (guildSnap && guildSnap.exists()) {
+      const gData = guildSnap.data();
+      const currentRoles = (typeof gData.memberRoles === 'object' && gData.memberRoles !== null) ? gData.memberRoles : {};
+      const updatedRoles = {
+        ...currentRoles,
+        [memberDeskId]: role,
+        ...(cleanUsername ? { [cleanUsername.toLowerCase()]: role } : {}),
+        ...(memberUserId ? { [memberUserId]: role } : {})
+      };
+      await setDoc(guildRef, cleanFirestoreData({
+        memberRoles: updatedRoles,
+        updatedAt: new Date().toISOString()
+      }), { merge: true });
+    }
+
+    // 3. Update community_members collection if applicable
+    if (memberUserId || cleanUsername) {
+      const cMemberId = memberUserId || `user_${cleanUsername.replace(/\s+/g, '_').toLowerCase()}`;
+      await setDoc(doc(firestore, "community_members", cMemberId), cleanFirestoreData({
+        guildId,
+        guildRole: role,
+        updatedAt: new Date().toISOString()
+      }), { merge: true }).catch(() => {});
+    }
+
+    // 4. Update local storage for immediate persistence on current device
+    try {
+      localStorage.setItem(`byd_guild_role_${guildId}_${memberDeskId}`, role);
+      if (cleanUsername) {
+        localStorage.setItem(`byd_guild_role_${guildId}_${cleanUsername.toLowerCase()}`, role);
+      }
+      if (memberUserId) {
+        localStorage.setItem(`byd_guild_role_${guildId}_${memberUserId}`, role);
+      }
+    } catch {}
   } catch (error) {
     console.error("[Community] updateGuildMemberRoleInFirebase error:", error);
     handleFirestoreError(error, OperationType.WRITE, `guilds/${guildId}/members/${memberDeskId}`);

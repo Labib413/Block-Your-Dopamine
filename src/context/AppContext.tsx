@@ -15,7 +15,8 @@ import {
   subscribeToFirestoreUserData,
   signOutFirebase,
   fetchFirestoreCollection,
-  fetchFirestoreDoc 
+  fetchFirestoreDoc,
+  updateUserGuildAssociation 
 } from "../lib/firebase";
 import { safeStringify, isUUID, generateId, stringToUUID } from "../lib/utils";
 import { logger } from "../lib/logger";
@@ -1764,6 +1765,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
         const merged = {
           ...fs,
           ...local,
+          guildId: fs.guildId || fs.guild_id || local.guildId || local.guild_id || null,
+          guildRole: fs.guildRole || fs.guild_role || local.guildRole || local.guild_role || null,
+          guildName: fs.guildName || fs.guild_name || local.guildName || local.guild_name || null,
+          guildTag: fs.guildTag || fs.guild_tag || local.guildTag || local.guild_tag || null,
           // Explicitly merge badge & stats fields so neither source accidentally blanks out the other
           equipped_badges: resolvedEquipped,
           badges: fs.badges || fs.unlocked_badges || fs.unlockedBadgeIds || local.badges || local.unlocked_badges || null,
@@ -1894,8 +1899,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
             class: pd.class || prev.profile?.class || '',
             subjectGroup: pd.subject_group || pd.subjectGroup || prev.profile?.subjectGroup || '',
             year: pd.year || prev.profile?.year || '',
-            gender: pd.gender || prev.profile?.gender || 'Male'
-          };
+            gender: pd.gender || prev.profile?.gender || 'Male',
+            guildRole: pd.guildRole || pd.guild_role || (prev.profile as any)?.guildRole || null,
+            guildId: pd.guildId || pd.guild_id || (prev.profile as any)?.guildId || null,
+            guildName: pd.guildName || pd.guild_name || (prev.profile as any)?.guildName || null,
+            guildTag: pd.guildTag || pd.guild_tag || (prev.profile as any)?.guildTag || null
+          } as any;
           next.gender = pd.gender || prev.gender;
           try {
             localStorage.setItem(BYD_PERSISTED_PROFILE_KEY, JSON.stringify(next.profile));
@@ -3946,12 +3955,38 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const updateProfile = (profileData: Partial<NonNullable<AppState['profile']>>) => {
     if (!state.user) return;
 
+    const currentProfile = state.profile || ({} as any);
+    const updatedProfile = {
+      ...currentProfile,
+      ...profileData
+    };
+
     // Update local state immediately
     setState(prev => ({
       ...prev,
-      profile: prev.profile ? { ...prev.profile, ...profileData } : { fullName: '', ...profileData } as any,
+      profile: updatedProfile,
       gender: profileData.gender || prev.gender
     }));
+
+    try {
+      localStorage.setItem(BYD_PERSISTED_PROFILE_KEY, JSON.stringify(updatedProfile));
+    } catch {}
+
+    // Sync guild association to Firestore if present in profileData
+    if (
+      (profileData as any).guildRole !== undefined || 
+      (profileData as any).guildId !== undefined ||
+      (profileData as any).guildName !== undefined ||
+      (profileData as any).guildTag !== undefined
+    ) {
+      updateUserGuildAssociation(
+        state.user.id,
+        (profileData as any).guildId ?? updatedProfile.guildId ?? null,
+        (profileData as any).guildName ?? updatedProfile.guildName ?? null,
+        (profileData as any).guildTag ?? updatedProfile.guildTag ?? null,
+        (profileData as any).guildRole ?? updatedProfile.guildRole ?? null
+      ).catch(() => {});
+    }
 
     // Update Supabase via queue
     addToSyncQueue({
@@ -3961,12 +3996,12 @@ export function AppProvider({ children }: { children: ReactNode }) {
       key: `profile_${state.user.id}`,
       data: {
         id: state.user.id,
-        full_name: profileData.fullName,
-        institution: profileData.institution,
-        class: profileData.class,
-        subject_group: profileData.subjectGroup,
-        year: profileData.year,
-        gender: profileData.gender,
+        full_name: profileData.fullName ?? updatedProfile.fullName,
+        institution: profileData.institution ?? updatedProfile.institution,
+        class: profileData.class ?? updatedProfile.class,
+        subject_group: profileData.subjectGroup ?? updatedProfile.subjectGroup,
+        year: profileData.year ?? updatedProfile.year,
+        gender: profileData.gender ?? updatedProfile.gender,
         updatedAt: new Date().toISOString()
       }
     });
